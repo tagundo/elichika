@@ -12,6 +12,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
@@ -185,7 +187,7 @@ public final class AndroidMVEncoder {
         if (!result.isDone()) return null;
         try { return result.get().getPath(); }
         catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new IllegalStateException(error); }
-        catch (ExecutionException error) { throw new IllegalStateException("MV encoder failed",error.getCause()); }
+        catch (ExecutionException error) { throw new IllegalStateException("MV encoder failed: "+error.getCause(),error.getCause()); }
     }
     private void open() {
         if (cancelled || terminal || result.isDone() || finishing)
@@ -193,6 +195,65 @@ public final class AndroidMVEncoder {
     }
     private void checkCancelled() throws IOException {
         if (cancelled || Thread.currentThread().isInterrupted()) throw new IOException("Export cancelled");
+    }
+
+    private static String videoDescription(String mime,int width,int height,int fps,int bitrate) {
+        return String.format(Locale.US,"%s %d × %d at %d FPS, %.2f Mbps",AVC.equals(mime)?"H.264":"HEVC",width,height,fps,bitrate/1000000.0);
+    }
+    private static final class VideoEncoder {
+        final String name, advisory;
+        VideoEncoder(String name,String advisory) { this.name=name; this.advisory=advisory; }
+    }
+    /** These rates describe advertised throughput, not an offline export limit.
+     * Try every encoder with our required byte-buffer input layout. */
+    private static ArrayList<VideoEncoder> videoEncoderCandidates(String mime,int width,int height) throws IOException {
+        ArrayList<VideoEncoder> preferred=new ArrayList<VideoEncoder>(),other=new ArrayList<VideoEncoder>();
+        StringBuilder reasons=new StringBuilder(); int matches=0;
+        for (MediaCodecInfo info:new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+            if (!info.isEncoder()) continue;
+            boolean supportsType=false;
+            for (String type:info.getSupportedTypes()) if (mime.equalsIgnoreCase(type)) supportsType=true;
+            if (!supportsType) continue;
+            matches++; String reason;
+            try {
+                MediaCodecInfo.CodecCapabilities caps=info.getCapabilitiesForType(mime);
+                MediaCodecInfo.VideoCapabilities video=caps.getVideoCapabilities();
+                boolean flexible=false;
+                for (int color:caps.colorFormats) if (color==MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible) flexible=true;
+                if (!flexible) reason="no flexible YUV420 input support";
+                else {
+                    boolean reportedSize=false;
+                    String advisory="video limits unavailable";
+                    if (video!=null) try {
+                        reportedSize=video.isSizeSupported(width,height);
+                        advisory=(reportedSize?"reported "+video.getSupportedFrameRatesFor(width,height)+" FPS at this size":"requested size not reported")
+                                +String.format(Locale.US,", %.2f–%.2f Mbps",video.getBitrateRange().getLower()/1000000.0,video.getBitrateRange().getUpper()/1000000.0);
+                    } catch (RuntimeException ignored) { /* Reporting must never prevent a real startup attempt. */ }
+                    (reportedSize?preferred:other).add(new VideoEncoder(info.getName(),advisory));
+                    continue;
+                }
+            } catch (RuntimeException error) { reason="capability query failed: "+error.getClass().getSimpleName(); }
+            if (matches<=4) reasons.append("\n").append(info.getName()).append(": ").append(reason);
+        }
+        preferred.addAll(other);
+        if (!preferred.isEmpty()) return preferred;
+        if (matches==0) reasons.append("\nNo encoder for this codec is available.");
+        throw new IOException("No "+(AVC.equals(mime)?"H.264":"HEVC")+" encoder advertises the required flexible YUV420 input."+reasons);
+    }
+    static void checkVideoEncoder(String mime,int width,int height,int fps,int bitrate) throws IOException {
+        MVExportContract.validateVideo(mime,width,height,fps,bitrate,1);
+        videoEncoderCandidates(mime,width,height);
+    }
+    static String videoEncoderAdvisory(String mime,int width,int height) {
+        try {
+            StringBuilder result=new StringBuilder("Device reports (advisory):");
+            ArrayList<VideoEncoder> candidates=videoEncoderCandidates(mime,width,height);
+            for (int i=0;i<Math.min(2,candidates.size());i++) {
+                VideoEncoder candidate=candidates.get(i);
+                result.append("\n").append(candidate.name).append(": ").append(candidate.advisory);
+            }
+            return result.toString();
+        } catch (IOException | RuntimeException error) { return "Encoder report unavailable: "+error.getMessage(); }
     }
 
     private MediaCodec makeVideo() throws IOException {
@@ -206,31 +267,26 @@ public final class AndroidMVEncoder {
         format.setInteger("color-standard",1); // BT.709
         format.setInteger("color-range",2);    // limited
         format.setInteger("color-transfer",3); // SDR video
-        format.setInteger("max-bframes",0);
-        if (AVC.equals(config.mime)) format.setInteger(MediaFormat.KEY_PROFILE,
-                MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
-        MediaFormat selection=format;
-        if (Build.VERSION.SDK_INT==21) {
-            // Lollipop's findEncoderForFormat must not receive KEY_FRAME_RATE.
-            // Keep the real configuration intact and check rate separately below.
-            selection=MediaFormat.createVideoFormat(config.mime,config.width,config.height);
-            selection.setInteger(MediaFormat.KEY_BIT_RATE,config.videoBitrate);
-            selection.setInteger(MediaFormat.KEY_COLOR_FORMAT,MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
-            if (AVC.equals(config.mime)) selection.setInteger(MediaFormat.KEY_PROFILE,
-                    MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
+        // Let AVC/HEVC choose their default profile. B-frame count defaults to
+        // zero; API29+ lets us request it explicitly to keep output ordered.
+        if (Build.VERSION.SDK_INT>=29) format.setInteger(MediaFormat.KEY_MAX_B_FRAMES,0);
+        StringBuilder failures=new StringBuilder(); Throwable lastFailure=null;
+        for (VideoEncoder candidate:videoEncoderCandidates(config.mime,config.width,config.height)) {
+            checkCancelled(); MediaCodec codec=null;
+            try {
+                codec=MediaCodec.createByCodecName(candidate.name);
+                codec.configure(format,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);
+                codec.start(); return codec;
+            } catch (IOException | RuntimeException error) {
+                release(codec); lastFailure=error;
+                failures.append("\n").append(candidate.name).append(": ").append(error);
+                if (error instanceof MediaCodec.CodecException)
+                    failures.append(" [").append(((MediaCodec.CodecException)error).getDiagnosticInfo()).append("]");
+                failures.append(" (advisory: ").append(candidate.advisory).append(")");
+            } catch (Error error) { release(codec); throw error; }
         }
-        String name=new MediaCodecList(MediaCodecList.REGULAR_CODECS).findEncoderForFormat(selection);
-        if (name == null) throw new IOException("No encoder supports the requested format");
-        MediaCodec codec=MediaCodec.createByCodecName(name);
-        try {
-            MediaCodecInfo.CodecCapabilities caps=codec.getCodecInfo().getCapabilitiesForType(config.mime);
-            MediaCodecInfo.VideoCapabilities video=caps.getVideoCapabilities();
-            if (video == null || !video.areSizeAndRateSupported(config.width,config.height,config.fps)
-                    || !video.getBitrateRange().contains(config.videoBitrate))
-                throw new IOException("Requested size, rate or bitrate is unsupported");
-            codec.configure(format,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);
-            codec.start(); return codec;
-        } catch (Throwable error) { codec.release(); throw error; }
+        throw new IOException("Encoder startup failed for "+videoDescription(config.mime,config.width,config.height,config.fps,config.videoBitrate)
+                +". Each matching encoder was attempted:"+failures,lastFailure);
     }
     private MediaCodec makeAudio() throws IOException {
         MediaFormat format=MediaFormat.createAudioFormat("audio/mp4a-latm",config.sampleRate,config.channels);

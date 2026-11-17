@@ -14,6 +14,7 @@
 #include <time.h>
 #include <limits.h>
 #include <stddef.h>
+#include <stdarg.h>
 #include <initializer_list>
 #include <atomic>
 #include "android_mv_patch_profiles.h"
@@ -65,7 +66,8 @@ struct Methods {
     Method read_pixels,image_pointer,image_size,blit,destroy,job_complete,apply_transform,request_safe;
     Method manager_bones,manager_pause_get,manager_pause_set,position,rotation_get,rotation_set;
     Method sound_pause,sound_paused;
-    Method overlay_camera,behaviour_enabled,camera_target,camera_width,camera_height,set_resolution;
+    Method overlay_camera,behaviour_enabled,overlay_paused,camera_target,camera_width,camera_height,set_resolution;
+    Method texture_width,texture_height;
     Method cri_sheet,cri_waveform;
 } m;
 struct Fields {
@@ -73,7 +75,7 @@ struct Fields {
     Field playing,pausing,paused,finished;
     Field managers,bone_array,collider_array,job_index,safety,knee_l,knee_r,jobs_a,jobs_b;
     Field child,transform,scalar_first,scalar_end,current_tip,previous_tip,correct_adjust,ratio;
-    Field scene_pre_final,scene_post_final;
+    Field scene_pre_final,scene_post_final,scene_paused,overlay_blur;
     Field cri_acb,cri_acb_path,cri_awb_path,wave_id,wave_rate,wave_channels,wave_samples,wave_streaming;
 } f;
 struct Original { uintptr_t entry[9]; } original;
@@ -107,6 +109,9 @@ int32_t saved_job_index,saved_safety;
 uint8_t saved_knees[24];
 uint8_t *pixels; int16_t pcm[4096*2];
 uint64_t tick,accepted_frames,audio_index,pending_frame;
+uint32_t simulation_hz;
+bool capture_after_overlay;
+char setup_failure[256];
 bool pending_pixels;
 double capture_deadline;
 AmvGameConfig config;
@@ -120,6 +125,11 @@ struct Terminal {
 } terminal;
 
 double now() { timespec t{}; clock_gettime(CLOCK_MONOTONIC,&t); return t.tv_sec+t.tv_nsec/1e9; }
+bool setup_rejected(const char *format,...) {
+    va_list args;va_start(args,format);vsnprintf(setup_failure,sizeof(setup_failure),format,args);va_end(args);
+    return false;
+}
+uint32_t simulation_rate(uint32_t fps) { return fps==120?120:60; }
 template<class T>T load(void *p,size_t off) { T v; memcpy(&v,(uint8_t *)p+off,sizeof(v)); return v; }
 template<class T>void put(void *p,size_t off,T v) { memcpy((uint8_t *)p+off,&v,sizeof(v)); }
 void phase(const char *text) { pthread_mutex_lock(&guard); snprintf(cached.phase,sizeof(cached.phase),"%s",text); pthread_mutex_unlock(&guard); }
@@ -270,9 +280,12 @@ bool init_runtime() {
     M(hook[POST],klass("UnityEngine","Camera"),"FireOnPostRender",true,"System.Void",1,camera_arg);
     M(overlay_camera,oc,"get_Camera",false,"UnityEngine.Camera",0,nullptr);
     M(behaviour_enabled,klass("UnityEngine","Behaviour"),"get_enabled",false,"System.Boolean",0,nullptr);
+    M(overlay_paused,oc,"IsPause",false,"System.Boolean",0,nullptr);
     M(camera_target,klass("UnityEngine","Camera"),"get_targetTexture",false,"UnityEngine.RenderTexture",0,nullptr);
     M(camera_width,klass("UnityEngine","Camera"),"get_pixelWidth",false,"System.Int32",0,nullptr);
     M(camera_height,klass("UnityEngine","Camera"),"get_pixelHeight",false,"System.Int32",0,nullptr);
+    M(texture_width,klass("UnityEngine","Texture"),"get_width",false,"System.Int32",0,nullptr);
+    M(texture_height,klass("UnityEngine","Texture"),"get_height",false,"System.Int32",0,nullptr);
     M(set_resolution,klass("UnityEngine","Screen"),"SetResolution",true,"System.Void",3,resolution_args);
     M(cri_sheet,klass("","CriAtom"),"GetCueSheet",true,"CriAtomCueSheet",1,sheet_args);
     M(find_objects,obj,"FindObjectsOfType",true,"UnityEngine.Object[]",1,type);
@@ -333,6 +346,8 @@ bool init_runtime() {
     F(ratio,sb,"skirtRotRatio","System.Single",4);
     F(scene_pre_final,scene,"isPreFinalized","System.Boolean",1);
     F(scene_post_final,scene,"isPostFinalized","System.Boolean",1);
+    F(scene_paused,scene,"isPause","System.Boolean",1);
+    F(overlay_blur,oc,"isBlur","System.Boolean",1);
     F(cri_acb,klass("","CriAtomCueSheet"),"acb","CriAtomExAcb",8);
     F(cri_acb_path,klass("","CriAtomCueSheet"),"acbFile","System.String",8);
     F(cri_awb_path,klass("","CriAtomCueSheet"),"awbFile","System.String",8);
@@ -375,42 +390,43 @@ void free_snapshot() {
     bone_count=manager_count=0;
 }
 bool snapshot_springs() {
-    if (!complete_jobs()) return false;
+    if (!complete_jobs()) return setup_rejected("Original member swing/transform jobs could not complete before the snapshot");
     saved_bones=load<NativeArray>(members,f.bone_array.offset);
     saved_colliders=load<NativeArray>(members,f.collider_array.offset);
     if (saved_bones.length<0 || saved_bones.length>100000 || saved_colliders.length<0 || saved_colliders.length>100000 ||
-        (saved_bones.length&&!saved_bones.data) || (saved_colliders.length&&!saved_colliders.data)) return false;
+        (saved_bones.length&&!saved_bones.data) || (saved_colliders.length&&!saved_colliders.data))
+        return setup_rejected("Original spring NativeArray descriptors are invalid (bones=%d, colliders=%d)",saved_bones.length,saved_colliders.length);
     size_t bone_size=(size_t)saved_bones.length*96,collider_size=(size_t)saved_colliders.length*64;
-    if (bone_size+collider_size>32*1024*1024) return false;
+    if (bone_size+collider_size>32*1024*1024)return setup_rejected("Original spring buffers exceed the 32 MiB snapshot limit");
     void *array=load<void *>(members,f.managers.offset);uint32_t count_managers=length(array,128);
-    if (count_managers==UINT32_MAX || (!array&&saved_bones.length)) return false;
+    if (count_managers==UINT32_MAX || (!array&&saved_bones.length))return setup_rejected("Original spring manager array is missing or exceeds 128 managers");
     manager_count=count_managers;
     managers_array=array;managers_array_root=root(array);if(array&&!managers_array_root)return false;
     bones=(Bone *)calloc(saved_bones.length?saved_bones.length:1,sizeof(Bone));
     managers=(Manager *)calloc(manager_count?manager_count:1,sizeof(Manager));
     bone_bytes=malloc(bone_size?bone_size:1); collider_bytes=malloc(collider_size?collider_size:1);
-    if (!bones || !managers || !bone_bytes || !collider_bytes) return false;
+    if (!bones || !managers || !bone_bytes || !collider_bytes)return setup_rejected("Not enough memory to snapshot %d spring bones and %d colliders",saved_bones.length,saved_colliders.length);
     saved_job_index=load<int32_t>(members,f.job_index.offset); saved_safety=load<int32_t>(members,f.safety.offset);
     memcpy(saved_knees,(uint8_t *)members+f.knee_l.offset,24);
     for (uint32_t i=0;i<manager_count;i++) {
-        void *manager=element(array,i); if (!manager) return false;
-        uint8_t paused=0; if (!value(m.manager_pause_get,manager,&paused)) return false;
+        void *manager=element(array,i); if (!manager)return setup_rejected("Spring manager %u is null",i);
+        uint8_t paused=0; if (!value(m.manager_pause_get,manager,&paused))return setup_rejected("Spring manager %u could not report its pause state",i);
         managers[i].object=manager;managers[i].paused=paused;managers[i].object_root=root(manager);
         if(!managers[i].object_root)return false;
         void *list=reference(m.manager_bones,manager); uint32_t count=length(list,saved_bones.length);
-        if (count==UINT32_MAX || count>(uint32_t)saved_bones.length-bone_count) return false;
+        if (count==UINT32_MAX || count>(uint32_t)saved_bones.length-bone_count)return setup_rejected("Spring manager %u bone count exceeds the original native buffer",i);
         managers[i].array=list;managers[i].array_root=root(list);if(list&&!managers[i].array_root)return false;
         for (uint32_t j=0;j<count;j++) {
             Bone &item=bones[bone_count++]; item.bone=element(list,j);
-            if (!field_object(item.bone,f.transform)) return false;
+            if (!field_object(item.bone,f.transform))return setup_rejected("Spring manager %u bone %u is not a valid SwingBone",i,j);
             item.bone_root=root(item.bone);item.transform=load<void *>(item.bone,f.transform.offset);
             item.child=load<void *>(item.bone,f.child.offset);item.transform_root=root(item.transform);item.child_root=root(item.child);
             if (!item.bone_root||!item.transform_root||!item.child_root||!alive(item.transform)||!alive(item.child)||
-                !value(m.rotation_get,item.transform,&item.rotation)) return false;
+                !value(m.rotation_get,item.transform,&item.rotation))return setup_rejected("Spring manager %u bone %u has a missing transform/child or unreadable rotation",i,j);
             memcpy(item.scalar,(uint8_t *)item.bone+f.scalar_first.offset,f.scalar_end.offset-f.scalar_first.offset);
         }
     }
-    if (bone_count!=(uint32_t)saved_bones.length) return false;
+    if (bone_count!=(uint32_t)saved_bones.length)return setup_rejected("Spring manager/native bone counts disagree (%u versus %d)",bone_count,saved_bones.length);
     if(bone_size)memcpy(bone_bytes,saved_bones.data,bone_size);
     if(collider_size)memcpy(collider_bytes,saved_colliders.data,collider_size);
     return true;
@@ -669,27 +685,48 @@ void observe(void *value) {
     pthread_mutex_unlock(&guard);
 }
 bool begin(const Request &begin_request) {
+    setup_failure[0]=0;
     config=begin_request.config; sink=begin_request.sink; encoder=begin_request.encoder; vm=begin_request.vm;
-    if (!runtime_ready || !director || !observed_director_root || !observed_overlay_root || !clock_manager) return false;
-    if (!environment()) return false;
+    if (!runtime_ready) return setup_rejected("MV export interfaces have not initialized; reopen a 3D MV");
+    if (!director || !observed_director_root) return setup_rejected("No loaded 3D MV director is available");
+    if (!observed_overlay_root) return setup_rejected("The MV final camera has not rendered yet; resume the MV and try again");
+    if (!clock_manager) return setup_rejected("Unity has not supplied the MV clock");
+    if (!environment()) return setup_rejected("The Unity render thread could not access the Android encoder");
     timeline=reference(m.timeline,director); music=reference(m.music_machine,director); members=reference(m.member_manager,director);
     camera_manager=reference(m.camera_manager,director); session_overlay=reference(m.final_overlay,camera_manager);
-    if (!alive(timeline)||!alive(music)||!alive(members)||!alive(session_overlay)||session_overlay!=overlay||load<uint8_t>(music,f.loading.offset)) return false;
+    if (!alive(timeline)) return setup_rejected("The loaded MV timeline is missing or was destroyed");
+    if (!alive(music)) return setup_rejected("The loaded MV music player is missing or was destroyed");
+    if (!alive(members)) return setup_rejected("The loaded MV member manager is missing or was destroyed");
+    if (!alive(session_overlay)||session_overlay!=overlay) return setup_rejected("The MV final camera changed while preparing audio; try again");
+    if (load<uint8_t>(music,f.loading.offset)) return setup_rejected("The MV music is still loading; wait for playback before exporting");
     overlay_camera=reference(m.overlay_camera,session_overlay);uint8_t effect=1;
     Result custom=invoke(m.camera_target,overlay_camera);
-    if(!alive(overlay_camera)||!value(m.behaviour_enabled,session_overlay,&effect)||effect||!custom.ok||custom.value)return false;
+    if(!alive(overlay_camera))return setup_rejected("The final MV overlay has no live Unity camera");
+    if(!value(m.behaviour_enabled,session_overlay,&effect))return setup_rejected("Unity could not read the final MV compositor state");
+    if(!custom.ok)return setup_rejected("Unity could not read the final MV camera target");
+    if(custom.value)return setup_rejected("The final MV camera uses a custom target texture; return to normal MV playback before exporting");
+    // enabled is the normal image compositor, not the pause flag. Run its
+    // original OnRenderImage and capture that output; never bypass its effects.
+    capture_after_overlay=effect!=0;
+    uint8_t paused=0;
+    if(!value(m.overlay_paused,session_overlay,&paused))return setup_rejected("The MV compositor pause state could not be read");
+    if(paused||load<uint8_t>(session_overlay,f.overlay_blur.offset))
+        return setup_rejected("MV is paused or blurred. Close MP4 settings, resume the MV, then reopen MP4 export");
     using Dimension=int32_t(*)(const void *);
     saved_width=((Dimension)original.entry[WIDTH])(nullptr);saved_height=((Dimension)original.entry[HEIGHT])(nullptr);
-    if(saved_width<=0||saved_height<=0)return false;
+    if(saved_width<=0||saved_height<=0)return setup_rejected("Unity reported an invalid screen size (%d x %d)",saved_width,saved_height);
     resolution_requested=false;resolution_ready=false;
     int32_t duration=load<int32_t>(music,f.length.offset);
     AmvGameStatus current{};AmvAudioSelection selected{};
-    if(!audio_selection(&current,&selected)||current.song_fingerprint!=config.song_fingerprint)return false;
+    if(!audio_selection(&current,&selected))return setup_rejected("The selected MV cue or source audio is no longer loaded");
+    if(current.song_fingerprint!=config.song_fingerprint)return setup_rejected("The MV song changed while decoding its audio; prepare this song again");
     if (duration<=0 || config.video_frames!=((uint64_t)duration*config.fps+999)/1000 ||
-        config.audio_frames!=(config.video_frames*config.sample_rate+config.fps-1)/config.fps) return false;
+        config.audio_frames!=(config.video_frames*config.sample_rate+config.fps-1)/config.fps)
+        return setup_rejected("MV duration/frame counts disagree: duration=%d ms, fps=%u, video=%llu, audio=%llu",duration,config.fps,
+            (unsigned long long)config.video_frames,(unsigned long long)config.audio_frames);
     void *type=e.type_get_object(e.class_get_type(f.scene_pre_final.owner)); void *args[]={type};
     void *scenes=type?reference(m.find_objects,nullptr,args):nullptr; uint32_t count=length(scenes,16);
-    uint32_t scenes_root=root(scenes);if(scenes&&!scenes_root)return false;
+    uint32_t scenes_root=root(scenes);if(scenes&&!scenes_root)return setup_rejected("Could not retain the MV scene search results");
     mv_scene=nullptr;
     bool duplicate_scene=false;
     for (uint32_t i=0;i<count&&count!=UINT32_MAX;i++) {
@@ -699,49 +736,82 @@ bool begin(const Request &begin_request) {
         }
     }
     scene_root=root(mv_scene);release(&scenes_root);
-    if (duplicate_scene||!mv_scene||!scene_root) return false;
-    if (!value(m.time_get,timeline,&saved_time)||!value(m.state_get,timeline,&saved_state)) return false;
+    if (duplicate_scene)return setup_rejected("More than one live MV scene is loaded; exit and reopen the MV");
+    if (!mv_scene||!scene_root)return setup_rejected("No active LiveMvScene could be retained (scene count=%u)",count);
+    if(load<uint8_t>(mv_scene,f.scene_paused.offset))return setup_rejected("MV is paused. Close MP4 settings, resume the MV, then reopen MP4 export");
+    if (!value(m.time_get,timeline,&saved_time))return setup_rejected("Unity could not read the MV timeline position");
+    if (!value(m.state_get,timeline,&saved_state))return setup_rejected("Unity could not read the MV timeline play state");
     // The managed update-mode getter is stripped. The native setter's actual
     // Android chain and +0x48 field require the profile proof checked at bind.
     void *native_timeline=load<void *>(timeline,0x10);
-    if(!native_timeline)return false;
+    if(!native_timeline)return setup_rejected("The MV timeline has no native PlayableDirector");
     saved_mode=load<int32_t>(native_timeline,0x48);
-    if(saved_mode<0||saved_mode>3)return false;
+    if(saved_mode<0||saved_mode>3)return setup_rejected("PlayableDirector update mode is outside the verified ABI range (%d)",saved_mode);
     sound=load<void *>(music,f.sound.offset);
-    if (!sound||!value(m.sound_paused,sound,&saved_sound_pause)) return false;
+    if (!sound||!value(m.sound_paused,sound,&saved_sound_pause))return setup_rejected("The original MV SoundPlayer could not report its pause state");
     timeline_root=root(timeline);music_root=root(music);members_root=root(members);camera_manager_root=root(camera_manager);sound_root=root(sound);
-    if(!timeline_root||!music_root||!members_root||!camera_manager_root||!sound_root)return false;
+    if(!timeline_root||!music_root||!members_root||!camera_manager_root||!sound_root)return setup_rejected("Could not retain one or more MV timeline/music/member/camera objects");
     saved_music_time=load<int32_t>(music,f.music_time.offset);
     const Field *flags[]={&f.playing,&f.pausing,&f.paused,&f.finished};
     for(unsigned i=0;i<4;i++) saved_music_flags[i]=load<uint8_t>(music,flags[i]->offset);
-    if (!snapshot_springs()) return false;
+    if (!snapshot_springs()) return setup_failure[0]?false:setup_rejected("Could not snapshot original MV spring jobs or bone buffers");
     session_director_root=root(director); session_overlay_root=root(session_overlay);overlay_camera_root=root(overlay_camera);
-    if (!session_director_root||!session_overlay_root||!scene_root||!overlay_camera_root) return false;
+    if (!session_director_root||!session_overlay_root||!scene_root||!overlay_camera_root)return setup_rejected("Could not retain the final MV render session");
     memcpy(clock_snapshot,(uint8_t *)clock_manager+0x30,sizeof(clock_snapshot));
     clock_epoch=load<double>(clock_manager,0x60); unscaled_epoch=load<double>(clock_manager,0x70); wall_start=now();
-    if (!isfinite(clock_epoch)||!isfinite(unscaled_epoch)) return false;
+    if (!isfinite(clock_epoch)||!isfinite(unscaled_epoch))return setup_rejected("Unity's MV clock contains a non-finite time value");
     active=true; abandoned=false; have_tick=false; accepted_frames=audio_index=0;
     advancing=awaiting_capture=finishing=pending_pixels=false;
     int32_t manual=3; void *mode[]={&manual};
-    if (!invoke_void(m.mode_set,timeline,mode)||!invoke_void(m.play,timeline)||!reset_springs()) return false;
+    if (!invoke_void(m.mode_set,timeline,mode))return setup_rejected("Unity rejected manual MV timeline update mode");
+    if (!invoke_void(m.play,timeline))return setup_rejected("Unity rejected starting the MV timeline");
+    if (!reset_springs())return setup_rejected("The original MV spring reset/evaluation failed");
     uint8_t yes=1,no=0; void *pause_sound[]={&yes};
-    if (!invoke_void(m.sound_pause,sound,pause_sound)) return false;
+    if (!invoke_void(m.sound_pause,sound,pause_sound))return setup_rejected("The original SoundPlayer could not pause live audio for offline export");
     put<uint8_t>(music,f.playing.offset,yes); put<uint8_t>(music,f.pausing.offset,no);
     put<uint8_t>(music,f.paused.offset,no); put<uint8_t>(music,f.finished.offset,no);
     int32_t width=config.width,height=config.height;
     texture=e.object_new(m.texture_constructor.owner); texture_root=root(texture);
     int32_t rgba=4; void *texargs[]={&width,&height,&rgba,&no};
-    if (!texture_root||!invoke_void(m.texture_constructor,texture,texargs)) return false;
+    if (!texture_root||!invoke_void(m.texture_constructor,texture,texargs))return setup_rejected("Unity could not allocate the %u x %u RGBA readback texture",config.width,config.height);
     pixels=(uint8_t *)malloc((size_t)config.width*config.height*3/2);
-    if (!pixels) return false;
+    if (!pixels)return setup_rejected("Not enough memory for the %u x %u I420 frame buffer",config.width,config.height);
     // Keep the original fixedDeltaTime/cache (+48/+50/+58). Unity's built-in
     // FixedUpdate/PhysX retains its configured rate; custom spring invocation
-    // follows the original 60Hz variable-frame path below.
-    put<int32_t>(clock_manager,0xd8,60); put<float>(clock_manager,0xfc,1.f); freeze();
+    // follows the original variable-frame path at 60 or 120 Hz below.
+    simulation_hz=simulation_rate(config.fps);
+    put<int32_t>(clock_manager,0xd8,(int32_t)simulation_hz); put<float>(clock_manager,0xfc,1.f); freeze();
     uint8_t full=1;void *resolution[]={&width,&height,&full};resolution_requested=true;
-    if(!invoke_void(m.set_resolution,nullptr,resolution))return false;
+    if(!invoke_void(m.set_resolution,nullptr,resolution))return setup_rejected("Unity rejected the requested real render resolution (%d x %d)",width,height);
     pthread_mutex_lock(&guard);cached.failure[0]=0;pthread_mutex_unlock(&guard);
     phase("waiting for real Unity render resolution"); publish(); return true;
+}
+void capture_frame(void *target) {
+    uint8_t effect=0,paused=0;int32_t width=0,height=0;
+    Result custom=invoke(m.camera_target,overlay_camera);
+    if(!scene_valid()||!spring_owners_valid()||!complete_jobs()||!resolution_ready){fail("Final MV scene/spring ownership changed before readback");return;}
+    if(!value(m.behaviour_enabled,session_overlay,&effect)||(effect!=0)!=capture_after_overlay){fail("The final MV compositor was enabled/disabled during export");return;}
+    if(!value(m.overlay_paused,session_overlay,&paused)||paused||load<uint8_t>(session_overlay,f.overlay_blur.offset)){
+        fail("MV was paused or blurred during export; resume it before starting another export");return;}
+    if(!custom.ok||custom.value){fail("The final MV camera target changed during export");return;}
+    if(!value(m.camera_width,overlay_camera,&width)||!value(m.camera_height,overlay_camera,&height)||
+        width<=0||height<=0||width>(int32_t)config.width||height>(int32_t)config.height){fail("Final MV camera viewport does not fit the requested frame");return;}
+    if(target&&(!value(m.texture_width,target,&width)||!value(m.texture_height,target,&height)||
+        width!=(int32_t)config.width||height!=(int32_t)config.height)){
+        fail("Final MV compositor output texture does not match the requested frame size");return;}
+    Result old=invoke(m.rt_active_get,nullptr);void *previous=old.value;
+    void *select[]={target};bool selected=old.ok&&invoke_void(m.rt_active_set,nullptr,select);
+    Rect rect{0,0,(float)config.width,(float)config.height};int32_t zero=0;uint8_t no=0;
+    void *readargs[]={&rect,&zero,&zero,&no};bool read=selected&&invoke_void(m.read_pixels,texture,readargs);
+    void *restore[]={previous};bool restored=!selected||invoke_void(m.rt_active_set,nullptr,restore);
+    int64_t bytes=0;uintptr_t pointer=0;void *mip[]={&zero};
+    if(!read||!restored||!value(m.image_size,texture,&bytes)||!value(m.image_pointer,texture,&pointer,mip)||
+        !pointer||bytes!=(int64_t)config.width*config.height*4){fail("Unity returned an unexpected MV readback layout");return;}
+    if(!amv_rgba_bottom_up_to_i420((const uint8_t *)pointer,(size_t)bytes,config.width,config.height,
+            pixels,(size_t)config.width*config.height*3/2)){fail("MV readback color conversion rejected its bounds");return;}
+    pending_pixels=true;awaiting_capture=false;
+    // Submission happens at the next TimeManager callback, after the final
+    // compositor has completed and outside the camera's render callback.
 }
 
 bool submit() {
@@ -776,7 +846,7 @@ bool submit() {
 extern "C" int amv_game_request_begin(JNIEnv *env,jobject object,const AmvGameConfig *cfg,const AmvGameCallbacks *callbacks,jthrowable *error) {
     if(error)*error=nullptr;
     if(!env||!object||!cfg||!callbacks||!callbacks->pcm||!callbacks->failed||!callbacks->finished ||
-        (cfg->fps!=30&&cfg->fps!=60)||cfg->width<16||cfg->height<16||cfg->width>3840||cfg->height>2160 ||
+        (cfg->fps!=30&&cfg->fps!=60&&cfg->fps!=120)||cfg->width<16||cfg->height<16||cfg->width>3840||cfg->height>2160 ||
         (cfg->width&1)||(cfg->height&1)||cfg->channels<1||cfg->channels>2||cfg->sample_rate<8000||cfg->sample_rate>96000 ||
         !cfg->video_frames||!cfg->audio_frames||cfg->video_frames>INT64_MAX||cfg->audio_frames>INT64_MAX)return -1;
     pthread_mutex_lock(&guard);
@@ -812,12 +882,17 @@ extern "C" void amv_game_time_update(void *manager) {
     Query song{};pthread_mutex_lock(&guard);if(query.pending){song=query;query={};}pthread_mutex_unlock(&guard);
     if(song.pending){AmvGameStatus status{};AmvAudioSelection selection{};
         bool ok=runtime_ready&&!active&&!quarantined&&audio_selection(&status,&selection);
-        song.callback(song.context,ok?&status:nullptr,ok?&selection:nullptr,ok?nullptr:"Load and resume a 3D MV before exporting");}
+        const char *error="Load and resume a 3D MV before exporting";
+        if(ok){void *manager=reference(m.camera_manager,director),*final=manager?reference(m.final_overlay,manager):nullptr;uint8_t paused=0;
+            if(!alive(final)||!value(m.overlay_paused,final,&paused)){ok=false;error="The MV final camera pause state is not available yet";}
+            else if(paused||load<uint8_t>(final,f.overlay_blur.offset)){ok=false;
+                error="MV is paused or blurred. Close MP4 settings, resume the MV, then reopen MP4 export";}}
+        song.callback(song.context,ok?&status:nullptr,ok?&selection:nullptr,ok?nullptr:error);}
     Request start{};bool cancel=false;
     pthread_mutex_lock(&guard);cancel=request.cancel;request.cancel=false;
     if(request.pending){start=request;request.pending=false;request.encoder=nullptr;}pthread_mutex_unlock(&guard);
     if(start.pending){if(cancel){encoder=start.encoder;vm=start.vm;sink=start.sink;fail("Export cancelled before setup");}
-        else if(!begin(start))fail("Loaded MV/clock/spring/render ABI rejected export setup");}
+        else if(!begin(start))fail(setup_failure[0]?setup_failure:"MV export setup failed without a diagnostic");}
     if(cancel&&active)fail("Export cancelled");
     if(!active){fallback(manager);dispatch_terminal();return;}
     if(!scene_valid()){abandoned=true;fail("MV scene changed during export");fallback(manager);return;}
@@ -848,16 +923,16 @@ extern "C" void amv_game_time_update(void *manager) {
     }
     if(awaiting_capture){freeze();if(now()>capture_deadline)fail("Final MV overlay did not deliver a complete frame");return;}
     uint64_t next=have_tick?tick+1:0;
-    if(next>INT32_MAX*60ULL/1000){fail("MV time exceeds the native millisecond range");return;}
-    fallback(manager);tick=next;double dt=have_tick?1.0/60:0;have_tick=true;
-    double t=clock_epoch+tick/60.0,u=unscaled_epoch+tick/60.0;
+    if(next>INT32_MAX*(uint64_t)simulation_hz/1000){fail("MV time exceeds the native millisecond range");return;}
+    fallback(manager);tick=next;double dt=have_tick?1.0/simulation_hz:0;have_tick=true;
+    double t=clock_epoch+(double)tick/simulation_hz,u=unscaled_epoch+(double)tick/simulation_hz;
     put<double>(manager,0x60,t);put<double>(manager,0x68,t-dt);put<double>(manager,0x70,u);
     put<double>(manager,0x90,t);put<double>(manager,0x98,t-dt);put<double>(manager,0xa0,u);
     for(size_t off:{size_t(0x78),size_t(0x7c),size_t(0xa8),size_t(0xac)})put<float>(manager,off,(float)dt);
-    put<int32_t>(music,f.music_time.offset,(int32_t)(tick*1000/60));
+    put<int32_t>(music,f.music_time.offset,(int32_t)(tick*1000/simulation_hz));
     advancing=true;
-    if(!set_time(tick/60.0)){fail("MV timeline evaluation failed");return;}
-    uint64_t divisor=60/config.fps;
+    if(!set_time((double)tick/simulation_hz)){fail("MV timeline evaluation failed");return;}
+    uint64_t divisor=simulation_hz/config.fps;
     if(tick%divisor==0){pending_frame=tick/divisor;awaiting_capture=true;capture_deadline=now()+30;}
     publish();
 }
@@ -886,7 +961,7 @@ extern "C" void amv_game_member_update(void *self,const void *mi) {
     if(reentry&(1u<<MEMBER)){fallback(self,mi);return;}
     if(!active||self!=members){fallback(self,mi);return;}
     if(!advancing||tick==0)return;
-    if(!spring_owners_valid()||!complete_jobs()||!original_call(MEMBER,self)||!complete_jobs())fail("60Hz MV spring simulation failed");
+    if(!spring_owners_valid()||!complete_jobs()||!original_call(MEMBER,self)||!complete_jobs())fail("Original MV spring simulation/job completion failed");
 }
 extern "C" void amv_game_member_late_update(void *self,const void *mi) {
     using Fn=void(*)(void*,const void*);Fn fallback=(Fn)original.entry[LATE];if(!fallback)return;
@@ -904,7 +979,8 @@ extern "C" void amv_game_overlay_render(void *self,void *source,void *destinatio
     if(!active){fallback(self,source,destination,mi);return;}
     void *args[]={source,destination};
     if(!original_call(OVERLAY,self,args)){fail("MV overlay effect failed");return;}
-    if(self==session_overlay)fail("MV pause/blur image effect became active during export");
+    if(self==session_overlay&&capture_after_overlay&&advancing&&awaiting_capture&&!pending_pixels)
+        capture_frame(destination);
 }
 extern "C" void amv_game_camera_post_render(void *camera,const void *mi) {
     using Fn=void(*)(void*,const void*);Fn fallback=(Fn)original.entry[POST];if(!fallback)return;
@@ -914,31 +990,15 @@ extern "C" void amv_game_camera_post_render(void *camera,const void *mi) {
         fallback(camera,mi);
         if(runtime_ready&&director&&alive(director)){
             void *manager=reference(m.camera_manager,director),*final=manager?reference(m.final_overlay,manager):nullptr;
-            if(alive(final)&&reference(m.overlay_camera,final)==camera){uint8_t enabled=1;Result target=invoke(m.camera_target,camera);
-                if(value(m.behaviour_enabled,final,&enabled)&&!enabled&&target.ok&&!target.value){
+            if(alive(final)&&reference(m.overlay_camera,final)==camera){uint8_t enabled=0;Result target=invoke(m.camera_target,camera);
+                if(value(m.behaviour_enabled,final,&enabled)&&target.ok&&!target.value){
                     uint32_t retained=root(final);release(&observed_overlay_root);overlay=retained?final:nullptr;observed_overlay_root=retained;}}}
         return;
     }
     void *args[]={camera};
     if(!original_call(POST,nullptr,args)){fail("Original camera post-render delegate failed");return;}
-    if(camera!=overlay_camera||!advancing||!awaiting_capture||pending_pixels)return;
-    uint8_t effect=1;Result custom=invoke(m.camera_target,camera);int32_t width=0,height=0;
-    if(!scene_valid()||!spring_owners_valid()||!complete_jobs()||!resolution_ready||!value(m.behaviour_enabled,session_overlay,&effect)||effect||
-        !custom.ok||custom.value||!value(m.camera_width,camera,&width)||!value(m.camera_height,camera,&height)||
-        width<=0||height<=0||width>(int32_t)config.width||height>(int32_t)config.height){fail("Final MV backbuffer/camera ownership changed");return;}
-    Result old=invoke(m.rt_active_get,nullptr);void *previous=old.value;
-    void *target[]={nullptr};bool selected=old.ok&&invoke_void(m.rt_active_set,nullptr,target);
-    Rect rect{0,0,(float)config.width,(float)config.height};int32_t zero=0;uint8_t no=0;
-    void *readargs[]={&rect,&zero,&zero,&no};bool read=selected&&invoke_void(m.read_pixels,texture,readargs);
-    void *restore[]={previous};bool restored=!selected||invoke_void(m.rt_active_set,nullptr,restore);
-    int64_t bytes=0;uintptr_t pointer=0;void *mip[]={&zero};
-    if(!read||!restored||!value(m.image_size,texture,&bytes)||!value(m.image_pointer,texture,&pointer,mip)||
-        !pointer||bytes!=(int64_t)config.width*config.height*4){fail("Unity returned an unexpected MV readback layout");return;}
-    if(!amv_rgba_bottom_up_to_i420((const uint8_t *)pointer,(size_t)bytes,config.width,config.height,
-            pixels,(size_t)config.width*config.height*3/2)){fail("MV readback color conversion rejected its bounds");return;}
-    pending_pixels=true;awaiting_capture=false;
-    // Submission happens at next TimeManager callback. This keeps JNI/audio
-    // backpressure outside the final camera render and never re-evaluates a pose.
+    if(camera!=overlay_camera||capture_after_overlay||!advancing||!awaiting_capture||pending_pixels)return;
+    capture_frame(nullptr);
 }
 
 namespace {

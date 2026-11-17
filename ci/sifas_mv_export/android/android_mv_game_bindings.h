@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 typedef struct {
-    uint32_t width,height,fps; /* fps30/60; simulation is always60Hz. */
+    uint32_t width,height,fps; /* fps30/60/120; deterministic simulation=max(60,fps)Hz. */
     uint32_t sample_rate,channels;
     uint64_t video_frames,audio_frames;
     uint64_t song_fingerprint; /* Returned by the Unity-thread song query. */

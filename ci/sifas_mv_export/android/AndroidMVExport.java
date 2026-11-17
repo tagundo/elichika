@@ -4,9 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
-import android.media.MediaCodecInfo;
-import android.media.MediaCodecList;
-import android.media.MediaFormat;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -16,12 +14,14 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -46,6 +46,7 @@ import org.json.JSONObject;
  */
 public final class AndroidMVExport {
     private static final int SAVE_REQUEST = 0x534d;
+    private static final int[] WIDTHS = {1280,1920,3840}, HEIGHTS = {720,1080,2160}, RATES = {30,60,120};
     private static final long QUERY_TIMEOUT_MS = 15000;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static final ExecutorService WORK = Executors.newSingleThreadExecutor(new ThreadFactory() {
@@ -255,33 +256,53 @@ public final class AndroidMVExport {
         long duration=song.optLong("music_length_ms",0)/1000;
         label(form,"Export the complete loaded MV with audio. The MV restarts from the beginning.");
         if (duration>0) label(form,String.format(Locale.US,"Duration: %d:%02d",duration/60,duration%60));
-        label(form,"Resolution"); final Spinner resolution=spinner(activity,new String[]{"720p · 1280 × 720","1080p · 1920 × 1080"}); form.addView(resolution);
-        label(form,"Frame rate"); final Spinner rate=spinner(activity,new String[]{"30 FPS","60 FPS"}); form.addView(rate);
+        label(form,"Resolution"); final Spinner resolution=spinner(activity,new String[]{"720p · 1280 × 720","1080p · 1920 × 1080","4K · 3840 × 2160"}); form.addView(resolution);
+        label(form,"Frame rate"); final Spinner rate=spinner(activity,new String[]{"30 FPS","60 FPS","120 FPS"}); form.addView(rate);
         label(form,"Video codec"); final Spinner codec=spinner(activity,new String[]{"H.264 · broad compatibility","HEVC · device support required"}); form.addView(codec);
+        label(form,"Offline export may encode slower than the selected FPS. Device reports are advisory; actual encoder startup decides. MV graphics quality uses the current game settings.");
+        final SharedPreferences preferences=activity.getSharedPreferences("mv_export",Context.MODE_PRIVATE);
+        resolution.setSelection(Math.max(0,Math.min(WIDTHS.length-1,preferences.getInt("resolution",0))));
+        rate.setSelection(Math.max(0,Math.min(RATES.length-1,preferences.getInt("rate",0))));
+        codec.setSelection(Math.max(0,Math.min(1,preferences.getInt("codec",0))));
+        final TextView advisory=new TextView(activity); form.addView(advisory);
+        final Runnable updateAdvisory=new Runnable() { public void run() {
+            advisory.setText(AndroidMVEncoder.videoEncoderAdvisory(codec.getSelectedItemPosition()==0?AndroidMVEncoder.AVC:AndroidMVEncoder.HEVC,
+                    WIDTHS[resolution.getSelectedItemPosition()],HEIGHTS[resolution.getSelectedItemPosition()]));
+        } };
+        AdapterView.OnItemSelectedListener selection=new AdapterView.OnItemSelectedListener() {
+            public void onItemSelected(AdapterView<?> parent,View view,int position,long id) { updateAdvisory.run(); }
+            public void onNothingSelected(AdapterView<?> parent) {}
+        };
+        resolution.setOnItemSelectedListener(selection); codec.setOnItemSelectedListener(selection); updateAdvisory.run();
         label(form,"Video bitrate (Mbps)"); final EditText bitrate=new EditText(activity);
-        bitrate.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL); bitrate.setSingleLine(true); bitrate.setText("5"); form.addView(bitrate);
+        bitrate.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL); bitrate.setSingleLine(true); bitrate.setText(preferences.getString("bitrate_mbps","5")); form.addView(bitrate);
         Button recommendation=new Button(activity); recommendation.setText("Use recommended bitrate"); form.addView(recommendation);
         recommendation.setOnClickListener(new View.OnClickListener() { public void onClick(View ignored) {
-            bitrate.setText(resolution.getSelectedItemPosition()==0?(rate.getSelectedItemPosition()==0?"5":"7.5"):(rate.getSelectedItemPosition()==0?"8":"12"));
+            String[][] recommended={{"5","7.5","15"},{"8","12","24"},{"35","53","100"}};
+            bitrate.setText(recommended[resolution.getSelectedItemPosition()][rate.getSelectedItemPosition()]);
         } });
         final File previous=findCompleted(activity);
         if (previous!=null) { Button save=new Button(activity); save.setText("Save previous MP4"); form.addView(save);
             save.setOnClickListener(new View.OnClickListener() { public void onClick(View ignored) { offerSave(activity,previous); } }); }
-        final AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Export MP4").setView(form).setNegativeButton("Cancel",null).setPositiveButton("Export",null).create();
+        ScrollView scroll=new ScrollView(activity); scroll.addView(form);
+        final AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Export MP4").setView(scroll).setNegativeButton("Cancel",null).setPositiveButton("Export",null).create();
         setupDialog=dialog;
         dialog.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() { public void onDismiss(android.content.DialogInterface ignored) {
             if (setupDialog==dialog) setupDialog=null;
         } });
         dialog.setOnShowListener(new android.content.DialogInterface.OnShowListener() { public void onShow(android.content.DialogInterface ignored) {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() { public void onClick(View view) {
-                final int width=resolution.getSelectedItemPosition()==0?1280:1920,height=resolution.getSelectedItemPosition()==0?720:1080;
-                final int fps=rate.getSelectedItemPosition()==0?30:60; final String mime=codec.getSelectedItemPosition()==0?AndroidMVEncoder.AVC:AndroidMVEncoder.HEVC;
+                final int width=WIDTHS[resolution.getSelectedItemPosition()],height=HEIGHTS[resolution.getSelectedItemPosition()];
+                final int fps=RATES[rate.getSelectedItemPosition()]; final String mime=codec.getSelectedItemPosition()==0?AndroidMVEncoder.AVC:AndroidMVEncoder.HEVC;
                 final int bits;
                 try {
                     double mbps=Double.parseDouble(bitrate.getText().toString().trim().replace(',','.'));
-                    if (Double.isNaN(mbps)||Double.isInfinite(mbps)||mbps<0.25||mbps>200) throw new IllegalArgumentException();
-                    bits=(int)Math.round(mbps*1000000);
-                } catch (Throwable error) { bitrate.setError("Enter a bitrate from 0.25 to 200 Mbps"); return; }
+                    long rounded=Math.round(mbps*1000000);
+                    if (Double.isNaN(mbps)||Double.isInfinite(mbps)||mbps<=0||rounded<1||rounded>Integer.MAX_VALUE) throw new IllegalArgumentException();
+                    bits=(int)rounded;
+                } catch (Throwable error) { bitrate.setError("Enter a positive bitrate up to 2147.483647 Mbps (whole bits/sec)."); return; }
+                preferences.edit().putInt("resolution",resolution.getSelectedItemPosition()).putInt("rate",rate.getSelectedItemPosition())
+                    .putInt("codec",codec.getSelectedItemPosition()).putString("bitrate_mbps",bitrate.getText().toString().trim()).apply();
                 dialog.dismiss(); MAIN.postDelayed(new Runnable() { public void run() { start(activity,width,height,fps,mime,bits); } },150);
             } });
         } }); dialog.show();
@@ -315,20 +336,7 @@ public final class AndroidMVExport {
         });
     }
     private static void checkEncoder(Session session) throws IOException {
-        MediaFormat format=MediaFormat.createVideoFormat(session.mime,session.width,session.height);
-        format.setInteger(MediaFormat.KEY_BIT_RATE,session.bitrate);
-        format.setInteger(MediaFormat.KEY_COLOR_FORMAT,MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible);
-        if (Build.VERSION.SDK_INT!=21) format.setInteger(MediaFormat.KEY_FRAME_RATE,session.fps);
-        if (AndroidMVEncoder.AVC.equals(session.mime)) format.setInteger(MediaFormat.KEY_PROFILE,MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline);
-        MediaCodecList list=new MediaCodecList(MediaCodecList.REGULAR_CODECS); String selected=list.findEncoderForFormat(format);
-        if (selected==null) throw new IOException("This device cannot encode that codec, resolution and bitrate. Try H.264 at 720p30.");
-        for (MediaCodecInfo info:list.getCodecInfos()) if (selected.equals(info.getName())) {
-            MediaCodecInfo.VideoCapabilities caps=info.getCapabilitiesForType(session.mime).getVideoCapabilities();
-            if (caps==null||!caps.areSizeAndRateSupported(session.width,session.height,session.fps)||!caps.getBitrateRange().contains(session.bitrate))
-                throw new IOException("The requested frame rate or bitrate is unsupported on this device.");
-            return;
-        }
-        throw new IOException("The video encoder is unavailable.");
+        AndroidMVEncoder.checkVideoEncoder(session.mime,session.width,session.height,session.fps,session.bitrate);
     }
     private static void prepare(final Session session,String selectedSong) {
         long prepared=0; boolean consumed=false; Throwable failure=null; AndroidMVEncoder encoder=null;
