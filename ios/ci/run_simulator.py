@@ -134,7 +134,7 @@ def prepare_simulator_environment(identifier, receipt_path):
                 15, 'simulator_gui_request')
         receipt['gui_request_accepted'] = True
         text = command(['xcrun', 'simctl', 'get_app_container', identifier, SYSTEM_BUNDLE, 'app'],
-                       15, 'system_app_container')
+                       60, 'system_app_container')
         require(Path(text).is_absolute() and '\n' not in text and '\0' not in text,
                 'Simulator environment preflight system app path differs')
         system_app = Path(text).resolve(strict=True)

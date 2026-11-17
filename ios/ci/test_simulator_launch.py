@@ -190,6 +190,7 @@ class SimulatorEnvironmentTests(unittest.TestCase):
         self.assertEqual([x['stage'] for x in value['commands']],
                          ['selected_xcode', 'simulator_gui_request', 'system_app_container',
                           'system_app_launch', 'system_app_terminate'])
+        self.assertEqual([x['budget_seconds'] for x in value['commands']], [15, 15, 60, 60, 15])
         self.assertEqual(value['system_app_device_binding'], 'UUID_SCOPED_SIMCTL_REQUEST_AND_PID_REPLY')
         self.assertFalse(any(BUNDLE in command for command, _ in self.calls))
         self.assertEqual(self.native_call.call_count, 1)
@@ -296,6 +297,20 @@ class SimulatorEnvironmentTests(unittest.TestCase):
             return {'returncode': 0, 'text': ''}
         self.overrides['open'] = delayed
         self.assert_failed('simulator_gui_request')
+        self.assertFalse(any(command[2:3] in (['launch'], ['terminate']) for command, _ in self.calls))
+
+    def test_system_app_container_allowance_is_clamped_and_late_success_cannot_revive_aggregate(self):
+        def delayed_gui(command, kwargs):
+            self.clock += 90
+            return {'returncode': 0, 'text': ''}
+        def late_container(command, kwargs):
+            self.assertAlmostEqual(kwargs['timeout'], 29.9)
+            self.clock += kwargs['timeout']
+            return {'returncode': 0, 'text': str(self.system_app)}
+        self.overrides['open'] = delayed_gui
+        self.overrides['get_app_container'] = late_container
+        self.assert_failed('system_app_container')
+        self.assertEqual(sum(command[2:3] == ['get_app_container'] for command, _ in self.calls), 1)
         self.assertFalse(any(command[2:3] in (['launch'], ['terminate']) for command, _ in self.calls))
 
     def test_environment_failure_stays_before_install_and_native_clocks_with_owned_device_cleanup(self):
