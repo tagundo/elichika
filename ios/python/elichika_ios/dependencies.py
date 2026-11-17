@@ -5,15 +5,26 @@ REQUIRED = ("numpy", "PIL.Image", "UnityPy", "lz4.block", "lz4.frame", "brotli",
             "texture2ddecoder", "etcpak", "astc_encoder", "attrs", "fsspec")
 
 
-def probe():
+def _notify(observer, kind, name, event):
+    if observer is not None:
+        try:
+            observer(kind, name, event)
+        except Exception:
+            pass  # Optional diagnostics must never alter a dependency result.
+
+
+def probe(observer=None):
     failures = {}
     loaded = {}
     for name in REQUIRED:
+        _notify(observer, "import", name, "begin")
         try:
             module = importlib.import_module(name)
             loaded[name] = getattr(module, "__version__", "bundled")
         except Exception as error:
             failures[name] = "%s: %s" % (type(error).__name__, error)
+        finally:
+            _notify(observer, "import", name, "end")
     if not failures:
         # Exercise native functions, so a Python wrapper with a missing dylib
         # cannot pass the startup probe.
@@ -25,8 +36,11 @@ def probe():
             "texture2ddecoder": lambda: importlib.import_module("texture2ddecoder").decode_astc(bytes(16), 4, 4, 4, 4),
         }
         for name, check in checks.items():
+            _notify(observer, "native_check", name, "begin")
             try:
                 check()
             except Exception as error:
                 failures[name] = "%s: %s" % (type(error).__name__, error)
+            finally:
+                _notify(observer, "native_check", name, "end")
     return {"ready": not failures, "modules": loaded, "failures": failures}

@@ -10,6 +10,7 @@ from contextlib import closing
 import hashlib
 import json
 import mimetypes
+import os
 import sqlite3
 import uuid
 from elichika_ios.mime_bootstrap import configure as _configure_mime
@@ -64,6 +65,46 @@ def _error_message(value):
         message = value.get("message") or json.dumps(value)
         return (str(value["code"]) + ": " + message) if value.get("code") else message
     return str(value or "Embedded Go startup failed")
+
+
+def _backend_diagnostics():
+    """Optional bounded diagnostics for the compile-capable Simulator probe."""
+    if (_state.get("simulator_probe_only") is not True or _state.get("core_only")
+            or not callable(getattr(_native, "probe_stage", None))):
+        return None, None
+    imports = {"numpy", "PIL.Image", "UnityPy", "lz4.block", "lz4.frame", "brotli",
+               "texture2ddecoder", "etcpak", "astc_encoder", "attrs", "fsspec",
+               "adminui.server", "webtools.server"}
+    checks = {"numpy", "PIL.Image", "lz4.block", "brotli", "texture2ddecoder"}
+    began, count = time.monotonic(), 0
+    def observe(kind, name, event):
+        nonlocal count
+        try:
+            allowed = ((kind == "import" and name in imports) or
+                       (kind == "native_check" and name in checks) or
+                       (kind == "setup" and name == "codecs.install"))
+            if count >= 38 or event not in ("begin", "end") or not allowed:
+                return
+            count += 1
+            elapsed = max(0, min(9999.999, time.monotonic()-began))
+            line = f"ELICHIKA_SIMULATOR_DEPENDENCY {kind} {name} {event} elapsed={elapsed:.3f}\n"
+            os.write(2, line.encode("ascii"))
+        except Exception:
+            pass
+    fault = None
+    try:
+        import faulthandler
+        fault = faulthandler
+        fault.dump_traceback_later(45, repeat=False, file=2, exit=False)
+    except Exception:
+        pass
+    def finish():
+        if fault is not None:
+            try:
+                fault.cancel_dump_traceback_later()
+            except Exception:
+                pass
+    return observe, finish
 
 
 def _event(phase, **values):
@@ -154,6 +195,7 @@ def _serve(server):
 
 def _start(config):
     global _scope, _management
+    diagnostic_cleanup = None
     try:
         _configure_mime()
         payload = Path(config["payload_root"]).resolve(strict=True)
@@ -204,6 +246,7 @@ def _start(config):
             raise RuntimeError(_error_message(start_result["error"]))
         _event("starting_server")
         deadline = time.monotonic() + config.get("startup_timeout", 120)
+        observer, diagnostic_cleanup = _backend_diagnostics()
         if _cancel.is_set():
             raise InterruptedError("Setup cancelled")
         if not config.get("core_only", False):
@@ -213,13 +256,19 @@ def _start(config):
             _event("loading_tools", core_only=False)
             _probe_stage("tool_dependencies")
             from elichika_ios.dependencies import probe
-            dependencies = probe()
+            dependencies = probe(observer=observer) if observer is not None else probe()
             if not dependencies["ready"]:
                 raise RuntimeError("Bundled iOS dependencies failed: " + json.dumps(dependencies["failures"]))
             if _cancel.is_set():
                 raise InterruptedError("Setup cancelled")
-            from elichika_ios.codecs import install as install_codecs
-            dependencies["codecs"] = install_codecs(payload.parent.parent / "Frameworks")
+            if observer is not None:
+                observer("setup", "codecs.install", "begin")
+            try:
+                from elichika_ios.codecs import install as install_codecs
+                dependencies["codecs"] = install_codecs(payload.parent.parent / "Frameworks")
+            finally:
+                if observer is not None:
+                    observer("setup", "codecs.install", "end")
             if _cancel.is_set():
                 raise InterruptedError("Setup cancelled")
         while time.monotonic() < deadline:
@@ -238,7 +287,15 @@ def _start(config):
         if config.get("core_only", False):
             _event("core_ready", ready=True, core_only=True)
             return
-        modules = [importlib.import_module(name) for name in ("adminui.server", "webtools.server")]
+        modules = []
+        for name in ("adminui.server", "webtools.server"):
+            if observer is not None:
+                observer("import", name, "begin")
+            try:
+                modules.append(importlib.import_module(name))
+            finally:
+                if observer is not None:
+                    observer("import", name, "end")
         _bind_managers(root, modules)
         from adminui.serverctl import register_controller
         controller = GoController(_native, go_options)
@@ -274,6 +331,9 @@ def _start(config):
         _native.go_stop()
         _event("cancelled" if isinstance(error, InterruptedError) else "failed", ready=False,
                error="%s: %s" % (type(error).__name__, error))
+    finally:
+        if diagnostic_cleanup is not None:
+            diagnostic_cleanup()
 
 
 def _close_servers():

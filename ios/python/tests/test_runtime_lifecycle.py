@@ -196,6 +196,130 @@ class StartupOverlapTests(unittest.TestCase):
             self.assertEqual(context.imported, [])
             self.assertEqual(context.state["state"], "stopping")
 
+    def test_simulator_timer_is_cancelled_after_success_failure_or_cancellation(self):
+        for outcome in ("success", "go_failure", "dependency_failure", "codec_failure", "cancelled"):
+            with self.subTest(outcome=outcome), self.bootstrap() as context:
+                fault = types.SimpleNamespace(dump_traceback_later=Mock(), cancel_dump_traceback_later=Mock())
+                context.configuration["simulator_probe_only"] = True
+                context.native.probe_stage = lambda stage: None
+                def probe(**kwargs):
+                    self.assertTrue(callable(kwargs["observer"]))
+                    context.state.update(state="ready", phase="running", ready=True)
+                    if outcome == "go_failure":
+                        context.state.update(state="failed", phase="failed", ready=False,
+                                             error={"code": "ORIGINAL_GO_FAILURE", "message": "Original Go failure"})
+                    if outcome == "cancelled": runtime._cancel.set()
+                    return {"ready": outcome != "dependency_failure", "failures": {"numpy": "original failure"}}
+                context.probe.side_effect = probe
+                if outcome == "codec_failure": context.codec.side_effect = RuntimeError("original codec failure")
+                with patch.dict(sys.modules, {"faulthandler": fault}), patch.object(runtime.os, "write") as write:
+                    self.launch(context)
+                    result = self.finish()
+                fault.dump_traceback_later.assert_called_once_with(45, repeat=False, file=2, exit=False)
+                fault.cancel_dump_traceback_later.assert_called_once_with()
+                self.assertEqual(result["ready"], outcome == "success")
+                self.assertEqual(result["phase"], "ready" if outcome == "success" else
+                                 "cancelled" if outcome == "cancelled" else "failed")
+                self.assertTrue(all(call.args[0] == 2 for call in write.call_args_list))
+
+    def test_diagnostic_arm_output_and_cancel_failures_do_not_change_successful_workload(self):
+        with self.bootstrap() as context:
+            context.configuration["simulator_probe_only"] = True
+            context.native.probe_stage = lambda stage: None
+            def probe(**kwargs):
+                context.state.update(state="ready", phase="running", ready=True)
+                return {"ready": True, "failures": {}}
+            context.probe.side_effect = probe
+            fault = types.SimpleNamespace(dump_traceback_later=Mock(side_effect=OSError("arm failed")),
+                                          cancel_dump_traceback_later=Mock(side_effect=OSError("cancel failed")))
+            with patch.dict(sys.modules, {"faulthandler": fault}), \
+                    patch.object(runtime.os, "write", side_effect=OSError("write failed")):
+                self.launch(context)
+                result = self.finish()
+            self.assertTrue(result["ready"])
+            context.probe.assert_called_once(); context.codec.assert_called_once()
+            self.assertEqual(context.imported, ["adminui.server", "webtools.server"])
+            fault.dump_traceback_later.assert_called_once_with(45, repeat=False, file=2, exit=False)
+            fault.cancel_dump_traceback_later.assert_called_once_with()
+
+
+class DependencyDiagnosticTests(unittest.TestCase):
+    def test_non_simulator_core_or_missing_compile_capability_has_no_diagnostic_activity(self):
+        capable = types.SimpleNamespace(probe_stage=lambda stage: None)
+        states = ({"simulator_probe_only": False, "core_only": False},
+                  {"simulator_probe_only": True, "core_only": True},
+                  {"similar_simulator_flag": True, "core_only": False})
+        fault = types.SimpleNamespace(dump_traceback_later=Mock(), cancel_dump_traceback_later=Mock())
+        with patch.dict(sys.modules, {"faulthandler": fault}), patch.object(runtime.os, "write") as write:
+            for state in states:
+                with patch.object(runtime, "_native", capable), patch.object(runtime, "_state", state):
+                    self.assertEqual(runtime._backend_diagnostics(), (None, None))
+            with patch.object(runtime, "_native", types.SimpleNamespace()), \
+                    patch.object(runtime, "_state", {"simulator_probe_only": True, "core_only": False}):
+                self.assertEqual(runtime._backend_diagnostics(), (None, None))
+        fault.dump_traceback_later.assert_not_called(); fault.cancel_dump_traceback_later.assert_not_called()
+        write.assert_not_called()
+
+    def test_static_markers_are_bounded_and_never_emit_private_names_or_values(self):
+        fault = types.SimpleNamespace(dump_traceback_later=Mock(), cancel_dump_traceback_later=Mock())
+        with patch.dict(sys.modules, {"faulthandler": fault}), \
+                patch.object(runtime, "_state", {"simulator_probe_only": True, "core_only": False}), \
+                patch.object(runtime, "_native", types.SimpleNamespace(probe_stage=lambda stage: None)), \
+                patch.object(runtime.os, "write") as write:
+            observe, finish = runtime._backend_diagnostics()
+            try:
+                for value in ("private-token", "/Users/private-user/file", "https://private.example", {"password": "private"}):
+                    observe("import", value, "begin")
+                observe("configuration", "numpy", "begin")
+                observe("import", "numpy", "private-event")
+                for _ in range(100): observe("import", "numpy", "begin")
+            finally:
+                finish()
+        self.assertEqual(write.call_count, 38)
+        for call in write.call_args_list:
+            self.assertEqual(call.args[0], 2)
+            self.assertLessEqual(len(call.args[1]), 160)
+            text = call.args[1].decode("ascii")
+            self.assertRegex(text, r"^ELICHIKA_SIMULATOR_DEPENDENCY import numpy begin elapsed=[0-9]+\.[0-9]{3}\n$")
+            self.assertNotIn("private", text)
+
+    def test_observer_covers_every_import_and_native_check_without_changing_results(self):
+        from elichika_ios import dependencies
+        value = types.SimpleNamespace(tobytes=lambda: b"checked")
+        modules = {name: types.SimpleNamespace(__version__="bundled") for name in dependencies.REQUIRED}
+        modules["numpy"].array = lambda *args, **kwargs: value
+        modules["PIL.Image"].new = lambda *args: value
+        for name in ("lz4.block", "brotli"):
+            modules[name].compress = modules[name].decompress = lambda data: data
+        modules["texture2ddecoder"].decode_astc = lambda *args: b"checked"
+        with patch.object(dependencies.importlib, "import_module", side_effect=lambda name: modules[name]):
+            expected = dependencies.probe()
+            events = []
+            actual = dependencies.probe(observer=lambda *event: events.append(event))
+            def failed_observer(*event): raise OSError("diagnostic sink unavailable")
+            self.assertEqual(dependencies.probe(observer=failed_observer), expected)
+        self.assertEqual(actual, expected)
+        self.assertTrue(actual["ready"])
+        self.assertEqual(events[:22], [("import", name, event) for name in dependencies.REQUIRED for event in ("begin", "end")])
+        self.assertEqual(len(events), 32)
+        self.assertEqual(events[22:], [("native_check", name, event) for name in
+                         ("numpy", "PIL.Image", "lz4.block", "brotli", "texture2ddecoder") for event in ("begin", "end")])
+        def failed_import(name):
+            if name == "UnityPy": raise RuntimeError("original import failure")
+            return modules[name]
+        with patch.object(dependencies.importlib, "import_module", side_effect=failed_import):
+            expected = dependencies.probe()
+            actual = dependencies.probe(observer=failed_observer)
+        self.assertEqual(actual, expected)
+        self.assertEqual(actual["failures"], {"UnityPy": "RuntimeError: original import failure"})
+        def failed_check(*args): raise RuntimeError("original native check failure")
+        modules["texture2ddecoder"].decode_astc = failed_check
+        with patch.object(dependencies.importlib, "import_module", side_effect=lambda name: modules[name]):
+            expected = dependencies.probe()
+            actual = dependencies.probe(observer=failed_observer)
+        self.assertEqual(actual, expected)
+        self.assertEqual(actual["failures"], {"texture2ddecoder": "RuntimeError: original native check failure"})
+
 
 class RetryTests(unittest.TestCase):
     def test_stage_callback_is_absent_for_device_and_core_runtime(self):
