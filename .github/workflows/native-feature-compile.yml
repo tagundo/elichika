@@ -525,7 +525,7 @@ jobs:
 
   standalone:
     if: ${{ inputs.mode == 'mv-export-standalone' }}
-    runs-on: macos-14
+    runs-on: macos-15-intel
     timeout-minutes: 40
     steps:
       - name: Check out the exact workflow source
