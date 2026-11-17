@@ -81,8 +81,8 @@
       "sha256": "994843ccce220e78912c76283b90d9347a4924aa67cb7550ada72e390cbf2f15"
     },
     "android/android_mv_game_bindings.cpp": {
-      "bytes": 106063,
-      "sha256": "0a744a407dbfdaa7ab52534d69dc2e6a6eff068924ed30c228c1bee3cda0e286"
+      "bytes": 105802,
+      "sha256": "15d3bf37bdeac4a49f1fb83d4b2316a8a35a22f10b1ede750b43366cc540ba2c"
     },
     "android/android_mv_game_bindings.h": {
       "bytes": 4614,

@@ -62,7 +62,7 @@ struct NativeArray { void *data; int32_t length; uint32_t allocator; };
 struct Bone { void *bone,*transform,*child;uint32_t bone_root,transform_root,child_root; uint8_t scalar[128]; Quat rotation; };
 struct Manager { void *object,*array;uint32_t object_root,array_root; uint8_t paused; };
 struct Methods {
-    Method hook[9],alive,find_objects,timeline,time_get,time_set,mode_get,mode_set,state_get,play,stop,pause,evaluate,deferred_evaluate;
+    Method hook[9],alive,find_objects,timeline,time_get,time_set,mode_get,mode_set,state_get,play,stop,pause,evaluate;
     Method camera_manager,member_manager,music_machine,final_overlay,reset_components,resize_cameras;
     Method rt_constructor,rt_create,rt_release,rt_active_get,rt_active_set,texture_constructor;
     Method read_pixels,image_pointer,image_size,blit,destroy,job_complete,apply_transform,request_safe;
@@ -351,7 +351,6 @@ bool init_runtime() {
     M(mode_set,pd,"set_timeUpdateMode",false,"System.Void",1,mode);
     M(state_get,pd,"get_state",false,"UnityEngine.Playables.PlayState",0,nullptr);
     M(play,pd,"Play",false,"System.Void",0,nullptr); M(stop,pd,"Stop",false,"System.Void",0,nullptr);
-    M(deferred_evaluate,pd,"DeferredEvaluate",false,"System.Void",0,nullptr);
     M(pause,pd,"Pause",false,"System.Void",0,nullptr);
     M(evaluate,pd,"Evaluate",false,"System.Void",0,nullptr);
     M(rt_constructor,render,".ctor",false,"System.Void",5,rctor);
@@ -505,11 +504,10 @@ bool snapshot_springs() {
     if(collider_size)memcpy(collider_bytes,saved_colliders.data,collider_size);
     return true;
 }
-// Immediate evaluation is used only to initialize a fresh graph at a seek
-// position. Normal playback follows the game's LiveTimeSynchronizer ordering:
-// set time, then let Unity evaluate the graph in its deferred PlayerLoop phase.
+// Manual export must finish evaluating the requested time before a camera
+// callback can qualify that output frame. DeferredEvaluate only enqueues work;
+// a rendered camera callback is not an acknowledgement of that queue.
 bool set_time(double seconds) { void *args[]={&seconds}; return invoke_void(m.time_set,timeline,args)&&invoke_void(m.evaluate,timeline); }
-bool schedule_time(double seconds) { void *args[]={&seconds}; return invoke_void(m.time_set,timeline,args)&&invoke_void(m.deferred_evaluate,timeline); }
 bool restart_timeline_graph() {
     // No-seek mixers keep started/completed clip indices across backward time
     // assignments. Stop destroys that graph; Play constructs fresh mixers with
@@ -1249,7 +1247,7 @@ extern "C" void amv_game_time_update(void *manager) {
     for(size_t off:{size_t(0x78),size_t(0x7c),size_t(0xa8),size_t(0xac)})put<float>(manager,off,(float)dt);
     put<int32_t>(music,f.music_time.offset,(int32_t)(tick*1000/simulation_hz));
     advancing=true;
-    if(!schedule_time((double)tick/simulation_hz)){fail("MV deferred timeline evaluation could not be scheduled");return;}
+    if(!set_time((double)tick/simulation_hz)){fail("MV timeline evaluation did not complete before rendering");return;}
     uint64_t divisor=simulation_hz/config.fps;
     if(tick%divisor==0){pending_frame=tick/divisor;awaiting_capture=true;}
     publish();
