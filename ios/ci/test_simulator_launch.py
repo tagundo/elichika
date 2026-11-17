@@ -499,43 +499,57 @@ class RuntimeSelectionTests(unittest.TestCase):
         with patch('run_simulator.diagnostics.bounded_command', side_effect=self.invoke):
             return choose_runtime_and_types(selection_path=self.receipt, **kwargs)
 
-    def test_active_sdk_exact_major_minor_selects_highest_maintenance_patch(self):
+    def test_sdk18_5_keeps_metadata_and_selects_known_working_newest_available26_2(self):
         runtime, models = self.select(ipad_first=True)
-        self.assertEqual(runtime['version'], '18.5.1')
+        self.assertEqual(runtime['version'], '26.2')
         self.assertEqual([row['name'] for row in models], ['iPad Pro 13-inch (M4)', 'iPhone 16 Pro'])
         value = json.loads(self.receipt.read_text())
         self.assertEqual(value['status'], 'PASS_SIMULATOR_RUNTIME_SELECTION_ONLY')
         self.assertEqual(value['active_iphonesimulator_sdk'], '18.5')
-        self.assertEqual(value['selection_reason'], 'exact_sdk_major_minor_highest_patch')
+        self.assertEqual(value['selection_reason'], 'newest_available_iOS_runtime')
         self.assertEqual([row['version'] for row in value['available_iOS_runtimes']], ['26.2', '18.5', '18.5.1'])
         self.assertEqual(value['unavailable_iOS_runtimes'][0]['version'], '18.5.2')
         self.assertTrue(value['selection_before_device_creation'])
         self.assertEqual(len(value['device_types_considered']), 3)
         self.assertEqual([row['budget_seconds'] for row in value['commands']], [15, 120, 120])
+        self.assertNotIn('ready', value)
+        self.assertNotIn('actual_SIFAS_game_executed', value)
 
-    def test_highest_older_major_minor_is_used_when_exact_is_absent(self):
-        self.runtimes = [self.runtime('26.2'), self.runtime('18.4.2'), self.runtime('18.2.1')]
+    def test_highest_available_version_uses_numeric_order_and_ignores_unavailable_or_other_platforms(self):
+        other = dict(self.runtime('99.0'), identifier='com.apple.CoreSimulator.SimRuntime.tvOS-99-0')
+        self.runtimes = [self.runtime('26.2'), self.runtime('26.2.1'), self.runtime('26.10'),
+                         self.runtime('27.0', available=False), other]
         runtime, _ = self.select()
-        self.assertEqual(runtime['version'], '18.4.2')
-        self.assertEqual(json.loads(self.receipt.read_text())['selection_reason'], 'highest_older_sdk_major_minor')
+        self.assertEqual(runtime['version'], '26.10')
+        self.assertEqual(json.loads(self.receipt.read_text())['selection_reason'], 'newest_available_iOS_runtime')
 
-    def test_only_newer_runtime_fails_with_inventory_evidence_before_any_boot(self):
-        self.runtimes = [self.runtime('26.2')]
-        with self.assertRaisesRegex(ValueError, 'runtime_compatibility'):
+    def test_no_available_runtime_fails_with_inventory_evidence_before_any_boot(self):
+        self.runtimes = [self.runtime('26.2', available=False)]
+        with self.assertRaisesRegex(ValueError, 'runtime_selection'):
             self.select()
         value = json.loads(self.receipt.read_text())
         self.assertEqual(value['status'], 'FAIL_SIMULATOR_RUNTIME_SELECTION_ONLY')
-        self.assertEqual(value['available_iOS_runtimes'][0]['version'], '26.2')
+        self.assertEqual(value['available_iOS_runtimes'], [])
+        self.assertEqual(value['unavailable_iOS_runtimes'][0]['version'], '26.2')
         self.assertEqual(value['active_iphonesimulator_sdk'], '18.5')
-        self.assertIn('No available iOS Simulator runtime compatible', value['error'])
+        self.assertIn('No available iOS Simulator runtime', value['error'])
+        self.assertEqual(len(self.calls), 2)
+
+    def test_invalid_available_runtime_version_cannot_be_selected(self):
+        self.runtimes = [self.runtime('26.2-beta')]
+        with self.assertRaisesRegex(ValueError, 'runtime_selection'):
+            self.select()
+        value = json.loads(self.receipt.read_text())
+        self.assertNotIn('selected_runtime', value)
+        self.assertIn('Invalid iOS SDK/runtime version', value['error'])
         self.assertEqual(len(self.calls), 2)
 
     def test_incompatible_device_types_cannot_use_the_old_unbounded_fallback(self):
-        self.types = [self.device('iPhone Future', 26), self.device('iPad Future', 26)]
+        self.types = [self.device('iPhone Future', 27), self.device('iPad Future', 27)]
         with self.assertRaisesRegex(ValueError, 'compatible_device_types'):
             self.select()
         value = json.loads(self.receipt.read_text())
-        self.assertEqual(value['selected_runtime']['version'], '18.5.1')
+        self.assertEqual(value['selected_runtime']['version'], '26.2')
         self.assertEqual(len(value['device_types_considered']), 2)
         self.assertNotIn('selected_device_types', value)
 

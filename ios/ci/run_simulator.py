@@ -478,12 +478,11 @@ def ios_version(value):
 
 
 def choose_runtime_and_types(*, ipad_first=False, selection_path=None, aggregate_deadline=None):
-    """Select an installed runtime compatible with the active SDK, before boot.
+    """Select the newest available iOS runtime and retain SDK metadata.
 
-    This conservative major/minor policy permits maintenance patches, prefers
-    the SDK's exact major/minor and otherwise uses the highest older version.
-    The previous runs did not retain their selected runtime: this does not
-    establish a runtime mismatch as their failure's cause.
+    The compiler SDK is not a maximum runtime OS version. Selection records
+    describe the installed destination before boot; they prove neither app
+    readiness nor any runtime as the cause of an earlier startup failure.
     """
     receipt = {'schema': 1, 'status': 'STARTED_SIMULATOR_RUNTIME_SELECTION',
                'source': source_provenance(), 'selection_before_device_creation': True,
@@ -528,14 +527,12 @@ def choose_runtime_and_types(*, ipad_first=False, selection_path=None, aggregate
             summary = {key: row[key] for key in keys if key in row}
             receipt['available_iOS_runtimes' if row.get('isAvailable') is True else 'unavailable_iOS_runtimes'].append(summary)
         save()
-        stage = 'runtime_compatibility'
+        stage = 'runtime_selection'
         available = [row for row in ios if row.get('isAvailable') is True]
         versions = [(ios_version(row.get('version')), row) for row in available]
-        compatible = [(version, row) for version, row in versions if version[:2] <= sdk_version[:2]]
-        require(compatible, 'No available iOS Simulator runtime compatible with active SDK ' + sdk)
-        version, runtime = max(compatible, key=lambda pair: pair[0])
-        receipt['selection_reason'] = ('exact_sdk_major_minor_highest_patch' if version[:2] == sdk_version[:2]
-                                       else 'highest_older_sdk_major_minor')
+        require(versions, 'No available iOS Simulator runtime')
+        version, runtime = max(versions, key=lambda pair: pair[0])
+        receipt['selection_reason'] = 'newest_available_iOS_runtime'
         receipt['selected_runtime'] = {key: runtime[key] for key in keys if key in runtime}
         save()
         types = json.loads(query(['xcrun', 'simctl', 'list', 'devicetypes', '--json'], 'device_type_inventory', 120))['devicetypes']
