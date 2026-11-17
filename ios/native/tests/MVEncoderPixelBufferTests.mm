@@ -62,7 +62,8 @@ static void Require(BOOL condition, NSString *message) {
 @end
 
 @interface RecordingInput : NSObject
-@property(nonatomic) BOOL readyForMoreMediaData;
+// Match AVAssetWriterInput's Objective-C getter, not just its property name.
+@property(nonatomic,getter=isReadyForMoreMediaData) BOOL readyForMoreMediaData;
 @property(nonatomic) NSUInteger finishedCalls;
 - (void)markAsFinished;
 @end
@@ -81,6 +82,13 @@ struct Fixture {
         c.fpsNumerator=30000; c.fpsDenominator=1001;
         encoder=[ELMVEncoder new]; writer=[RecordingWriter new];
         input=[RecordingInput new]; adaptor=[RecordingAdaptor new];
+        Require([input respondsToSelector:@selector(isReadyForMoreMediaData)] &&
+            [input respondsToSelector:@selector(markAsFinished)] &&
+            [writer respondsToSelector:@selector(status)] &&
+            [writer respondsToSelector:@selector(error)] &&
+            [writer respondsToSelector:@selector(cancelWriting)] &&
+            [adaptor respondsToSelector:@selector(appendPixelBuffer:withPresentationTime:)],
+            @"Recording objects must implement the production framework selectors.");
         writer.status=AVAssetWriterStatusWriting; writer.adaptor=adaptor;
         input.readyForMoreMediaData=YES;
         // Confined to this fixture; no production API exposes writer injection.
@@ -207,6 +215,7 @@ static void ValidationAndFailure(void) {
 }
 int main(void) {
     @autoreleasepool {
+        fprintf(stderr,"MV pixel-buffer tests: main-thread validation\n");
         NSUInteger releases=0;
         CVPixelBufferRef pixel=Pixel(&releases);
         Reject(pixel,0,@"Main-thread direct append was accepted.");
@@ -215,7 +224,17 @@ int main(void) {
         dispatch_semaphore_t done=dispatch_semaphore_create(0);
         dispatch_queue_t worker=dispatch_queue_create("mv-pixel-buffer-tests",DISPATCH_QUEUE_SERIAL);
         dispatch_async(worker,^{ @autoreleasepool {
-            DirectIdentityRetryAndOwnership(); ValidationAndFailure();
+            @try {
+                fprintf(stderr,"MV pixel-buffer tests: direct identity, Retry and ownership\n");
+                DirectIdentityRetryAndOwnership();
+                fprintf(stderr,"MV pixel-buffer tests: invalid inputs and cancellation\n");
+                ValidationAndFailure();
+            } @catch (NSException *exception) {
+                fprintf(stderr,"MV pixel-buffer test exception: %s\n%s\n",
+                    exception.description.UTF8String,
+                    [exception.callStackSymbols componentsJoinedByString:@"\n"].UTF8String);
+                exit(1);
+            }
             dispatch_semaphore_signal(done);
         }});
         Require(dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC))==0,@"Direct pixel-buffer tests exceeded their bounded deadline.");
