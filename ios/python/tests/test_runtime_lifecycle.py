@@ -1,12 +1,200 @@
+from contextlib import ExitStack, contextmanager
 import json
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import elichika_ios_runtime as runtime
+
+
+class StartupOverlapTests(unittest.TestCase):
+    """Fake native barriers verify scheduling, never real server readiness."""
+    @contextmanager
+    def bootstrap(self, *, core_only=False):
+        from elichika_ios import codecs, dependencies, management
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as patches:
+            root = Path(directory).resolve()
+            source, data = root / "source", root / "data"
+            source.mkdir(); data.mkdir()
+            state = {"state": "stopped", "phase": "stopped", "ready": False}
+            native = types.SimpleNamespace(report_event=Mock())
+            native.go_status = Mock(side_effect=lambda: json.dumps(state))
+            def start(raw):
+                state.update(state="starting", phase="starting", ready=False)
+                return json.dumps(state)
+            native.go_start = Mock(side_effect=start)
+            native.go_stop = Mock(side_effect=lambda: state.update(state="stopping", ready=False))
+            probe = patches.enter_context(patch.object(dependencies, "probe", return_value={"ready": True, "failures": {}}))
+            codec = patches.enter_context(patch.object(codecs, "install", return_value={"codec": "checked"}))
+            patches.enter_context(patch.object(management, "Management", return_value=object()))
+            fake_admin = types.ModuleType("adminui"); fake_admin.__path__ = []
+            modules = {"_elichika_ios": native, "adminui": fake_admin,
+                       "adminui.serverctl": types.SimpleNamespace(register_controller=Mock()),
+                       "adminui.jobs": types.SimpleNamespace(MANAGER=types.SimpleNamespace(
+                           _lock=threading.Lock(), _jobs={}))}
+            patches.enter_context(patch.dict(sys.modules, modules))
+            imported = []
+            original_import = runtime.importlib.import_module
+            def import_module(name, *args, **kwargs):
+                if name in ("adminui.server", "webtools.server"):
+                    self.assertTrue(state["ready"], "DB-dependent servers imported before Go readiness")
+                    imported.append(name)
+                    return types.SimpleNamespace()
+                return original_import(name, *args, **kwargs)
+            patches.enter_context(patch.object(runtime.importlib, "import_module", side_effect=import_module))
+            for name, value in (("_native", native), ("_scope", None), ("_bootstrap_thread", None),
+                                ("_state", {"phase": "stopped", "ready": False}), ("_cancel", threading.Event()),
+                                ("_servers", []), ("_threads", []), ("_management", None)):
+                patches.enter_context(patch.object(runtime, name, value))
+            for name, value in (("_configure_mime", None), ("_prepare_data", data), ("_bind_managers", None),
+                                ("_mv_audio_dispose", None), ("_close_servers", None), ("GoController", object()),
+                                ("bind_panels", []), ("panel_urls", ("http://127.0.0.1:8770/", "http://127.0.0.1:8772/"))):
+                patches.enter_context(patch.object(runtime, name, return_value=value))
+            stages = []
+            patches.enter_context(patch.object(runtime, "_probe_stage", side_effect=stages.append))
+            configuration = {"payload_root": str(source), "data_root": str(data), "core_only": core_only,
+                             "token": "a"*64, "ready_token": "b"*64, "startup_timeout": 30}
+            before = list(sys.path)
+            context = types.SimpleNamespace(native=native, state=state, probe=probe, codec=codec,
+                                            imported=imported, stages=stages, configuration=configuration)
+            try:
+                yield context
+            finally:
+                runtime._cancel.set()
+                if runtime._bootstrap_thread:
+                    runtime._bootstrap_thread.join(timeout=3)
+                    self.assertFalse(runtime._bootstrap_thread.is_alive(), "Bootstrap worker leaked from lifecycle test")
+                if runtime._scope:
+                    runtime._scope.uninstall()
+                sys.path[:] = before
+
+    def launch(self, context):
+        runtime.start(json.dumps(context.configuration))
+
+    def finish(self):
+        runtime._bootstrap_thread.join(timeout=3)
+        self.assertFalse(runtime._bootstrap_thread.is_alive())
+        return json.loads(runtime.status())
+
+    def test_dependencies_overlap_starting_go_on_bootstrap_thread_without_early_ready(self):
+        entered, release = threading.Event(), threading.Event()
+        with self.bootstrap() as context:
+            def probe():
+                self.assertIs(threading.current_thread(), runtime._bootstrap_thread)
+                self.assertEqual(context.state["state"], "starting")
+                entered.set()
+                self.assertTrue(release.wait(2), "Dependency barrier was not released")
+                return {"ready": True, "failures": {}}
+            context.probe.side_effect = probe
+            self.launch(context)
+            try:
+                self.assertTrue(entered.wait(2), "Dependencies waited for Go instead of overlapping")
+                self.assertFalse(json.loads(runtime.status())["ready"])
+                self.assertEqual(context.imported, [])
+                context.state.update(state="ready", phase="running", ready=True)
+                self.assertFalse(json.loads(runtime.status())["ready"])
+            finally:
+                release.set()
+            self.assertTrue(self.finish()["ready"])
+            self.assertEqual(context.stages, ["payload_prepare", "go_start", "tool_dependencies"])
+            self.assertEqual(context.imported, ["adminui.server", "webtools.server"])
+            context.codec.assert_called_once()
+
+    def test_go_failure_remains_specific_after_successful_dependency_checks(self):
+        with self.bootstrap() as context:
+            def probe():
+                context.state.update(state="failed", phase="failed", ready=False,
+                                     error={"code": "DATABASE_FAILED", "message": "The database could not open"})
+                return {"ready": True, "failures": {}}
+            context.probe.side_effect = probe
+            self.launch(context)
+            result = self.finish()
+            self.assertFalse(result["ready"])
+            self.assertIn("DATABASE_FAILED: The database could not open", result["error"])
+            self.assertEqual(context.imported, [])
+            context.native.go_stop.assert_called_once()
+
+    def test_dependency_failure_stops_async_go_before_codec_or_server_binding(self):
+        with self.bootstrap() as context:
+            context.probe.return_value = {"ready": False, "failures": {"numpy": "Missing signed extension"}}
+            self.launch(context)
+            result = self.finish()
+            self.assertIn("Bundled iOS dependencies failed", result["error"])
+            self.assertIn("Missing signed extension", result["error"])
+            self.assertFalse(result["ready"])
+            context.codec.assert_not_called()
+            self.assertEqual(context.imported, [])
+            context.native.go_stop.assert_called_once()
+
+    def test_codec_failure_stops_async_go_without_publishing_ready(self):
+        with self.bootstrap() as context:
+            context.codec.side_effect = RuntimeError("Signed HCA framework missing")
+            self.launch(context)
+            result = self.finish()
+            self.assertIn("Signed HCA framework missing", result["error"])
+            self.assertFalse(result["ready"])
+            self.assertEqual(context.imported, [])
+            context.native.go_stop.assert_called_once()
+
+    def test_core_only_waits_for_go_and_never_loads_tool_dependencies(self):
+        waiting = threading.Event()
+        with self.bootstrap(core_only=True) as context:
+            def status():
+                if context.state["state"] == "starting": waiting.set()
+                return json.dumps(context.state)
+            context.native.go_status.side_effect = status
+            self.launch(context)
+            self.assertTrue(waiting.wait(2))
+            self.assertFalse(json.loads(runtime.status())["ready"])
+            context.state.update(state="ready", phase="running", ready=True)
+            self.assertEqual(self.finish()["phase"], "core_ready")
+            context.probe.assert_not_called(); context.codec.assert_not_called()
+            self.assertEqual(context.imported, [])
+
+    def test_dependency_work_consumes_original_startup_deadline_even_if_go_is_ready(self):
+        clock = [1000.0]
+        with self.bootstrap() as context, patch.object(runtime.time, "monotonic", side_effect=lambda: clock[0]):
+            def probe():
+                clock[0] += context.configuration["startup_timeout"]+1
+                context.state.update(state="ready", phase="running", ready=True)
+                return {"ready": True, "failures": {}}
+            context.probe.side_effect = probe
+            self.launch(context)
+            result = self.finish()
+            self.assertIn("Embedded Go server did not become ready", result["error"])
+            self.assertFalse(result["ready"])
+            self.assertEqual(context.imported, [])
+            context.native.go_stop.assert_called_once()
+
+    def test_cancel_during_dependency_work_stops_go_and_retry_waits_for_existing_worker(self):
+        entered, release = threading.Event(), threading.Event()
+        with self.bootstrap() as context:
+            def probe():
+                entered.set()
+                self.assertTrue(release.wait(2))
+                return {"ready": True, "failures": {}}
+            context.probe.side_effect = probe
+            self.launch(context)
+            try:
+                self.assertTrue(entered.wait(2))
+                worker = runtime._bootstrap_thread
+                runtime.stop()
+                result = json.loads(runtime.start(json.dumps(context.configuration)))
+                self.assertIn("previous startup is still finishing", result["error"])
+                self.assertIs(runtime._bootstrap_thread, worker)
+                self.assertEqual(context.native.go_start.call_count, 1)
+            finally:
+                release.set()
+            result = self.finish()
+            self.assertEqual(result["phase"], "cancelled")
+            self.assertFalse(result["ready"])
+            context.codec.assert_not_called()
+            self.assertEqual(context.imported, [])
+            self.assertEqual(context.state["state"], "stopping")
 
 
 class RetryTests(unittest.TestCase):

@@ -204,6 +204,24 @@ def _start(config):
             raise RuntimeError(_error_message(start_result["error"]))
         _event("starting_server")
         deadline = time.monotonic() + config.get("startup_timeout", 120)
+        if _cancel.is_set():
+            raise InterruptedError("Setup cancelled")
+        if not config.get("core_only", False):
+            # Go initializes asynchronously. Complete independent imports and
+            # codec checks on this bootstrap thread while it prepares its DBs;
+            # the original deadline and actual Go-ready barrier still apply.
+            _event("loading_tools", core_only=False)
+            _probe_stage("tool_dependencies")
+            from elichika_ios.dependencies import probe
+            dependencies = probe()
+            if not dependencies["ready"]:
+                raise RuntimeError("Bundled iOS dependencies failed: " + json.dumps(dependencies["failures"]))
+            if _cancel.is_set():
+                raise InterruptedError("Setup cancelled")
+            from elichika_ios.codecs import install as install_codecs
+            dependencies["codecs"] = install_codecs(payload.parent.parent / "Frameworks")
+            if _cancel.is_set():
+                raise InterruptedError("Setup cancelled")
         while time.monotonic() < deadline:
             if _cancel.is_set():
                 raise InterruptedError("Setup cancelled")
@@ -220,16 +238,6 @@ def _start(config):
         if config.get("core_only", False):
             _event("core_ready", ready=True, core_only=True)
             return
-        _event("loading_tools", core_only=False)
-        _probe_stage("tool_dependencies")
-        from elichika_ios.dependencies import probe
-        dependencies = probe()
-        if not dependencies["ready"]:
-            raise RuntimeError("Bundled iOS dependencies failed: " + json.dumps(dependencies["failures"]))
-        from elichika_ios.codecs import install as install_codecs
-        dependencies["codecs"] = install_codecs(payload.parent.parent / "Frameworks")
-        if _cancel.is_set():
-            raise InterruptedError("Setup cancelled")
         modules = [importlib.import_module(name) for name in ("adminui.server", "webtools.server")]
         _bind_managers(root, modules)
         from adminui.serverctl import register_controller
