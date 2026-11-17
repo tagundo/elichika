@@ -54,7 +54,7 @@ REQUIRED_SOURCES = frozenset({"build_android_mv.py", "android/build_menu_dex.py"
     "android/android_mv_profile_JP.json", "android/android_mv_patch_plan.json",
     "android/android_mv_patch_profiles.h", "android/android_mv_audio_provider.h",
     "android/android_mv_game_bindings.h", "android/android_mv_encoder_bridge.h", "android/android_mv_render_report.h",
-    "android/mv_capture_camera.h",
+    "android/mv_capture_camera.h", "android/mv_particle_culling.h",
     "android/mv_pixel_convert.h", "android/native/material_isolation.h",
     "android/native/unity_material_backend.h", "android/native/material_android_binding.h",
     "android/native/material_android_layouts.generated.inc", "android/native/android_material_invoke.h",

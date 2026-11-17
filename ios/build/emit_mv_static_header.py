@@ -5,7 +5,7 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 p=root/'native/SIFASMVStaticProfile.json';d=json.loads(p.read_text());assert not d['missing']
 classes=d['classes']; names={n:'class_'+str(i) for i,n in enumerate(sorted(classes))}
-scalar={'System.Void':('void',0),'System.Boolean':('uint8_t',1),'System.Int32':('int32_t',4),'System.UInt32':('uint32_t',4),'System.Int64':('int64_t',8),'System.UInt64':('uint64_t',8),'System.IntPtr':('uintptr_t',8),'System.Single':('float',4),'System.Double':('double',8),'UnityEngine.Vector3':('Vec3',12),'UnityEngine.Quaternion':('Quat',16),'UnityEngine.Rect':('Rect',16),'UnityEngine.Rendering.RenderTargetIdentifier':('RenderTargetIdentifier',40),'LLAS.MBus.Live.PauseMessage':('PauseMessage',1)}
+scalar={'System.Void':('void',0),'System.Boolean':('uint8_t',1),'System.Int32':('int32_t',4),'System.UInt32':('uint32_t',4),'System.Int64':('int64_t',8),'System.UInt64':('uint64_t',8),'System.IntPtr':('uintptr_t',8),'System.Single':('float',4),'System.Double':('double',8),'UnityEngine.SceneManagement.Scene':('int32_t',4),'UnityEngine.Vector3':('Vec3',12),'UnityEngine.Quaternion':('Quat',16),'UnityEngine.Rect':('Rect',16),'UnityEngine.Rendering.RenderTargetIdentifier':('RenderTargetIdentifier',40),'LLAS.MBus.Live.PauseMessage':('PauseMessage',1)}
 # All enum types here have verified Int32 backing fields in the game metadata.
 enums={'UnityEngine.CameraClearFlags','UnityEngine.Playables.PlayState','UnityEngine.Playables.DirectorUpdateMode','UnityEngine.RenderTextureFormat','UnityEngine.RenderTextureReadWrite','UnityEngine.Rendering.BuiltinRenderTextureType','UnityEngine.Rendering.CameraEvent','UnityEngine.TextureFormat'}
 def cpp(t):
@@ -53,6 +53,6 @@ for key,row in d['methods'].items():
 for key,row in d['fields'].items():
  if key.startswith('list_'):continue
  out.append('    f.%s={%d,&%s,%d};'%(key,row['offset'],names[row['ownerFullName']],row['size']))
-out+=['    return f.bone_array.offset==0x30 && f.collider_array.offset==0x50 && f.jobs_a.offset==0xa8 && f.jobs_b.offset==0xb0 && f.scalar_first.offset==0xb0 && f.scalar_end.offset==0x110 && list_items.offset==16 && list_size.offset==24;','}']
+out+=['    return f.particle_native.offset==0x10 && f.bone_array.offset==0x30 && f.collider_array.offset==0x50 && f.jobs_a.offset==0xa8 && f.jobs_b.offset==0xb0 && f.scalar_first.offset==0xb0 && f.scalar_end.offset==0x110 && list_items.offset==16 && list_size.offset==24;','}']
 (root/'native/SIFASMVStaticBindings.hpp').write_text('\n'.join(out)+'\n')
 print('Emitted',len(d['methods']),'typed methods;',len(d['fields']),'fields')

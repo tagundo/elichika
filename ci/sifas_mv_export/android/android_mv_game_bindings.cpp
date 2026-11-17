@@ -4,6 +4,7 @@
 #include "android_mv_game_bindings.h"
 #include "mv_pixel_convert.h"
 #include "mv_capture_camera.h"
+#include "mv_particle_culling.h"
 #include <android/log.h>
 #include <dlfcn.h>
 #include <link.h>
@@ -78,6 +79,7 @@ struct Methods {
     Method state_instance,live_state;
     Method texture_width,texture_height;
     Method cri_sheet,cri_waveform;
+    Method component_gameobject,gameobject_scene,active_scene,stage_manager,stage_roots,find_all_particles,particle_time;
 } m;
 struct Fields {
     Field loading,music_time,length,gain,sound,cue,cue_sheet,cue_name;
@@ -86,7 +88,7 @@ struct Fields {
     Field child,transform,scalar_first,scalar_end,current_tip,previous_tip,correct_adjust,ratio;
     Field scene_pre_final,scene_post_final,scene_paused,overlay_blur;
     Field camera_quality,camera_buffers[4],camera_list,camera_cutin,camera_current_width,camera_current_height;
-    Field camera_split,split_cameras;
+    Field camera_split,split_cameras,particle_native;
     Field camera_overlay,camera_cutin_overlay,core_command_buffers,core_quality;
     Field camera_pause_step,camera_live_blur,camera_skill_pause,camera_msaa_changed,camera_buffer_write;
     Field scene_mediator,mediator_state,mediator_pause_bus,mediator_resume_bus;
@@ -347,6 +349,13 @@ bool init_runtime() {
     M(state_instance,klass("DotUnder","State"),"get_Inst",true,"DotUnder.StateObject",0,nullptr);
     M(live_state,klass("DotUnder","StateObject"),"get_LiveState",false,"DotUnder.LiveState.LiveState",0,nullptr);
     M(cri_sheet,klass("","CriAtom"),"GetCueSheet",true,"CriAtomCueSheet",1,sheet_args);
+    M(component_gameobject,klass("UnityEngine","Component"),"get_gameObject",false,"UnityEngine.GameObject",0,nullptr);
+    M(gameobject_scene,klass("UnityEngine","GameObject"),"get_scene",false,"UnityEngine.SceneManagement.Scene",0,nullptr);
+    M(active_scene,klass("UnityEngine.SceneManagement","SceneManager"),"GetActiveScene",true,"UnityEngine.SceneManagement.Scene",0,nullptr);
+    M(stage_manager,ld,"get_StageManager",false,"LLAS.Scene.Live.Components.LiveCoreStageManager",0,nullptr);
+    M(stage_roots,klass("LLAS.Scene.Live.Components","LiveCoreStageManager"),"get_Stages",false,"LLAS.Scene.Live.Components.LiveCoreStage[]",0,nullptr);
+    M(find_all_particles,klass("UnityEngine","Resources"),"FindObjectsOfTypeAll",true,"UnityEngine.Object[]",1,type);
+    M(particle_time,klass("UnityEngine","ParticleSystem"),"get_time",false,"System.Single",0,nullptr);
     M(find_objects,obj,"FindObjectsOfType",true,"UnityEngine.Object[]",1,type);
     M(timeline,ld,"get_TimelineDirector",false,"UnityEngine.Playables.PlayableDirector",0,nullptr);
     M(camera_manager,ld,"get_CameraManager",false,"LLAS.Scene.Live.Components.LiveCoreCameraManager",0,nullptr);
@@ -410,6 +419,7 @@ bool init_runtime() {
     F(scene_paused,scene,"isPause","System.Boolean",1);
     F(overlay_blur,oc,"isBlur","System.Boolean",1);
     F(camera_quality,cm,"liveQualitySetting",nullptr,8);
+    F(particle_native,obj,"m_CachedPtr","System.IntPtr",8);
     F(camera_split,cm,"<SplitScreenEffect>k__BackingField","LLAS.Scene.Live.Components.LiveSplitScreenEffect",8);
     F(split_cameras,klass("LLAS.Scene.Live.Components","LiveSplitScreenEffect"),"cameras","UnityEngine.Camera[]",8);
     F(camera_buffers[0],cm,"beforePostprocessingBuffer","UnityEngine.RenderTexture",8);
@@ -442,6 +452,9 @@ bool init_runtime() {
     if (f.bone_array.offset!=0x30 || f.collider_array.offset!=0x50 || f.jobs_a.offset!=0xa8 ||
         f.jobs_b.offset!=0xb0 || f.job_index.offset!=0xa4 || f.scalar_first.offset!=0xb0 ||
         f.scalar_end.offset!=0x110 || f.current_tip.offset!=0xc8 || f.previous_tip.offset!=0xd4) return false;
+    uintptr_t wake=sifas_mv_particles::android_wake_rva(region);
+    if(f.particle_native.offset!=0x10||!wake||memcmp(reinterpret_cast<void *>(unity_bias+wake),
+            sifas_mv_particles::android_wake_head,sizeof(sifas_mv_particles::android_wake_head)))return false;
     runtime_ready=true; return true;
 }
 
@@ -579,6 +592,117 @@ bool spring_owners_valid() {
     }
     return flat==bone_count;
 }
+struct ParticleSnapshot {void *object;uint32_t handle;sifas_mv_particles::Policy policy;};
+ParticleSnapshot particle_snapshots[2048];uint32_t particle_count;
+int32_t particle_scene_handles[18];uint32_t particle_scene_count;
+void add_particle_scene(int32_t handle) {
+    if(!handle)return;
+    for(uint32_t i=0;i<particle_scene_count;i++)if(particle_scene_handles[i]==handle)return;
+    if(particle_scene_count<18)particle_scene_handles[particle_scene_count++]=handle;
+}
+bool add_particle_component_scene(void *component) {
+    void *go=reference(m.component_gameobject,component);int32_t handle=0;
+    if(!go||!value(m.gameobject_scene,go,&handle))return false;
+    add_particle_scene(handle);return true;
+}
+bool particle_in_owned_scene(void *object) {
+    void *go=reference(m.component_gameobject,object);int32_t handle=0;
+    if(!go||!value(m.gameobject_scene,go,&handle)||!handle)return false;
+    for(uint32_t i=0;i<particle_scene_count;i++)if(particle_scene_handles[i]==handle)return true;
+    return false;
+}
+void particle_uncull(void *object) { reinterpret_cast<void (*)(void *)>(unity_bias+sifas_mv_particles::android_wake_rva(region))(object); }
+bool snapshot_particle_culling() {
+    // One bounded discovery after graph construction includes inactive future
+    // PrefabControlPlayable roots. Serialized source prefabs have scene 0 and
+    // are excluded. Per-frame validation visits only this rooted cache.
+    particle_count=particle_scene_count=0;int32_t active_scene=0;
+    if(!value(m.active_scene,nullptr,&active_scene)||!active_scene||!add_particle_component_scene(director))
+        return setup_rejected("Could not identify the loaded MV particle scenes");
+    add_particle_scene(active_scene);
+    void *stage=reference(m.stage_manager,director),*stages=stage?reference(m.stage_roots,stage):nullptr;
+    uint32_t stages_handle=root(stages),n=length(stages,16);
+    bool ok=stage&&(!stages||stages_handle)&&n!=UINT32_MAX;
+    for(uint32_t i=0;ok&&i<n;i++){void *item=element(stages,i);if(alive(item))ok=add_particle_component_scene(item);}
+    release(&stages_handle);
+    if(!ok)return setup_rejected("Could not retain the MV stage particle owners");
+    void *type=e.type_get_object(e.class_get_type(m.particle_time.owner));void *args[]={type};
+    void *array=type?reference(m.find_all_particles,nullptr,args):nullptr;
+    uint32_t handle=root(array),count=length(array,4096);
+    if(!array||!handle||count==UINT32_MAX){release(&handle);return setup_rejected("MV particle discovery exceeded its bounded owner list");}
+    for(uint32_t i=0;i<count&&ok;i++){
+        void *object=element(array,i);
+        if(!alive(object)||!particle_in_owned_scene(object))continue;
+        void *native_object=load<void *>(object,f.particle_native.offset);
+        sifas_mv_particles::Policy policy{};
+        if(!sifas_mv_particles::snapshot(policy,native_object)){ok=false;break;}
+        if(policy.original==3)continue;
+        if(particle_count==2048){ok=false;break;}
+        // Some closed clips can share their instance. Never restore the same
+        // policy twice, and never touch the source prefab's parameters.
+        bool duplicate=false;
+        for(uint32_t j=0;j<particle_count;j++)if(particle_snapshots[j].object==object){duplicate=true;break;}
+        if(duplicate)continue;
+        uint32_t object_handle=root(object);if(!object_handle){ok=false;break;}
+        ParticleSnapshot &entry=particle_snapshots[particle_count++];entry={object,object_handle,policy};
+    }
+    release(&handle);
+    if(ok)for(uint32_t i=0;i<particle_count;i++)sifas_mv_particles::apply(particle_snapshots[i].policy,particle_uncull);
+    return ok?true:setup_rejected("Could not safely retain the original MV particle culling policies");
+}
+bool particle_owners_valid() {
+    for(uint32_t i=0;i<particle_count;i++){
+        const ParticleSnapshot &entry=particle_snapshots[i];
+        if(e.gchandle_get_target(entry.handle)!=entry.object||!alive(entry.object)||
+            !sifas_mv_particles::valid(entry.policy,load<void *>(entry.object,f.particle_native.offset)))return false;
+    }
+    return true;
+}
+bool restore_particle_culling() {
+    bool ok=true;
+    for(uint32_t i=0;i<particle_count;i++){
+        ParticleSnapshot &entry=particle_snapshots[i];
+        // Native Destroy is independent of managed GC. A destroyed instance
+        // needs no restoration; never follow a cached native pointer then.
+        if(e.gchandle_get_target(entry.handle)==entry.object&&alive(entry.object))
+            ok=sifas_mv_particles::restore(entry.policy,load<void *>(entry.object,f.particle_native.offset))&&ok;
+        release(&entry.handle);entry={};
+    }
+    particle_count=particle_scene_count=0;return ok;
+}
+
+bool warmup_springs() {
+    if (!clock_manager || (simulation_hz!=60 && simulation_hz!=120) ||
+        !spring_owners_valid() || !complete_jobs()) return false;
+    // Settle one second of the original spring path against the already
+    // evaluated first pose. No PlayerLoop, graph seek, or music/particle tick
+    // runs here; only spring transforms and their native buffers may advance.
+    const double dt=1.0/simulation_hz;
+    const double previous=load<double>(clock_manager,0x68),render_previous=load<double>(clock_manager,0x98);
+    const size_t delta_offsets[]={0x78,0x7c,0xa8,0xac};
+    float deltas[4];
+    for (uint32_t i=0;i<4;i++) {
+        deltas[i]=load<float>(clock_manager,delta_offsets[i]);
+        put<float>(clock_manager,delta_offsets[i],(float)dt);
+    }
+    put<double>(clock_manager,0x68,load<double>(clock_manager,0x60)-dt);
+    put<double>(clock_manager,0x98,load<double>(clock_manager,0x90)-dt);
+    bool ok=true;
+    for (uint32_t step=0;step<simulation_hz && ok;step++) {
+        ok=original_call(MEMBER,members);
+        // Drain even when an invocation fails after scheduling some jobs.
+        if (!complete_jobs()) ok=false;
+        if (ok) ok=original_call(LATE,members);
+        if (ok) ok=invoke_void(m.apply_transform,members);
+        if (!complete_jobs() || !spring_owners_valid()) ok=false;
+    }
+    // Restore only our temporary delta fields. Fixed-step caches, absolute
+    // time, frame counters, export indices, and the original bone snapshot
+    // retain their values; recorded frame zero still uses the initial pose.
+    put<double>(clock_manager,0x68,previous);put<double>(clock_manager,0x98,render_previous);
+    for (uint32_t i=0;i<4;i++) put<float>(clock_manager,delta_offsets[i],deltas[i]);
+    return ok;
+}
 void release_session_roots(){release(&timeline_root);release(&music_root);release(&members_root);release(&camera_manager_root);release(&sound_root);}
 void freeze() {
     advancing=false;
@@ -613,6 +737,7 @@ bool restore_scene() {
         // Verified startup-wallclock anchors: prevent the next normal frame
         // from absorbing all encoder wall time as one simulation delta.
     }
+    ok=restore_particle_culling()&&ok;
     if (safe) {
         // The export graph has completed the song. A backward restore on that
         // graph would skip the original MV's earlier lip/light/effect clips.
@@ -1143,6 +1268,9 @@ bool begin(const Request &begin_request) {
     if (!invoke_void(m.mode_set,timeline,mode))return setup_rejected("Unity rejected the fixed-clock MV playback mode");
     if (!restart_timeline_graph())return setup_rejected("Could not rebuild the MV timeline and reset its original lip/light/effect clip progression");
     if (!reset_springs())return setup_rejected("The original MV spring reset/initial timeline evaluation failed");
+    simulation_hz=simulation_rate(config.fps);
+    if (!warmup_springs())return setup_rejected("The original MV springs could not settle safely at the initial pose");
+    if(!snapshot_particle_culling())return false;
     // Build/reroute targets only after the original baseline reset and fresh
     // track initialization; a later full reset would clear the routed state.
     if(!create_render_targets())return false;
@@ -1159,7 +1287,6 @@ bool begin(const Request &begin_request) {
     // Keep the original fixedDeltaTime/cache (+48/+50/+58). Unity's built-in
     // FixedUpdate/PhysX retains its configured rate; custom spring invocation
     // follows the original variable-frame path at 60 or 120 Hz below.
-    simulation_hz=simulation_rate(config.fps);
     put<int32_t>(clock_manager,0xd8,(int32_t)simulation_hz); put<float>(clock_manager,0xfc,1.f); freeze();
     pthread_mutex_lock(&guard);cached.failure[0]=0;pthread_mutex_unlock(&guard);
     phase("rendering independent MV targets"); publish(); return true;
@@ -1283,6 +1410,7 @@ extern "C" void amv_game_time_update(void *manager) {
     if(!active){fallback(manager);dispatch_terminal();return;}
     if(!scene_valid()){abandoned=true;fail("MV scene changed during export");fallback(manager);return;}
     if(!spring_owners_valid()){fail("MV spring resource ownership changed during export");return;}
+    if(!particle_owners_valid()){fail("MV particle ownership or culling policy changed during export");return;}
     using Dimension=int32_t(*)(const void*);
     int32_t actual_width=((Dimension)original.entry[WIDTH])(nullptr),actual_height=((Dimension)original.entry[HEIGHT])(nullptr);
     put<int32_t>(camera_manager,f.camera_current_width.offset,actual_width);

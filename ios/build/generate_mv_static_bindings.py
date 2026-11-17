@@ -294,9 +294,10 @@ def generate(image, metadata, contract):
     used = set(owners.values()) | {row['ownerFullName'] for row in methods.values()} | {row['ownerFullName'] for row in fields.values()} | {'UnityEngine.Rendering.RenderTargetIdentifier', 'Unity.Jobs.JobHandle', 'LLAS.MBus.Live.PauseMessage'}
     classes = {name: r.class_row(r.by_name[name]) for name in sorted(used)}
     assert classes['Unity.Jobs.JobHandle']['value_size'] == 16
+    assert r.class_row(r.by_name['UnityEngine.SceneManagement.Scene'])['value_size'] == 4
     annotate_job_handle_abi(methods['job_complete'], lambda address, size: image[r.off(address):r.off(address) + size])
     native = {}
-    for name, va in [('initialize_metadata', 0x101037C34), ('object_new', 0x101014950), ('type_from_handle', 0x103B9BAD0), ('is_instance', 0x103AF6D4C)]:
+    for name, va in [('initialize_metadata', 0x101037C34), ('object_new', 0x101014950), ('type_from_handle', 0x103B9BAD0), ('is_instance', 0x103AF6D4C), ('particle_wake', 0x100611CE4)]:
         native[name] = dict(va=hex(va), first32hex=image[r.off(va):r.off(va) + 32].hex())
     native['reference_list_add'] = dict(va=hex(add_va), first32hex=image[r.off(add_va):r.off(add_va) + 32].hex(), command_buffer_call_va=hex(call_va), command_buffer_call_word=hex(branch), size_load_va=hex(add_va + 0x20), size_load_word=hex(size_word), items_load_va=hex(add_va + 0x24), items_load_word=hex(items_word))
     return dict(schema=1, image_sha256=hashlib.sha256(image).hexdigest(), metadata_sha256=hashlib.sha256(metadata).hexdigest(), registration_va=hex(r.REGISTRATION), method_pointer_table_va=hex(r.METHOD_POINTERS), registrations={name: dict(count=pair[0], pointer=hex(pair[1])) for name, pair in [('types', r.raw_types), ('field_offsets', r.offsets), ('type_sizes', r.sizes)]}, native=native, methods=methods, fields=fields, classes=classes, missing=missing)
