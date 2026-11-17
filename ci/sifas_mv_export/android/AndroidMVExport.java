@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
+import java.nio.charset.Charset;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -39,6 +40,7 @@ import org.json.JSONObject;
  */
 public final class AndroidMVExport {
     private static final int SAVE_REQUEST = 0x534d;
+    private static final int MAX_RENDER_REPORT_BYTES = 12 * 1024;
     private static final int[] WIDTHS = {1280,1920,3840}, HEIGHTS = {720,1080,2160}, RATES = {30,60,120};
     private static final long QUERY_TIMEOUT_MS = 15000;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -126,7 +128,8 @@ public final class AndroidMVExport {
             if (!usable(activity)) { toast(settings,"Open the game and load an MV first."); return; }
             saveWhenResumed=false; openWhenResumed=true; settings.finish();
         } });
-        if (findCompleted(settings.getApplicationContext())!=null) {
+        final File previous=findCompleted(settings.getApplicationContext());
+        if (previous!=null) {
             Button save=new Button(settings); save.setText("Save last completed MP4");
             parent.addView(save,new LinearLayout.LayoutParams(-1,-2));
             save.setOnClickListener(new View.OnClickListener() { public void onClick(View ignored) {
@@ -134,6 +137,7 @@ public final class AndroidMVExport {
                 if (!usable(activity)) { toast(settings,"Open the game to save the retained MP4."); return; }
                 openWhenResumed=false; saveWhenResumed=true; settings.finish();
             } });
+            addRenderReportButton(settings,parent,previous,null);
         }
     }
 
@@ -148,6 +152,7 @@ public final class AndroidMVExport {
         if (previous!=null) {
             Button save=new Button(activity); save.setText("Save last completed MP4"); parent.addView(save);
             save.setOnClickListener(new View.OnClickListener() { public void onClick(View view) { close.run(); offerSave(activity,previous); } });
+            addRenderReportButton(activity,parent,previous,close);
         }
     }
 
@@ -431,6 +436,38 @@ public final class AndroidMVExport {
             if (latest==null||file.lastModified()>latest.lastModified()) latest=file;
         completed=latest; return latest;
     }
+    private static void addRenderReportButton(final Activity activity,LinearLayout parent,final File source,final Runnable close) {
+        if (!new File(source.getPath()+".render-report.txt").isFile()) return;
+        Button report=new Button(activity); report.setText("View render report"); parent.addView(report);
+        report.setOnClickListener(new View.OnClickListener() { public void onClick(View view) {
+            if (close!=null) close.run();
+            showRenderReport(activity,source);
+        } });
+    }
+    private static void showRenderReport(final Activity activity,File source) {
+        if (!usable(activity)) return;
+        final File report=new File(source.getPath()+".render-report.txt");
+        LinearLayout form=new LinearLayout(activity); form.setOrientation(LinearLayout.VERTICAL);
+        final TextView text=new TextView(activity); text.setTextColor(0xffffffff); text.setTextIsSelectable(true); text.setText("Loading render report…"); form.addView(text);
+        final View[] viewer=new View[1]; final Runnable close=new Runnable() { public void run() { FovMod.dismissGamePanel(viewer[0]); } };
+        Button done=new Button(activity); done.setText("Close"); form.addView(done);
+        done.setOnClickListener(new View.OnClickListener() { public void onClick(View view) { close.run(); } });
+        viewer[0]=FovMod.showGamePanel(activity,"Render report",form,close);
+        WORK.execute(new Runnable() { public void run() {
+            String result;
+            try (InputStream input=new FileInputStream(report)) {
+                byte[] bytes=new byte[MAX_RENDER_REPORT_BYTES+1]; int count=0,read;
+                while (count<bytes.length && (read=input.read(bytes,count,bytes.length-count))!=-1) count+=read;
+                result=new String(bytes,0,Math.min(count,MAX_RENDER_REPORT_BYTES),Charset.forName("UTF-8"));
+                if (count>MAX_RENDER_REPORT_BYTES) result+="\n[Report truncated at 12 KiB.]";
+                if (count==0) result="The render report is empty.";
+            } catch (IOException error) { result="The render report could not be read: "+message(error); }
+            final String loaded=result;
+            MAIN.post(new Runnable() { public void run() {
+                if (usable(activity) && viewer[0].getParent()!=null) text.setText(loaded);
+            } });
+        } });
+    }
     private static void offerSave(final Activity activity,final File source) {
         if (!foreground(activity)||!source.isFile()||source.length()==0) return;
         completedWaiting=false;
@@ -449,6 +486,7 @@ public final class AndroidMVExport {
                 try { activity.startActivityForResult(intent,SAVE_REQUEST); }
                 catch (Throwable error) { pendingSave=null; showError(activity,"No document picker is available. The MP4 is kept for saving later."); }
         } });
+        addRenderReportButton(activity,form,source,close);
         choice[0]=FovMod.showGamePanel(activity,"MP4 export complete",form,close);
     }
     /** Actual game Activity override forwards only our SAF result here. */

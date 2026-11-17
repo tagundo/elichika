@@ -70,7 +70,7 @@ struct Methods {
     Method sound_pause,sound_paused;
     Method overlay_camera,behaviour_enabled,behaviour_set_enabled,overlay_paused,camera_target,camera_set_target,camera_width,camera_height;
     Method camera_update,camera_resume,core_camera,cutin_camera,quality_get,quality_set,quality_post_effect,rt_created;
-    Method command_clear,command_blit,target_identifier,camera_commands,camera_clear_get,camera_clear_set;
+    Method command_clear,command_blit,command_target,target_identifier,builtin_identifier,camera_commands,camera_clear_get,camera_clear_set;
     Method resume_broadcast,resume_dispatch,pause_broadcast,pause_dispatch,pause_se_voices;
     Method dm_pause_get,dm_pause_set,dm_wait_get,dm_wait_set;
     Method state_instance,live_state;
@@ -293,6 +293,7 @@ bool init_runtime() {
     const char *sheet_args[]={"System.String"};
     const char *texture_arg[]={"UnityEngine.Texture"},*command_blit_args[]={"UnityEngine.Texture","UnityEngine.Rendering.RenderTargetIdentifier"};
     const char *event_arg[]={"UnityEngine.Rendering.CameraEvent"},*clear_arg[]={"UnityEngine.CameraClearFlags"};
+    const char *target_arg[]={"UnityEngine.Rendering.RenderTargetIdentifier"},*builtin_arg[]={"UnityEngine.Rendering.BuiltinRenderTextureType"};
 #define M(dst,owner,name,stat,ret,n,args) if(!method(&m.dst,owner,name,stat,ret,n,args))return false
     M(hook[LIVE],ld,"Update",false,"System.Void",0,nullptr);
     M(hook[MUSIC],mu,"Update",false,"System.Void",0,nullptr);
@@ -324,6 +325,8 @@ bool init_runtime() {
     M(quality_post_effect,klass("LLAS.DM.ValueObject","LiveQualitySettingVO"),"get_PostEffect",false,"System.Boolean",0,nullptr);
     M(command_clear,klass("UnityEngine.Rendering","CommandBuffer"),"Clear",false,"System.Void",0,nullptr);
     M(command_blit,klass("UnityEngine.Rendering","CommandBuffer"),"Blit",false,"System.Void",2,command_blit_args);
+    M(command_target,klass("UnityEngine.Rendering","CommandBuffer"),"SetRenderTarget",false,"System.Void",1,target_arg);
+    M(builtin_identifier,klass("UnityEngine.Rendering","RenderTargetIdentifier"),"op_Implicit",true,"UnityEngine.Rendering.RenderTargetIdentifier",1,builtin_arg);
     M(target_identifier,klass("UnityEngine.Rendering","RenderTargetIdentifier"),"op_Implicit",true,"UnityEngine.Rendering.RenderTargetIdentifier",1,texture_arg);
     M(camera_commands,klass("UnityEngine","Camera"),"GetCommandBuffers",false,"UnityEngine.Rendering.CommandBuffer[]",1,event_arg);
     M(camera_clear_get,klass("UnityEngine","Camera"),"get_clearFlags",false,"UnityEngine.CameraClearFlags",0,nullptr);
@@ -899,6 +902,8 @@ bool snapshot_render_state() {
     if(!remember_camera(overlay_camera))return setup_rejected("Could not snapshot the final MV camera");
     render_state_saved=true;return true;
 }
+#include "android_mv_render_report.h"
+
 bool target_allocated(void *target) {
     int32_t width=0,height=0;uint8_t created=0;
     return alive(target)&&value(m.texture_width,target,&width)&&value(m.texture_height,target,&height)&&
@@ -913,8 +918,11 @@ bool render_targets_valid() {
     return true;
 }
 bool route_final_blits() {
-    RenderTargetIdentifier destination{};void *target_args[]={rt};
-    if(!value(m.target_identifier,nullptr,&destination,target_args))return setup_rejected("Unity could not construct the owned MV RenderTargetIdentifier");
+    RenderTargetIdentifier destination{},current{};void *target_args[]={rt};
+    int32_t current_active=1;void *builtin_args[]={&current_active};
+    if(!value(m.target_identifier,nullptr,&destination,target_args)||!value(m.builtin_identifier,nullptr,&current,builtin_args))
+        return setup_rejected("Unity could not construct the owned MV target and original CurrentActive identifier");
+    void *select_target[]={&destination};
     void *list=load<void *>(camera_manager,f.camera_list.offset);uint32_t count=length(list,128);
     if(count==UINT32_MAX)return setup_rejected("Original MV camera list changed during target construction");
     for(uint32_t i=0;i<count;i++){
@@ -928,10 +936,10 @@ bool route_final_blits() {
         if(!value(m.quality_post_effect,core_settings,&post_effect))return setup_rejected("Could not read MV camera %u original post-effect setting",i);
         void *buffer=element(array,0),*source=internal_targets[post_effect?1:0];
         if(!source)return setup_rejected("MV camera %u original %s output texture is missing",i,post_effect?"post-effect":"color");
-        void *args[]={source,&destination};
-        // Replace only the original game's final copy. Its original stage
-        // target buffers, post-FX materials and processing remain intact.
-        if(!invoke_void(m.command_clear,buffer)||!invoke_void(m.command_blit,buffer,args))
+        void *args[]={source,&current};
+        // Preserve the original final-copy command sequence and active target
+        // state; redirect only its destination from the screen to our target.
+        if(!invoke_void(m.command_clear,buffer)||!invoke_void(m.command_target,buffer,select_target)||!invoke_void(m.command_blit,buffer,args))
             return setup_rejected("Could not route MV camera %u final post-processing output to the owned target",i);
     }
     void *cutin=load<void *>(camera_manager,f.camera_cutin.offset);
@@ -939,8 +947,8 @@ bool route_final_blits() {
         void *camera=reference(m.cutin_camera,cutin);int32_t after_everything=20;void *event_args[]={&after_everything};
         void *array=reference(m.camera_commands,camera,event_args);
         if(length(array,2)!=1)return setup_rejected("MV cut-in camera does not have its original single final-blit command buffer");
-        void *args[]={internal_targets[0],&destination};void *buffer=element(array,0);
-        if(!invoke_void(m.command_clear,buffer)||!invoke_void(m.command_blit,buffer,args))return setup_rejected("Could not route the original MV cut-in output to the owned target");
+        void *args[]={internal_targets[0],&current};void *buffer=element(array,0);
+        if(!invoke_void(m.command_clear,buffer)||!invoke_void(m.command_target,buffer,select_target)||!invoke_void(m.command_blit,buffer,args))return setup_rejected("Could not route the original MV cut-in output to the owned target");
     }
     return true;
 }
@@ -1067,6 +1075,7 @@ bool begin(const Request &begin_request) {
     for(unsigned i=0;i<4;i++) saved_music_flags[i]=load<uint8_t>(music,flags[i]->offset);
     if (!snapshot_springs()) return setup_failure[0]?false:setup_rejected("Could not snapshot original MV spring jobs or bone buffers");
     if (!snapshot_render_state())return false;
+    amv_render_report_reset();
     if (!snapshot_pause_state())return false;
     session_director_root=root(director); session_overlay_root=root(session_overlay);overlay_camera_root=root(overlay_camera);
     if (!session_director_root||!session_overlay_root||!scene_root||!overlay_camera_root)return setup_rejected("Could not retain the final MV render session");
@@ -1114,6 +1123,7 @@ void capture_frame(void *target) {
     if(target&&(!value(m.texture_width,target,&width)||!value(m.texture_height,target,&height)||
         width!=(int32_t)config.width||height!=(int32_t)config.height)){
         fail("Final MV compositor output texture does not match the requested frame size");return;}
+    amv_render_report_sample();
     Result old=invoke(m.rt_active_get,nullptr);void *previous=old.value;
     void *select[]={target};bool selected=old.ok&&invoke_void(m.rt_active_set,nullptr,select);
     Rect rect{0,0,(float)config.width,(float)config.height};int32_t zero=0;uint8_t no=0;
@@ -1229,7 +1239,9 @@ extern "C" void amv_game_time_update(void *manager) {
             if(text){env->ReleaseStringUTFChars(path,text);}
             else if(env->ExceptionCheck()){env->ExceptionClear();}
             env->DeleteLocalRef(path);
-            AmvGameCallbacks done=sink;bool restored=restore_scene();amv_encoder_unbind(env,encoder);encoder=nullptr;sink={};
+            AmvGameCallbacks done=sink;bool restored=restore_scene();
+            if(valid_path)amv_render_report_write(copy,restored);
+            amv_encoder_unbind(env,encoder);encoder=nullptr;sink={};
             if(!valid_path||!restored)end_notification(done,false,nullptr,quarantined?
                 "MP4 finished, but spring jobs did not complete safely; restart the game before another export":
                 "MP4 finished but MV state restoration failed");
