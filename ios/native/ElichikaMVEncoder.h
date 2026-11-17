@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <CoreVideo/CoreVideo.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -22,6 +23,17 @@ typedef NS_ENUM(NSInteger, ELMVAppendResult) {
 @property(nonatomic) NSUInteger audioChannels; // 1 or 2
 @property(nonatomic) int64_t audioSampleCount; // sample frames, including all channels
 @property(nonatomic) NSUInteger audioBitRate;
+@end
+
+// Retains one final rendered buffer across the renderer/worker handoff. The
+// producer must unlock it before handoff and keep its pixels immutable until
+// the frame is released. The adaptor retains accepted buffers independently.
+@interface ELMVPixelFrame : NSObject
+@property(nonatomic,readonly) CVPixelBufferRef pixelBuffer;
+@property(nonatomic,readonly) NSUInteger rowBytes;
+- (nullable instancetype)initWithPixelBuffer:(CVPixelBufferRef)pixelBuffer NS_DESIGNATED_INITIALIZER;
+- (instancetype)init NS_UNAVAILABLE;
++ (instancetype)new NS_UNAVAILABLE;
 @end
 
 // Confine create/append/finish/cancel to one serial non-main worker. No method
@@ -49,6 +61,12 @@ typedef NS_ENUM(NSInteger, ELMVAppendResult) {
 - (ELMVAppendResult)appendBGRA:(NSData *)data
                     rowBytes:(NSUInteger)rowBytes
                   frameIndex:(int64_t)frameIndex;
+
+// Same final-image contract as appendBGRA, without copying the image. Supply an
+// unlocked, nonplanar BGRA8 buffer matching the configured dimensions. Retain
+// and keep it immutable on Retry; the adaptor retains it after acceptance.
+- (ELMVAppendResult)appendPixelBuffer:(CVPixelBufferRef)pixelBuffer
+                         frameIndex:(int64_t)frameIndex;
 
 // Interleaved signed 16-bit little-endian PCM. Maximum 8192 sample frames per
 // call. firstSample and frameIndex must each be contiguous from zero.

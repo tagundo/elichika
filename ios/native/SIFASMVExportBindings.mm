@@ -11,6 +11,8 @@
 #include <initializer_list>
 #include <atomic>
 #include "MVPixelConvert.hpp"
+#include "MVPixelBufferPool.hpp"
+#import "ElichikaMVEncoder.h"
 #include "../../ci/sifas_mv_export/android/android_mv_audio_provider.h"
 #include "../../ci/sifas_mv_export/android/mv_capture_camera.h"
 #include "../../ci/sifas_mv_export/android/mv_particle_culling.h"
@@ -91,7 +93,7 @@ Bone *bones; Manager *managers; uint32_t manager_count,bone_count;
 int32_t saved_job_index,saved_safety;
 uint8_t saved_knees[24];
 uint8_t *pixels;
-NSMutableData *capture_image;
+elichika::MVPixelBufferPool capture_pool;
 uint64_t tick,accepted_frames,audio_index,pending_frame;
 uint32_t simulation_hz;
 bool capture_after_overlay;
@@ -219,7 +221,7 @@ void free_snapshot() {
     for(uint32_t i=0;i<manager_count;i++)if(managers){release(&managers[i].object_root);release(&managers[i].array_root);}
     release(&managers_array_root);managers_array=nullptr;
     free(bones); free(managers); free(bone_bytes); free(collider_bytes); free(pixels);
-    bones=nullptr; managers=nullptr; bone_bytes=collider_bytes=nullptr; pixels=nullptr;capture_image=nil;
+    bones=nullptr; managers=nullptr; bone_bytes=collider_bytes=nullptr; pixels=nullptr;capture_pool.reset();
     bone_count=manager_count=0;
 }
 bool snapshot_springs() {
@@ -992,6 +994,8 @@ bool begin(const Request &begin_request) {
     int32_t rgba=4; void *texargs[]={&width,&height,&rgba,&no};
     if (!texture_root||!invoke_void(m.texture_constructor,texture,texargs))return setup_rejected("Unity could not allocate the %u x %u RGBA readback texture",config.width,config.height);
 
+    if(capture_pool.create(config.width,config.height)!=kCVReturnSuccess)
+        return setup_rejected("Could not create the bounded BGRA export pixel-buffer pool");
     // Keep the original fixedDeltaTime/cache (+48/+50/+58). Unity's built-in
     // FixedUpdate/PhysX retains its configured rate; custom spring invocation
     // follows the original variable-frame path at 60 or 120 Hz below.
@@ -1020,6 +1024,17 @@ void capture_frame(void *target) {
             "MV playback frame time mismatch: rendered %.6f s, requested %.6f s (frame %llu); frame was not encoded",
             actual_time,expected_time,(unsigned long long)pending_frame);fail(reason);return;
     }
+    // Reserve storage before composition/readback. Pool pressure holds this
+    // exact completed render target/tick; it must never drop or recapture a
+    // later simulation frame while the writer retains all three buffers.
+    CVPixelBufferRef pixel=nullptr;CVReturn allocation=capture_pool.acquire(&pixel);
+    if(allocation==kCVReturnWouldExceedAllocationThreshold){
+        if(!suspend_rendering(true)){fail("Could not suspend MV rendering while awaiting a pixel buffer");return;}
+        freeze();return;
+    }
+    if(allocation!=kCVReturnSuccess||!pixel){if(pixel)CVPixelBufferRelease(pixel);fail("Could not allocate an owned BGRA export pixel buffer");return;}
+    ELMVPixelFrame *image=[[ELMVPixelFrame alloc] initWithPixelBuffer:pixel];CVPixelBufferRelease(pixel);
+    if(!image){fail("Could not retain the owned BGRA export pixel buffer");return;}
     // This callback runs at the next native frame boundary, after all core
     // post-FX/final-copy commands. Render the existing overlay camera now,
     // outside every camera callback, so stage layer 20 cannot be overwritten.
@@ -1033,18 +1048,14 @@ void capture_frame(void *target) {
     int64_t bytes=0;uintptr_t pointer=0;void *mip[]={&zero};
     if(!read||!restored||!value(m.image_size,texture,&bytes)||!value(m.image_pointer,texture,&pointer,mip)||
         !pointer||bytes!=(int64_t)config.width*config.height*4){fail("Unity returned an unexpected MV readback layout");return;}
-    const size_t row_bytes=static_cast<size_t>(config.width)*4;
-    // Exactly one pending frame is permitted by the grant/accepted clock.
-    // Reuse storage only after the prior encoder append has copied its bytes
-    // into its own retained IOSurface; Retry never grants the next capture.
-    NSMutableData *image=capture_image;
-    if(!image||image.length!=static_cast<NSUInteger>(bytes)){
-        image=[[NSMutableData alloc] initWithLength:static_cast<NSUInteger>(bytes)];capture_image=image;
+    const NSUInteger row_bytes=image.rowBytes;
+    elichika::MVPixelBufferLock mapped(image.pixelBuffer);
+    if(!mapped.locked()||!elichika::rgbaToOpaqueBGRA(reinterpret_cast<const uint8_t *>(pointer),static_cast<size_t>(bytes),
+            config.width,config.height,static_cast<uint8_t *>(CVPixelBufferGetBaseAddress(image.pixelBuffer)),
+            CVPixelBufferGetDataSize(image.pixelBuffer),row_bytes)){
+        mapped.unlock();fail("The complete MV frame could not be written into its owned BGRA pixel buffer");return;
     }
-    if(!image||!elichika::rgbaToOpaqueBGRA(reinterpret_cast<const uint8_t *>(pointer),static_cast<size_t>(bytes),
-            config.width,config.height,static_cast<uint8_t *>(image.mutableBytes),image.length,row_bytes)){
-        fail("The complete MV frame could not be converted to the original opaque BGRA layout");return;
-    }
+    mapped.unlock();
     awaiting_capture=false;frame_ready=false;
     sink.frame(sink.context,image,row_bytes,static_cast<int64_t>(pending_frame));
 }

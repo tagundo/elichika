@@ -61,7 +61,8 @@ static NSString *ELMVPhase(NSString *phase) {
     BOOL cleaning, workerClean, completed;
     // Worker only.
     ELMVEncoder *encoder;
-    NSData *pendingFrame, *pendingPCM;
+    ELMVPixelFrame *pendingFrame;
+    NSData *pendingPCM;
     NSUInteger pendingRowBytes;
     int64_t pendingFrameIndex, pendingFirstSample;
     BOOL audioRequestPending, pumpScheduled, finishing;
@@ -97,7 +98,7 @@ static NSString *ELMVPhase(NSString *phase) {
 - (void)startWidth:(NSUInteger)width height:(NSUInteger)height fps:(int32_t)fps codec:(NSString *)codec bitrate:(NSUInteger)bitrate;
 - (void)cancelWithReason:(NSString *)reason;
 - (BOOL)grant:(ELMVExportRun *)run tick:(uint64_t *)tick capture:(int64_t *)capture;
-- (void)frame:(NSData *)pixels rowBytes:(NSUInteger)rowBytes index:(int64_t)index run:(ELMVExportRun *)run;
+- (void)frame:(ELMVPixelFrame *)pixels rowBytes:(NSUInteger)rowBytes index:(int64_t)index run:(ELMVExportRun *)run;
 - (void)acceptedFrameIndex:(int64_t)index run:(ELMVExportRun *)run;
 - (void)fail:(NSString *)message run:(ELMVExportRun *)run;
 - (void)pump:(ELMVExportRun *)run;
@@ -112,7 +113,7 @@ static NSString *ELMVPhase(NSString *phase) {
 static bool ELMVNext(void *context, uint64_t *tick, int64_t *capture) {
     return [[ELMVExportCoordinator shared] grant:(__bridge ELMVExportRun *)context tick:tick capture:capture];
 }
-static void ELMVFrame(void *context, NSData *pixels, NSUInteger rowBytes, int64_t capture) {
+static void ELMVFrame(void *context, ELMVPixelFrame *pixels, NSUInteger rowBytes, int64_t capture) {
     [[ELMVExportCoordinator shared] frame:pixels rowBytes:rowBytes index:capture run:(__bridge ELMVExportRun *)context];
 }
 static void ELMVFailed(void *context, NSString *message) {
@@ -406,11 +407,14 @@ static NSString *ELMVReadiness(void) {
     if (!run->clock->grant(run->generation,next,index)) return NO;
     *tick=next; *capture=index; run->lastProgress=CFAbsoluteTimeGetCurrent(); return YES;
 }
-- (void)frame:(NSData *)pixels rowBytes:(NSUInteger)rowBytes index:(int64_t)index run:(ELMVExportRun *)run {
+- (void)frame:(ELMVPixelFrame *)pixels rowBytes:(NSUInteger)rowBytes index:(int64_t)index run:(ELMVExportRun *)run {
     NSAssert(NSThread.isMainThread,@"MV frames belong to main");
     if (_run!=run || run->stopped.load() || run->cleaning) return;
     if (!run->clock->received(run->generation,index) || rowBytes<run->configuration.width*4 ||
-        run->configuration.height>NSUIntegerMax/rowBytes || pixels.length<rowBytes*run->configuration.height) {
+        !pixels || !pixels.pixelBuffer || rowBytes!=pixels.rowBytes ||
+        CVPixelBufferGetWidth(pixels.pixelBuffer)!=run->configuration.width ||
+        CVPixelBufferGetHeight(pixels.pixelBuffer)!=run->configuration.height ||
+        run->configuration.height>NSUIntegerMax/rowBytes || CVPixelBufferGetDataSize(pixels.pixelBuffer)<rowBytes*run->configuration.height) {
         [self fail:ELMVText(@"The final Unity overlay delivered an invalid or repeated BGRA frame.",@"Unity 최종 합성 화면의 BGRA 프레임이 올바르지 않거나 중복되었습니다.",@"Unityの最終合成映像で無効または重複したBGRAフレームを受信しました。") run:run]; return;
     }
     // Try one append on the encoder's serial owner, without waiting for writer
@@ -432,7 +436,7 @@ static NSString *ELMVReadiness(void) {
                         failure=ELMVText(@"Video input failed.",@"영상 입력에 실패했습니다.",@"映像入力に失敗しました。");
                         result=ELMVAppendFailed;
                     } else {
-                        result=[writer appendBGRA:pixels rowBytes:rowBytes frameIndex:index];
+                        result=[writer appendPixelBuffer:pixels.pixelBuffer frameIndex:index];
                         if (result==ELMVAppendAccepted) {
                             run->videoCount=writer.acceptedVideoFrames; run->lastProgress=CFAbsoluteTimeGetCurrent();
                         } else if (result==ELMVAppendRetry) {
@@ -508,7 +512,7 @@ static NSString *ELMVReadiness(void) {
         }
         if (run->pendingFrame) {
             const int64_t index=run->pendingFrameIndex;
-            ELMVAppendResult result=[writer appendBGRA:run->pendingFrame rowBytes:run->pendingRowBytes frameIndex:index];
+            ELMVAppendResult result=[writer appendPixelBuffer:run->pendingFrame.pixelBuffer frameIndex:index];
             if (result==ELMVAppendFailed) { dispatch_async(dispatch_get_main_queue(), ^{ [self fail:writer.failure.localizedDescription ?: ELMVText(@"Video input failed.",@"영상 입력에 실패했습니다.",@"映像入力に失敗しました。") run:run]; }); return; }
             if (result==ELMVAppendAccepted) {
                 run->pendingFrame=nil; run->pendingFrameIndex=-1; run->videoCount=writer.acceptedVideoFrames; run->lastProgress=CFAbsoluteTimeGetCurrent();

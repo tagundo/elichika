@@ -3,6 +3,7 @@
 #import "ElichikaMVEncoder.h"
 #import <AVFoundation/AVFoundation.h>
 #import <CoreVideo/CoreVideo.h>
+#include "MVPixelBufferPool.hpp"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -36,6 +37,20 @@ static NSData *Frame(ELMVEncoderConfiguration *c,int64_t index) {
     }
     return data;
 }
+#if defined(ELMV_TEST_DIRECT_INPUT)
+static ELMVPixelFrame *DirectFrame(ELMVEncoderConfiguration *c,int64_t index,elichika::MVPixelBufferPool &pool) {
+    CVPixelBufferRef pixel=nullptr;CVReturn status=pool.acquire(&pixel);
+    if(status==kCVReturnWouldExceedAllocationThreshold)return nil;
+    Require(status==kCVReturnSuccess&&pixel,@"Direct input pool allocation failed.");
+    ELMVPixelFrame *frame=[[ELMVPixelFrame alloc]initWithPixelBuffer:pixel];CVPixelBufferRelease(pixel);
+    Require(frame!=nil,@"Direct input frame could not retain its buffer.");
+    NSData *reference=Frame(c,index);elichika::MVPixelBufferLock locked(frame.pixelBuffer);
+    Require(locked.locked(),@"Direct input could not map its buffer.");
+    uint8_t *destination=(uint8_t *)CVPixelBufferGetBaseAddress(frame.pixelBuffer);
+    for(NSUInteger y=0;y<c.height;y++)memcpy(destination+y*frame.rowBytes,(const uint8_t *)reference.bytes+y*(c.width*4+16),c.width*4);
+    return frame;
+}
+#endif
 static NSData *Audio(ELMVEncoderConfiguration *c,int64_t first,NSUInteger count) {
     NSMutableData *data=[NSMutableData dataWithLength:count*c.audioChannels*2];
     int16_t *pcm=(int16_t *)data.mutableBytes;
@@ -147,7 +162,13 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
     auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(45);
     NSUInteger retries=0;
     int64_t maximumAudioLead=0;
-    NSData *pixels=nil; NSData *pcm=nil;
+#if defined(ELMV_TEST_DIRECT_INPUT)
+    elichika::MVPixelBufferPool pool;Require(pool.create((uint32_t)c.width,(uint32_t)c.height)==kCVReturnSuccess,@"Direct input pool creation failed.");
+    ELMVPixelFrame *pixels=nil;
+#else
+    NSData *pixels=nil;
+#endif
+    NSData *pcm=nil;
     NSString *videoRetry=nil; NSString *audioRetry=nil;
     while (encoder.acceptedVideoFrames<c.frameCount || encoder.acceptedAudioSamples<c.audioSampleCount) {
         @autoreleasepool {
@@ -159,8 +180,13 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
             // append Retry is the backpressure signal for either track.
             int64_t audioEnd=c.audioSampleCount;
             if (frame<c.frameCount) {
+#if defined(ELMV_TEST_DIRECT_INPUT)
+                if (!pixels) pixels=DirectFrame(c,frame,pool);
+                ELMVAppendResult result=pixels ? [encoder appendPixelBuffer:pixels.pixelBuffer frameIndex:frame] : ELMVAppendRetry;
+#else
                 if (!pixels) pixels=Frame(c,frame);
                 ELMVAppendResult result=[encoder appendBGRA:pixels rowBytes:c.width*4+16 frameIndex:frame];
+#endif
                 Require(result!=ELMVAppendFailed,encoder.failure.localizedDescription);
                 if (result==ELMVAppendAccepted) {
                     pixels=nil; progressed=YES; videoRetry=nil;
@@ -191,6 +217,9 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
             if (!progressed) Yield();
         }
     }
+#if defined(ELMV_TEST_DIRECT_INPUT)
+    pool.reset(); // Accepted writer buffers must survive producer-pool teardown.
+#endif
     dispatch_semaphore_t finished=dispatch_semaphore_create(0);
     __block NSURL *completed=nil; __block NSError *finishError=nil;
     [encoder finishOnQueue:dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0) completion:^(NSURL *output,NSError *problem) {
@@ -200,6 +229,9 @@ static NSDictionary *Encode(NSURL *directory,NSString *codec,BOOL required) {
     Require(completed!=nil && !finishError,finishError.localizedDescription ?: @"MP4 finalization returned no file.");
     Require(![NSFileManager.defaultManager fileExistsAtPath:encoder.partialURL.path],@"Successful export left its partial file.");
     NSMutableDictionary *report=[Inspect(completed,c) mutableCopy];
+#if defined(ELMV_TEST_DIRECT_INPUT)
+    report[@"input_path"]=@"direct-pooled-CVPixelBuffer";
+#endif
     report[@"status"]=@"PASS"; report[@"retry_count"]=@(retries);
     report[@"maximum_audio_lead_samples"]=@(maximumAudioLead);
     report[@"writer_status"]=encoder.writerStatus;

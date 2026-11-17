@@ -17,8 +17,8 @@
       "sha256": "eac1be47151d68f1b30dde0746a1795b0223ca28503fbc47e1d721713dea37b3"
     },
     "android/AndroidMVEncoder.java": {
-      "bytes": 31181,
-      "sha256": "2bc62000f188f42d6da6d2f28ce33a56620d1a8edf032e724ab0dfe5c4f4f7e5"
+      "bytes": 31579,
+      "sha256": "aa40c412ee3b953d3ac13a3846cd153828ef38907fc38caed904a67a7664faaf"
     },
     "android/AndroidMVEncoderDeviceTest.java": {
       "bytes": 5674,
@@ -243,6 +243,10 @@
     "android/test_android_mv_audio_provider.py": {
       "bytes": 10784,
       "sha256": "06d5c49c2b0be7afda22de9411f1f6764510f38298a4f93f4cf10d2cf7da3e23"
+    },
+    "android/test_android_mv_yuv_layout.py": {
+      "bytes": 10749,
+      "sha256": "3d897a6589742a6c6a53a8418b5db73e24680c02d890ddf4fe328a76f2ad7f7e"
     },
     "android/test_clock_restore.cpp": {
       "bytes": 2024,

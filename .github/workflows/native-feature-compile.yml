@@ -578,6 +578,15 @@ jobs:
           xcrun clang++ -std=c++17 -fobjc-arc -fblocks -I ios/native ios/ci/test_mv_worker_handoff.mm -framework Foundation -o "$RUNNER_TEMP/mv-worker-handoff-test"
           "$RUNNER_TEMP/mv-worker-handoff-test"
 
+      - name: Check Android YUV rows and direct Mac pixel-buffer ownership
+        run: |
+          set -euo pipefail
+          python3 -B ci/sifas_mv_export/android/test_android_mv_yuv_layout.py
+          python3 -B ios/native/tests/run_mv_encoder_pixel_buffer_tests.py --out "$RUNNER_TEMP/mv-pixel-buffer-contract"
+          xcrun clang++ -std=c++17 -fobjc-arc -fblocks -O2 -I ios/native ios/native/ElichikaMVEncoder.mm ios/ci/test_mv_pixel_pool.mm -framework Foundation -framework AVFoundation -framework CoreVideo -framework CoreMedia -framework AudioToolbox -framework VideoToolbox -o "$RUNNER_TEMP/mv-pixel-pool-test"
+          "$RUNNER_TEMP/mv-pixel-pool-test"
+          python3 -B ios/native/tests/run_mv_encoder_integration.py --direct-input --out "$RUNNER_TEMP/mv-direct-codec-test"
+
       - name: Check JobHandle ABI against the exact original game
         env:
           SIFAS_MV_SOURCE_IPA: ${{ runner.temp }}/standalone-game.ipa

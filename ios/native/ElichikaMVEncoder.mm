@@ -37,6 +37,23 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
 }
 @end
 
+@implementation ELMVPixelFrame {
+    CVPixelBufferRef _pixelBuffer;
+    NSUInteger _rowBytes;
+}
+- (instancetype)initWithPixelBuffer:(CVPixelBufferRef)pixelBuffer {
+    if (!pixelBuffer) return nil;
+    if ((self=[super init])) {
+        _pixelBuffer=CVPixelBufferRetain(pixelBuffer);
+        _rowBytes=CVPixelBufferGetBytesPerRow(pixelBuffer);
+    }
+    return self;
+}
+- (void)dealloc { if (_pixelBuffer) CVPixelBufferRelease(_pixelBuffer); }
+- (CVPixelBufferRef)pixelBuffer { return _pixelBuffer; }
+- (NSUInteger)rowBytes { return _rowBytes; }
+@end
+
 @interface ELMVEncoder () {
     AVAssetWriter *_writer;
     AVAssetWriterInput *_video;
@@ -59,6 +76,7 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
 }
 - (void)failLocked:(NSError *)error;
 - (void)deliverLocked:(NSURL *)output error:(NSError *)error;
+- (ELMVAppendResult)appendPixelBufferLocked:(CVPixelBufferRef)pixel frameIndex:(int64_t)frameIndex;
 @end
 
 @implementation ELMVEncoder
@@ -214,6 +232,38 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
     }
     return YES;
 }
+- (ELMVAppendResult)appendPixelBufferLocked:(CVPixelBufferRef)pixel frameIndex:(int64_t)frameIndex {
+    CVBufferSetAttachment(pixel,kCVImageBufferColorPrimariesKey,kCVImageBufferColorPrimaries_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pixel,kCVImageBufferTransferFunctionKey,kCVImageBufferTransferFunction_sRGB,kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pixel,kCVImageBufferYCbCrMatrixKey,kCVImageBufferYCbCrMatrix_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
+    CMTime time=CMTimeMake(frameIndex*_configuration.fpsDenominator,_configuration.fpsNumerator);
+    BOOL appended=[_adaptor appendPixelBuffer:pixel withPresentationTime:time];
+    if (!appended) {
+        [self failLocked:ELMVError(19,@"The video encoder rejected a complete rendered frame.",_writer.error)];
+        return ELMVAppendFailed;
+    }
+    ++_acceptedVideoFrames; _backpressureReason=nil;
+    if (_acceptedVideoFrames==_configuration.frameCount) { [_video markAsFinished]; _videoFinished=YES; }
+    return ELMVAppendAccepted;
+}
+- (ELMVAppendResult)appendPixelBuffer:(CVPixelBufferRef)pixel frameIndex:(int64_t)frameIndex {
+    @autoreleasepool {
+    @synchronized(self) {
+        if (![self writableLocked]) return ELMVAppendFailed;
+        const size_t packed=_configuration.width*4;
+        const size_t stride=pixel ? CVPixelBufferGetBytesPerRow(pixel) : 0;
+        if (NSThread.isMainThread || frameIndex!=_acceptedVideoFrames || frameIndex>=_configuration.frameCount ||
+            !pixel || CVPixelBufferIsPlanar(pixel) || CVPixelBufferGetPixelFormatType(pixel)!=kCVPixelFormatType_32BGRA ||
+            CVPixelBufferGetWidth(pixel)!=_configuration.width || CVPixelBufferGetHeight(pixel)!=_configuration.height ||
+            stride<packed || stride>SIZE_MAX/_configuration.height || CVPixelBufferGetDataSize(pixel)<stride*_configuration.height) {
+            [self failLocked:ELMVError(16,@"A video pixel buffer had an invalid index, BGRA layout or dimensions, or arrived on the UI thread.")];
+            return ELMVAppendFailed;
+        }
+        if (!_video.readyForMoreMediaData) { _backpressureReason=@"video-input-not-ready"; return ELMVAppendRetry; }
+        return [self appendPixelBufferLocked:pixel frameIndex:frameIndex];
+    }
+    }
+}
 - (ELMVAppendResult)appendBGRA:(NSData *)data rowBytes:(NSUInteger)rowBytes frameIndex:(int64_t)frameIndex {
     @autoreleasepool {
     @synchronized(self) {
@@ -245,20 +295,10 @@ static NSError *ELMVError(NSInteger code, NSString *message, NSError *underlying
         for (NSUInteger y=0;y<_configuration.height;y++) {
             memcpy(destination+y*destinationStride,source+y*rowBytes,packed);
         }
-        CVBufferSetAttachment(pixel,kCVImageBufferColorPrimariesKey,kCVImageBufferColorPrimaries_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
-        CVBufferSetAttachment(pixel,kCVImageBufferTransferFunctionKey,kCVImageBufferTransferFunction_sRGB,kCVAttachmentMode_ShouldPropagate);
-        CVBufferSetAttachment(pixel,kCVImageBufferYCbCrMatrixKey,kCVImageBufferYCbCrMatrix_ITU_R_709_2,kCVAttachmentMode_ShouldPropagate);
         CVPixelBufferUnlockBaseAddress(pixel,0);
-        CMTime time=CMTimeMake(frameIndex*_configuration.fpsDenominator,_configuration.fpsNumerator);
-        BOOL appended=[_adaptor appendPixelBuffer:pixel withPresentationTime:time];
+        ELMVAppendResult result=[self appendPixelBufferLocked:pixel frameIndex:frameIndex];
         CVPixelBufferRelease(pixel);
-        if (!appended) {
-            [self failLocked:ELMVError(19,@"The video encoder rejected a complete rendered frame.",_writer.error)];
-            return ELMVAppendFailed;
-        }
-        ++_acceptedVideoFrames; _backpressureReason=nil;
-        if (_acceptedVideoFrames==_configuration.frameCount) { [_video markAsFinished]; _videoFinished=YES; }
-        return ELMVAppendAccepted;
+        return result;
     }
     }
 }

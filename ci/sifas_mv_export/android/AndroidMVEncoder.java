@@ -538,8 +538,18 @@ public final class AndroidMVEncoder {
             int base=target.position(), row=plane.getRowStride(), pixel=plane.getPixelStride();
             long last=(long)base+(long)(h-1)*row+(long)(w-1)*pixel;
             if (row<=0 || pixel<=0 || last>=target.limit()) throw new IOException("Invalid YUV plane strides");
-            for (int y=0;y<h;y++) for (int x=0;x<w;x++)
-                target.put(base+y*row+x*pixel,source[offset++]);
+            if (pixel==1) {
+                // Copy only visible bytes: row padding and the final row's
+                // potentially shorter buffer remain untouched.
+                for (int y=0;y<h;y++) {
+                    target.position(base+y*row);
+                    target.put(source,offset,w);
+                    offset+=w;
+                }
+            } else {
+                for (int y=0;y<h;y++) for (int x=0;x<w;x++)
+                    target.put(base+y*row+x*pixel,source[offset++]);
+            }
         }
     }
 }
