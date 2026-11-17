@@ -12,7 +12,8 @@ import unittest
 from unittest.mock import Mock, patch
 
 from run_simulator import (BUNDLE, ENVIRONMENT_SECONDS, SYSTEM_BUNDLE, cleanup_owned_probe,
-                           execute, prepare_simulator_environment, probe_launch_command)
+                           choose_runtime_and_types, execute, execute_environment_only,
+                           main as simulator_main, prepare_simulator_environment, probe_launch_command)
 from probe_watchdog import ABSOLUTE_SECONDS, FIRST_PROGRESS_SECONDS
 
 DEVICE = '12345678-1234-1234-1234-123456789abc'
@@ -328,6 +329,263 @@ class SimulatorEnvironmentTests(unittest.TestCase):
                 execute(self.root, self.root / 'evidence', core_only=False)
         self.assertEqual(command.call_count, 1)
         setup.assert_not_called(); cleanup.assert_not_called()
+
+
+class RuntimeSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(); self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name).resolve(); self.receipt = self.root / 'selection.json'
+        self.sdk = '18.5'
+        self.runtimes = [self.runtime('26.2'), self.runtime('18.5'), self.runtime('18.5.1'),
+                         self.runtime('18.5.2', available=False)]
+        self.types = [self.device('iPhone 16 Pro', 18), self.device('iPad Pro 13-inch (M4)', 17),
+                      self.device('iPhone Future', 26)]
+        self.calls = []
+
+    def runtime(self, version, *, available=True):
+        return {'identifier': 'com.apple.CoreSimulator.SimRuntime.iOS-' + version.replace('.', '-'),
+                'name': 'iOS ' + version, 'version': version, 'isAvailable': available,
+                'buildversion': 'fixture', 'bundlePath': '/runtime/' + version}
+
+    def device(self, name, minimum):
+        return {'identifier': 'com.apple.CoreSimulator.SimDeviceType.' + name.replace(' ', '-'),
+                'name': name, 'minRuntimeVersion': minimum << 16, 'maxRuntimeVersion': 0xffffffff}
+
+    def invoke(self, arguments, **kwargs):
+        self.calls.append(arguments)
+        self.assertGreater(kwargs['timeout'], 0); self.assertLessEqual(kwargs['timeout'], 15)
+        self.assertEqual(kwargs['cap'], 2*1024*1024)
+        if arguments == ['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version']:
+            text = self.sdk
+        elif arguments == ['xcrun', 'simctl', 'list', 'runtimes', '--json']:
+            text = json.dumps({'runtimes': self.runtimes})
+        elif arguments == ['xcrun', 'simctl', 'list', 'devicetypes', '--json']:
+            text = json.dumps({'devicetypes': self.types})
+        else:
+            self.fail('Runtime selection must not create or boot a device')
+        return {'returncode': 0, 'text': text, 'timed_out': False, 'truncated': False}
+
+    def select(self, **kwargs):
+        with patch('run_simulator.diagnostics.bounded_command', side_effect=self.invoke):
+            return choose_runtime_and_types(selection_path=self.receipt, **kwargs)
+
+    def test_active_sdk_exact_major_minor_selects_highest_maintenance_patch(self):
+        runtime, models = self.select(ipad_first=True)
+        self.assertEqual(runtime['version'], '18.5.1')
+        self.assertEqual([row['name'] for row in models], ['iPad Pro 13-inch (M4)', 'iPhone 16 Pro'])
+        value = json.loads(self.receipt.read_text())
+        self.assertEqual(value['status'], 'PASS_SIMULATOR_RUNTIME_SELECTION_ONLY')
+        self.assertEqual(value['active_iphonesimulator_sdk'], '18.5')
+        self.assertEqual(value['selection_reason'], 'exact_sdk_major_minor_highest_patch')
+        self.assertEqual([row['version'] for row in value['available_iOS_runtimes']], ['26.2', '18.5', '18.5.1'])
+        self.assertEqual(value['unavailable_iOS_runtimes'][0]['version'], '18.5.2')
+        self.assertTrue(value['selection_before_device_creation'])
+        self.assertEqual(len(value['device_types_considered']), 3)
+
+    def test_highest_older_major_minor_is_used_when_exact_is_absent(self):
+        self.runtimes = [self.runtime('26.2'), self.runtime('18.4.2'), self.runtime('18.2.1')]
+        runtime, _ = self.select()
+        self.assertEqual(runtime['version'], '18.4.2')
+        self.assertEqual(json.loads(self.receipt.read_text())['selection_reason'], 'highest_older_sdk_major_minor')
+
+    def test_only_newer_runtime_fails_with_inventory_evidence_before_any_boot(self):
+        self.runtimes = [self.runtime('26.2')]
+        with self.assertRaisesRegex(ValueError, 'runtime_compatibility'):
+            self.select()
+        value = json.loads(self.receipt.read_text())
+        self.assertEqual(value['status'], 'FAIL_SIMULATOR_RUNTIME_SELECTION_ONLY')
+        self.assertEqual(value['available_iOS_runtimes'][0]['version'], '26.2')
+        self.assertEqual(value['active_iphonesimulator_sdk'], '18.5')
+        self.assertIn('No available iOS Simulator runtime compatible', value['error'])
+        self.assertEqual(len(self.calls), 2)
+
+    def test_incompatible_device_types_cannot_use_the_old_unbounded_fallback(self):
+        self.types = [self.device('iPhone Future', 26), self.device('iPad Future', 26)]
+        with self.assertRaisesRegex(ValueError, 'compatible_device_types'):
+            self.select()
+        value = json.loads(self.receipt.read_text())
+        self.assertEqual(value['selected_runtime']['version'], '18.5.1')
+        self.assertEqual(len(value['device_types_considered']), 2)
+        self.assertNotIn('selected_device_types', value)
+
+    def test_invalid_sdk_cannot_silently_select_the_newest_installed_runtime(self):
+        self.sdk = 'unknown SDK'
+        with self.assertRaisesRegex(ValueError, 'active_sdk'):
+            self.select()
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(json.loads(self.receipt.read_text())['failed_stage'], 'active_sdk')
+
+    def test_query_timeout_retains_bounded_redacted_cause_and_starts_no_device(self):
+        def failed(arguments, **kwargs):
+            return {'returncode': -9, 'timed_out': True, 'text': 'service unavailable\npassword=private\nhttps://private.example/a'}
+        with patch('run_simulator.diagnostics.bounded_command', side_effect=failed), \
+                self.assertRaisesRegex(ValueError, 'active_sdk'):
+            choose_runtime_and_types(selection_path=self.receipt)
+        value = json.loads(self.receipt.read_text())
+        output = value['commands'][0]['failure_output']
+        self.assertIn('service unavailable', output)
+        self.assertNotIn('password=private', output); self.assertNotIn('private.example', output)
+        self.assertNotIn('selected_runtime', value)
+
+    def test_metadata_query_is_clamped_by_the_shared_environment_deadline(self):
+        clock = [100.0]
+        def late(arguments, **kwargs):
+            self.assertLessEqual(kwargs['timeout'], 5)
+            clock[0] += 6
+            return {'returncode': 0, 'text': '18.5'}
+        with patch('run_simulator.time.monotonic', side_effect=lambda: clock[0]), \
+                patch('run_simulator.diagnostics.bounded_command', side_effect=late) as command, \
+                self.assertRaisesRegex(ValueError, 'active_sdk'):
+            choose_runtime_and_types(selection_path=self.receipt, aggregate_deadline=105)
+        self.assertEqual(command.call_count, 1)
+        self.assertEqual(json.loads(self.receipt.read_text())['status'], 'FAIL_SIMULATOR_RUNTIME_SELECTION_ONLY')
+
+
+class EnvironmentOnlyDriverTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(); self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name).resolve()
+        self.runtime = {'identifier': 'com.apple.CoreSimulator.SimRuntime.iOS-18-5', 'version': '18.5'}
+        self.models = [{'name': 'iPad fixture', 'identifier': 'model-pad'},
+                       {'name': 'iPhone fixture', 'identifier': 'model-phone'}]
+        self.identifiers = [DEVICE, '22345678-1234-1234-1234-123456789abc']
+        self.created = 0
+        self.calls = []
+
+    def choose(self, **kwargs):
+        self.assertTrue(kwargs['ipad_first'])
+        self.assertIn('aggregate_deadline', kwargs)
+        Path(kwargs['selection_path']).write_text('{"status":"selected-before-create"}')
+        return self.runtime, self.models
+
+    def invoke(self, command, **kwargs):
+        self.calls.append((command, kwargs))
+        self.assertTrue((self.root / 'runtime-selection.json').is_file())
+        self.assertGreater(kwargs['timeout'], 0); self.assertLessEqual(kwargs['timeout'], 300)
+        if command[2] == 'create':
+            text = self.identifiers[self.created]; self.created += 1
+        elif command[2] in ('boot', 'bootstatus'):
+            self.assertIn(command[3], self.identifiers); text = ''
+        else:
+            self.fail('Environment-only driver attempted an unexpected command')
+        return {'returncode': 0, 'text': text, 'timed_out': False, 'truncated': False}
+
+    def run_driver(self, preflight=None, *, invoke=None, cleanup_effect=None):
+        with patch('run_simulator.choose_runtime_and_types', side_effect=self.choose), \
+                patch('run_simulator.diagnostics.bounded_command', side_effect=invoke or self.invoke), \
+                patch('run_simulator.prepare_simulator_environment', side_effect=preflight or
+                      (lambda identifier, path: {'status': 'PASS_SIMULATOR_ENVIRONMENT_PREFLIGHT_ONLY'})) as setup, \
+                patch('run_simulator.cleanup_owned_probe', side_effect=cleanup_effect) as cleanup, \
+                patch('run_simulator.inventory') as inventory, \
+                patch('run_simulator.launch_owned') as launch, \
+                patch('run_simulator.ProbeWatchdog') as watchdog:
+            self.last_setup, self.last_cleanup = setup, cleanup
+            try:
+                result = execute_environment_only(self.root)
+            finally:
+                inventory.assert_not_called(); launch.assert_not_called(); watchdog.assert_not_called()
+            return result, setup, cleanup
+
+    def test_two_owned_families_pass_only_environment_scope_without_app_install_or_proof(self):
+        with patch.dict(os.environ, {'GITHUB_SHA': 'a'*40, 'GITHUB_RUN_ID': '12345'}):
+            value, setup, cleanup = self.run_driver()
+        self.assertEqual(value['status'], 'PASS_CORE_SIMULATOR_ENVIRONMENT_ONLY')
+        self.assertEqual(len(value['destinations']), 2)
+        self.assertEqual(setup.call_count, 2)
+        self.assertEqual([call.args[0] for call in cleanup.call_args_list], self.identifiers)
+        self.assertEqual(value['source']['workflow_source_sha'], 'a'*40)
+        self.assertEqual(value['source']['workflow_run'], '12345')
+        self.assertEqual(value['probe_launch_attempts'], 0)
+        for key in ('actual_Elichika_app_installed_or_executed', 'native_Elichika_framework_compiled_or_executed',
+                    'four_cold_Elichika_probes_proven', 'actual_SIFAS_game_or_MV_executed',
+                    'physical_iPhone_iPad_tested', 'IPA_created', 'release_or_publication_ready'):
+            self.assertFalse(value[key])
+        self.assertTrue(all(row['owned_device_shutdown_and_deleted'] for row in value['owned_destination_attempts']))
+        self.assertFalse(any(BUNDLE in command for command, _ in self.calls))
+
+    def test_preflight_failure_retains_owned_uuid_and_still_cleans_only_that_device(self):
+        with self.assertRaisesRegex(ValueError, 'UIKit destination failed'):
+            self.run_driver(lambda identifier, path: (_ for _ in ()).throw(ValueError('UIKit destination failed')))
+        value = json.loads((self.root / 'environment-only-result.json').read_text())
+        self.assertEqual(value['status'], 'FAIL_CORE_SIMULATOR_ENVIRONMENT_ONLY')
+        self.assertEqual(value['owned_destination_attempts'][0]['owned_device_uuid'], DEVICE)
+        self.assertTrue(value['owned_destination_attempts'][0]['cleanup_requested_after_failure'])
+        self.assertFalse(value['owned_destination_attempts'][0]['owned_device_shutdown_and_deleted'])
+        self.assertFalse(value['four_cold_Elichika_probes_proven'])
+
+    def test_environment_only_cli_cannot_accept_app_or_probe_options(self):
+        with patch('run_simulator.sys.argv', ['run_simulator', '--environment-only', '--evidence', str(self.root)]), \
+                patch('run_simulator.execute_environment_only') as environment, patch('run_simulator.execute') as app:
+            simulator_main()
+        environment.assert_called_once_with(self.root); app.assert_not_called()
+        with patch('run_simulator.sys.argv', ['run_simulator', '--environment-only', '--app', '/app', '--evidence', str(self.root)]), \
+                patch('run_simulator.execute_environment_only') as environment, \
+                self.assertRaisesRegex(ValueError, 'cannot accept app/probe'):
+            simulator_main()
+        environment.assert_not_called()
+
+    def test_malformed_created_selector_is_never_booted_or_used_for_cleanup(self):
+        def malformed(command, **kwargs):
+            self.calls.append((command, kwargs))
+            return {'returncode': 0, 'text': '--all'}
+        with self.assertRaisesRegex(ValueError, 'created Simulator identity'):
+            self.run_driver(invoke=malformed)
+        self.last_setup.assert_not_called(); self.last_cleanup.assert_not_called()
+        self.assertEqual(len(self.calls), 1)
+        value = json.loads((self.root / 'environment-only-result.json').read_text())
+        self.assertEqual(value['owned_destination_attempts'], [])
+
+    def test_late_zero_exit_cannot_revive_the_twelve_minute_environment_aggregate(self):
+        clock = [1000.0]
+        def late(command, **kwargs):
+            result = self.invoke(command, **kwargs)
+            if command[2] == 'bootstatus':
+                clock[0] += 721
+            return result
+        with patch('run_simulator.time.monotonic', side_effect=lambda: clock[0]), \
+                self.assertRaisesRegex(ValueError, 'boot command failed'):
+            self.run_driver(invoke=late)
+        self.last_setup.assert_not_called(); self.last_cleanup.assert_called_once_with(DEVICE)
+        value = json.loads((self.root / 'environment-only-result.json').read_text())
+        self.assertEqual(value['status'], 'FAIL_CORE_SIMULATOR_ENVIRONMENT_ONLY')
+        self.assertEqual(value['aggregate_budget_seconds'], 720)
+        self.assertFalse(value['four_cold_Elichika_probes_proven'])
+
+    def test_second_slow_boot_is_clamped_and_cleanup_is_reserved_without_restarting_the_clock(self):
+        clock = [1000.0]
+        def slow(command, **kwargs):
+            result = self.invoke(command, **kwargs)
+            clock[0] += kwargs['timeout'] if command[2] == 'bootstatus' else 1
+            return result
+        def preflight(identifier, path):
+            clock[0] += 120
+            return {'status': 'PASS_SIMULATOR_ENVIRONMENT_PREFLIGHT_ONLY'}
+        def cleanup(identifier):
+            clock[0] += 30
+        with patch('run_simulator.time.monotonic', side_effect=lambda: clock[0]), \
+                self.assertRaisesRegex(ValueError, 'boot command failed'):
+            self.run_driver(preflight, invoke=slow, cleanup_effect=cleanup)
+        boot_calls = [kwargs['timeout'] for command, kwargs in self.calls if command[2] == 'bootstatus']
+        self.assertEqual(len(boot_calls), 2)
+        self.assertLess(boot_calls[1], boot_calls[0])
+        self.assertLess(clock[0]-1000, 720)
+        self.assertEqual(self.last_setup.call_count, 1)
+        self.assertEqual(self.last_cleanup.call_count, 2)
+
+    def test_workflow_is_an_isolated_environment_job_and_never_a_candidate_job(self):
+        root = Path(__file__).resolve().parents[2]
+        workflow = (root / '.github/workflows/native-feature-compile.yml').read_text()
+        self.assertEqual(workflow, (root / '.github/workflows/ios-unified.yml').read_text())
+        apple = workflow.split('\n  apple-sdk:\n', 1)[1].split('\n  simulator-environment-only:\n', 1)[0]
+        self.assertIn("inputs.mode != 'simulator-environment-only'", apple.split('runs-on:', 1)[0])
+        environment = workflow.split('\n  simulator-environment-only:\n', 1)[1].split('\n  mv-export-native:\n', 1)[0]
+        self.assertIn('timeout-minutes: 15', environment)
+        self.assertIn('--environment-only', environment)
+        self.assertIn('elichika-ios-ENVIRONMENT_ONLY-', environment)
+        self.assertIn('submodules: false', environment)
+        for forbidden in ('setup-go', 'run_build.py', 'fetch_game.py', 'fetch_runtime_inputs.py',
+                          'finalize_parity_candidate.py', 'ios-candidate/', 'package_ipa.py'):
+            self.assertNotIn(forbidden, environment)
 
 
 if __name__ == '__main__':

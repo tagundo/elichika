@@ -6,6 +6,7 @@ claims that the actual arm64 SIFAS game ran in Simulator or on a device.
 """
 from __future__ import annotations
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -28,6 +29,8 @@ import simulator_diagnostics as diagnostics
 BUNDLE = 'org.elichika.simulator-probe'
 PORTS = (8080, 8770, 8772)
 ENVIRONMENT_SECONDS = 120
+ENVIRONMENT_ONLY_SECONDS = 720
+ENVIRONMENT_CLEANUP_RESERVE = 35
 SYSTEM_BUNDLE = 'com.apple.Preferences'
 
 
@@ -345,29 +348,126 @@ def validate_reply(value, core_only, *, launch_number=None, require_parity_ui=Fa
     return value
 
 
-def choose_runtime_and_types(*, ipad_first=False):
-    runtimes = json.loads(run(['xcrun', 'simctl', 'list', 'runtimes', '--json'], capture=True))['runtimes']
-    available = [row for row in runtimes if row.get('isAvailable') and row['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-')]
-    require(available, 'An installed real iOS Simulator runtime is required')
-    runtime = max(available, key=lambda row: tuple(int(part) for part in row['version'].split('.')))
-    types = json.loads(run(['xcrun', 'simctl', 'list', 'devicetypes', '--json'], capture=True))['devicetypes']
-    version_parts = [int(part) for part in runtime['version'].split('.')]
-    version_parts += [0] * (3-len(version_parts))
-    encoded_version = (version_parts[0] << 16) | (version_parts[1] << 8) | version_parts[2]
-    chosen = []
-    families = (('iPad', 'iPad Pro 13-inch (M4)'), ('iPhone', 'iPhone 16 Pro')) if ipad_first else (
-        ('iPhone', 'iPhone 16 Pro'), ('iPad', 'iPad Pro 13-inch (M4)'))
-    for family, preferred in families:
-        matches = [row for row in types if row['name'].startswith(family)
-                   and row.get('minRuntimeVersion', 0) <= encoded_version
-                   and row.get('maxRuntimeVersion', 0xffffffff) >= encoded_version]
-        # Device type runtime bounds are encoded integers on some Xcode
-        # versions. Creation below is the actual compatibility check.
-        if not matches:
-            matches = [row for row in types if row['name'].startswith(family)]
-        require(matches, 'Required Simulator device family unavailable: ' + family)
-        chosen.append(next((row for row in matches if row['name'] == preferred), matches[-1]))
-    return runtime, chosen
+def source_provenance():
+    return {'workflow_source_sha': os.environ.get('GITHUB_SHA'),
+            'workflow_run': os.environ.get('GITHUB_RUN_ID'),
+            'workflow_run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
+            'workflow_job': os.environ.get('GITHUB_JOB'),
+            'runner_script_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+
+
+def ios_version(value):
+    require(isinstance(value, str) and re.fullmatch(r'[0-9]+\.[0-9]+(?:\.[0-9]+)?', value),
+            'Invalid iOS SDK/runtime version')
+    parts = tuple(int(part) for part in value.split('.'))
+    require(all(0 <= part <= 255 for part in parts), 'iOS SDK/runtime version exceeds encoded bounds')
+    return parts + (0,) * (3-len(parts))
+
+
+def choose_runtime_and_types(*, ipad_first=False, selection_path=None, aggregate_deadline=None):
+    """Select an installed runtime compatible with the active SDK, before boot.
+
+    This conservative major/minor policy permits maintenance patches, prefers
+    the SDK's exact major/minor and otherwise uses the highest older version.
+    The previous runs did not retain their selected runtime: this does not
+    establish a runtime mismatch as their failure's cause.
+    """
+    receipt = {'schema': 1, 'status': 'STARTED_SIMULATOR_RUNTIME_SELECTION',
+               'source': source_provenance(), 'selection_before_device_creation': True,
+               'available_iOS_runtimes': [], 'unavailable_iOS_runtimes': [],
+               'device_types_considered': [], 'commands': []}
+    stage, last_command = 'active_sdk', None
+
+    def save():
+        if selection_path is not None:
+            write_json(selection_path, receipt)
+
+    def query(arguments, name):
+        nonlocal stage, last_command
+        stage = name
+        budget = 15 if aggregate_deadline is None else min(15, aggregate_deadline-time.monotonic())
+        require(budget > 0, 'Simulator runtime selection aggregate deadline expired')
+        result = diagnostics.bounded_command(arguments, timeout=budget, cap=2*1024*1024)
+        row = {'stage': name, 'budget_seconds': budget, 'returncode': result.get('returncode'),
+               'timed_out': bool(result.get('timed_out')), 'truncated': bool(result.get('truncated'))}
+        receipt['commands'].append(row); last_command = row, result
+        require(result.get('returncode') == 0 and not result.get('timed_out') and not result.get('truncated'),
+                'Simulator runtime selection query failed: ' + name)
+        require(aggregate_deadline is None or time.monotonic() < aggregate_deadline,
+                'Simulator runtime selection aggregate deadline expired')
+        return result.get('text', '').strip()
+
+    save()
+    try:
+        sdk = query(['xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'], 'active_sdk')
+        sdk_version = ios_version(sdk)
+        receipt['active_iphonesimulator_sdk'] = sdk
+        receipt['active_sdk_major_minor'] = list(sdk_version[:2]); save()
+        runtimes = json.loads(query(['xcrun', 'simctl', 'list', 'runtimes', '--json'], 'runtime_inventory'))['runtimes']
+        require(isinstance(runtimes, list) and len(runtimes) <= 128 and all(isinstance(row, dict) for row in runtimes),
+                'Simulator runtime inventory exceeds its bounded schema')
+        ios = [row for row in runtimes if isinstance(row.get('identifier'), str)
+               and row['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-')]
+        keys = ('identifier', 'name', 'version', 'buildversion', 'bundlePath', 'isAvailable', 'availabilityError')
+        for row in ios:
+            summary = {key: row[key] for key in keys if key in row}
+            receipt['available_iOS_runtimes' if row.get('isAvailable') is True else 'unavailable_iOS_runtimes'].append(summary)
+        save()
+        stage = 'runtime_compatibility'
+        available = [row for row in ios if row.get('isAvailable') is True]
+        versions = [(ios_version(row.get('version')), row) for row in available]
+        compatible = [(version, row) for version, row in versions if version[:2] <= sdk_version[:2]]
+        require(compatible, 'No available iOS Simulator runtime compatible with active SDK ' + sdk)
+        version, runtime = max(compatible, key=lambda pair: pair[0])
+        receipt['selection_reason'] = ('exact_sdk_major_minor_highest_patch' if version[:2] == sdk_version[:2]
+                                       else 'highest_older_sdk_major_minor')
+        receipt['selected_runtime'] = {key: runtime[key] for key in keys if key in runtime}
+        save()
+        types = json.loads(query(['xcrun', 'simctl', 'list', 'devicetypes', '--json'], 'device_type_inventory'))['devicetypes']
+        require(isinstance(types, list) and len(types) <= 1024 and all(isinstance(row, dict) for row in types),
+                'Simulator device-type inventory exceeds its bounded schema')
+        candidates = [row for row in types if isinstance(row.get('name'), str)
+                      and row['name'].startswith(('iPhone', 'iPad'))]
+        type_keys = ('identifier', 'name', 'minRuntimeVersion', 'maxRuntimeVersion',
+                     'minRuntimeVersionString', 'maxRuntimeVersionString')
+        receipt['device_types_considered'] = [{key: row[key] for key in type_keys if key in row} for row in candidates]
+        save(); stage = 'compatible_device_types'
+        encoded_version = (version[0] << 16) | (version[1] << 8) | version[2]
+        chosen = []
+        families = (('iPad', 'iPad Pro 13-inch (M4)'), ('iPhone', 'iPhone 16 Pro')) if ipad_first else (
+            ('iPhone', 'iPhone 16 Pro'), ('iPad', 'iPad Pro 13-inch (M4)'))
+        for family, preferred in families:
+            matches = []
+            for row in candidates:
+                if not row['name'].startswith(family):
+                    continue
+                low, high = row.get('minRuntimeVersion', 0), row.get('maxRuntimeVersion', 0xffffffff)
+                require(type(low) is int and type(high) is int and 0 <= low <= high <= 0xffffffff,
+                        'Simulator device runtime bounds are invalid: ' + row['name'])
+                if low <= encoded_version <= high:
+                    matches.append(row)
+            require(matches, 'No compatible Simulator device type for selected runtime: ' + family)
+            chosen.append(next((row for row in matches if row['name'] == preferred), matches[-1]))
+        require(all(isinstance(row.get('identifier'), str)
+                    and row['identifier'].startswith('com.apple.CoreSimulator.SimDeviceType.') for row in chosen),
+                'Selected Simulator device type identifier is invalid')
+        receipt['selected_device_types'] = [{key: row[key] for key in type_keys if key in row} for row in chosen]
+        receipt['status'] = 'PASS_SIMULATOR_RUNTIME_SELECTION_ONLY'; save()
+        return runtime, chosen
+    except Exception as error:
+        receipt.update(status='FAIL_SIMULATOR_RUNTIME_SELECTION_ONLY', failed_stage=stage,
+                       error_type=type(error).__name__, error=str(error)[:512])
+        if last_command and last_command[0]['stage'] == stage:
+            row, result = last_command
+            raw = result.get('text', '').encode('utf-8')[:8192].decode('utf-8', errors='ignore')
+            safe = diagnostics.redacted(raw, Path(__file__).resolve().parents[2]).encode('utf-8')
+            row['failure_output'] = safe[:8192].decode('utf-8', errors='ignore')
+            row['failure_output_truncated'] = bool(result.get('truncated')) or len(safe) > 8192
+        try:
+            save()
+        except OSError:
+            pass
+        raise ValueError('Simulator runtime selection failed at ' + stage) from error
 
 
 def retain_failure(evidence, label, identifier, process, watchdog, error, reply_file,
@@ -405,13 +505,105 @@ def retain_failure(evidence, label, identifier, process, watchdog, error, reply_
     write_json(evidence / (label + '-failure.json'), diagnostics)
 
 
+def execute_environment_only(evidence):
+    """Diagnose two owned UIKit destinations without building/installing our app."""
+    evidence = Path(evidence).resolve()
+    evidence.mkdir(parents=True, exist_ok=True)
+    began = time.monotonic()
+    deadline = began + ENVIRONMENT_ONLY_SECONDS
+    report = {'schema': 1, 'status': 'STARTED_CORE_SIMULATOR_ENVIRONMENT_ONLY',
+              'source': source_provenance(), 'destinations': [], 'owned_destination_attempts': [], 'boot_commands': [],
+              'aggregate_budget_seconds': ENVIRONMENT_ONLY_SECONDS,
+              'owned_device_cleanup_reserve_seconds': ENVIRONMENT_CLEANUP_RESERVE,
+              'actual_Elichika_app_installed_or_executed': False,
+              'native_Elichika_framework_compiled_or_executed': False,
+              'four_cold_Elichika_probes_proven': False, 'probe_launch_attempts': 0,
+              'actual_SIFAS_game_or_MV_executed': False, 'physical_iPhone_iPad_tested': False,
+              'IPA_created': False, 'release_or_publication_ready': False}
+    report_path = evidence / 'environment-only-result.json'
+    write_json(report_path, report)
+
+    def boot_command(arguments, limit, name):
+        budget = min(limit, deadline-time.monotonic()-ENVIRONMENT_CLEANUP_RESERVE)
+        require(budget > 0, 'Simulator environment-only aggregate deadline expired before ' + name)
+        result = diagnostics.bounded_command([str(value) for value in arguments], timeout=budget, cap=128*1024)
+        row = {'stage': name, 'budget_seconds': budget, 'returncode': result.get('returncode'),
+               'timed_out': bool(result.get('timed_out')), 'truncated': bool(result.get('truncated'))}
+        report['boot_commands'].append(row)
+        if (result.get('returncode') != 0 or result.get('timed_out') or result.get('truncated')
+                or time.monotonic() >= deadline-ENVIRONMENT_CLEANUP_RESERVE):
+            raw = result.get('text', '').encode('utf-8')[:8192].decode('utf-8', errors='ignore')
+            row['failure_output'] = diagnostics.redacted(raw, Path(__file__).resolve().parents[2]).encode('utf-8')[:8192].decode('utf-8', errors='ignore')
+            write_json(report_path, report)
+            raise ValueError('Simulator environment-only boot command failed: ' + name)
+        write_json(report_path, report)
+        return result.get('text', '').strip()
+
+    try:
+        runtime, devices = choose_runtime_and_types(ipad_first=True, selection_path=evidence / 'runtime-selection.json',
+                                                   aggregate_deadline=deadline-ENVIRONMENT_CLEANUP_RESERVE)
+        for model in devices:
+            identifier, attempt = None, None
+            try:
+                created = boot_command(['xcrun', 'simctl', 'create', 'Elichika-env-only-' + str(uuid.uuid4()),
+                                        model['identifier'], runtime['identifier']], 15, 'create_owned_destination')
+                require(exact_owned_uuid(created), 'Invalid environment-only created Simulator identity')
+                identifier = created
+                attempt = {'model': model['name'], 'runtime': runtime['version'],
+                           'runtime_identifier': runtime['identifier'], 'owned_device_uuid': identifier,
+                           'setup_complete': False, 'owned_device_shutdown_and_deleted': False}
+                report['owned_destination_attempts'].append(attempt)
+                write_json(report_path, report)
+                boot_command(['xcrun', 'simctl', 'boot', identifier], 15, 'boot_owned_destination')
+                # This new diagnostic mode bounds an OS boot separately; it
+                # neither starts nor extends any Elichika 60/600s clock.
+                boot_command(['xcrun', 'simctl', 'bootstatus', identifier, '-b'], 300, 'await_OS_boot')
+                require(deadline-time.monotonic() > ENVIRONMENT_SECONDS+ENVIRONMENT_CLEANUP_RESERVE,
+                        'Simulator environment-only aggregate has no complete preflight and cleanup budget remaining')
+                destination = prepare_simulator_environment(identifier,
+                    evidence / (model['name'].replace('/', '-') + '-environment.json'))
+                attempt['setup_complete'] = True
+            finally:
+                if identifier:
+                    original_failure = sys.exc_info()[0] is not None
+                    cleanup_owned_probe(identifier)
+                    attempt['cleanup_requested_after_failure'] = original_failure
+                    if not original_failure:
+                        attempt['owned_device_shutdown_and_deleted'] = True
+                    try:
+                        write_json(report_path, report)
+                    except OSError:
+                        if not original_failure:
+                            raise
+            report['destinations'].append({'model': model['name'], 'runtime': runtime['version'],
+                                           'environment': destination, 'owned_device_shutdown_and_deleted': True})
+            write_json(report_path, report)
+        require(len(report['destinations']) == 2 and
+                {row['model'].split()[0] for row in report['destinations']} == {'iPhone', 'iPad'},
+                'Environment-only check requires both owned iPhone and iPad destinations')
+        require(time.monotonic() < deadline, 'Simulator environment-only aggregate deadline expired')
+        report['status'] = 'PASS_CORE_SIMULATOR_ENVIRONMENT_ONLY'
+        report['elapsed_seconds'] = time.monotonic()-began
+        write_json(report_path, report)
+        return report
+    except Exception as error:
+        report.update(status='FAIL_CORE_SIMULATOR_ENVIRONMENT_ONLY', error_type=type(error).__name__,
+                      error=str(error)[:512], elapsed_seconds=time.monotonic()-began)
+        try:
+            write_json(report_path, report)
+        except OSError:
+            pass
+        raise
+
+
 def execute(app, evidence, *, core_only, require_parity_ui=False):
     require(not core_only or not require_parity_ui, 'Parity UI requires full real tools')
     app, evidence = Path(app).resolve(), Path(evidence).resolve()
     evidence.mkdir(parents=True, exist_ok=True)
     require(not any(port_open(port) for port in PORTS), 'A conflicting pre-existing loopback server is listening')
     before = inventory(app)
-    runtime, devices = choose_runtime_and_types(ipad_first=require_parity_ui)
+    runtime, devices = choose_runtime_and_types(ipad_first=require_parity_ui,
+                                               selection_path=evidence / 'runtime-selection.json')
     results, environment_preflights = [], []
     for model in devices:
         identifier = None
@@ -530,12 +722,20 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--app', type=Path, required=True)
+    parser.add_argument('--app', type=Path)
     parser.add_argument('--evidence', type=Path, required=True)
+    parser.add_argument('--environment-only', action='store_true',
+                        help='Only diagnose owned CoreSimulator UIKit destinations; never install/prove our app')
     parser.add_argument('--core-only', action='store_true')
     parser.add_argument('--require-parity-ui', action='store_true')
     args = parser.parse_args()
-    execute(args.app, args.evidence, core_only=args.core_only, require_parity_ui=args.require_parity_ui)
+    if args.environment_only:
+        require(args.app is None and not args.core_only and not args.require_parity_ui,
+                'Environment-only diagnostics cannot accept app/probe options')
+        execute_environment_only(args.evidence)
+    else:
+        require(args.app is not None, 'An app is required for actual Elichika Simulator probes')
+        execute(args.app, args.evidence, core_only=args.core_only, require_parity_ui=args.require_parity_ui)
 
 
 if __name__ == '__main__':

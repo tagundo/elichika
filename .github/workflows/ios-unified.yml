@@ -6,7 +6,7 @@ on:
       mode:
         description: 'SDK compile, real core Simulator runtime, or full tools+actual-game candidate'
         type: choice
-        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, experimental-parity, full-candidate, mv-export-native, mv-export-android-game]
+        options: [sdk-compile, core-runtime, runtime-inputs, tools-runtime, experimental-candidate, experimental-package, experimental-parity, full-candidate, mv-export-native, mv-export-android-game, simulator-environment-only]
         default: sdk-compile
       version:
         description: 'Optional YYYY.MM.DD.N; must match actual build date in Seoul'
@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   apple-sdk:
-    if: ${{ inputs.mode != 'mv-export-native' && inputs.mode != 'mv-export-android-game' }}
+    if: ${{ inputs.mode != 'mv-export-native' && inputs.mode != 'mv-export-android-game' && inputs.mode != 'simulator-environment-only' }}
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -290,6 +290,53 @@ jobs:
         with:
           name: elichika-ios-${{ inputs.mode }}-evidence-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ios-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+  simulator-environment-only:
+    if: ${{ inputs.mode == 'simulator-environment-only' }}
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Check out exact environment diagnostic source without game or data inputs
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          submodules: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up diagnostic Python only
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Verify environment contracts and actual host kernel reader without building our app
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/simulator-environment-only"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 -B -m unittest discover -s ios/ci -p 'test_simulator_launch.py' -v \
+            2>&1 | tee "$RUNNER_TEMP/simulator-environment-only/environment-contract-tests.txt"
+          PYTHONPATH="$GITHUB_WORKSPACE/ios/ci" python3 -B -m unittest -v \
+            test_simulator_diagnostics.KernelExecutableTests.test_real_darwin_pid_uid_birth_and_image_match_one_independent_host_snapshot \
+            2>&1 | tee "$RUNNER_TEMP/simulator-environment-only/actual-kernel-reader-preflight.txt"
+
+      - name: Diagnose two fresh owned UIKit destinations only - no Elichika app or MV proof
+        run: |
+          set -euo pipefail
+          python3 -B ios/ci/run_simulator.py --environment-only \
+            --evidence "$RUNNER_TEMP/simulator-environment-only" \
+            2>&1 | tee "$RUNNER_TEMP/simulator-environment-only/environment-only.log"
+
+      - name: Preserve ENVIRONMENT_ONLY evidence - not a candidate or app validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: elichika-ios-ENVIRONMENT_ONLY-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/simulator-environment-only/
           if-no-files-found: warn
           retention-days: 7
 

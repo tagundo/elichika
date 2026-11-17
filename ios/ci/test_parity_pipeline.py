@@ -175,16 +175,18 @@ class ParitySimulatorTests(unittest.TestCase):
     def test_parity_executes_ipad_first_without_normalizing_or_skipping_four_launches(self):
         runtime = {'identifier':'com.apple.CoreSimulator.SimRuntime.iOS-26-2',
                    'version':'26.2','isAvailable':True}
-        devices = [{'name':'iPhone 16 Pro','identifier':'phone'},
-                   {'name':'iPad Pro 13-inch (M4)','identifier':'tablet'}]
+        devices = [{'name':'iPhone 16 Pro','identifier':'com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro'},
+                   {'name':'iPad Pro 13-inch (M4)','identifier':'com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-M4'}]
         for parity, first in ((True,'iPad'),(False,'iPhone')):
-            with patch('run_simulator.run', side_effect=[json.dumps({'runtimes':[runtime]}),
-                                                        json.dumps({'devicetypes':devices})]):
+            responses = [{'returncode':0, 'timed_out':False, 'truncated':False, 'text':text}
+                         for text in ('26.2', json.dumps({'runtimes':[runtime]}),
+                                      json.dumps({'devicetypes':devices}))]
+            with patch('run_simulator.diagnostics.bounded_command', side_effect=responses):
                 _, selected = choose_runtime_and_types(ipad_first=parity)
                 self.assertTrue(selected[0]['name'].startswith(first))
                 self.assertEqual(len(selected),2)
         code=(ROOT/'ios/ci/run_simulator.py').read_text()
-        self.assertIn('choose_runtime_and_types(ipad_first=require_parity_ui)',code)
+        self.assertIn('choose_runtime_and_types(ipad_first=require_parity_ui,',code)
         self.assertIn("report['actual_execution_order']",code)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);result=aggregate(root)
