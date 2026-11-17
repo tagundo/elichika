@@ -10,6 +10,8 @@ import json
 import math
 import os
 from pathlib import Path
+import plistlib
+import re
 import socket
 import subprocess
 import sys
@@ -21,9 +23,190 @@ from common import inventory, require, run, write_json
 from probe_watchdog import DETAILS, FIRST_PROGRESS_SECONDS, STAGE_SECONDS, ProbeWatchdog, read_progress, stage_budgets
 from probe_launch import launch_owned, launch_command as probe_launch_command
 from simulator_diagnostics import capture_owned_diagnostics
+import simulator_diagnostics as diagnostics
 
 BUNDLE = 'org.elichika.simulator-probe'
 PORTS = (8080, 8770, 8772)
+ENVIRONMENT_SECONDS = 120
+SYSTEM_BUNDLE = 'com.apple.Preferences'
+
+
+def exact_owned_uuid(value):
+    try:
+        return isinstance(value, str) and str(uuid.UUID(value)) == value.lower()
+    except ValueError:
+        return False
+
+
+def prepare_simulator_environment(identifier, receipt_path):
+    """Check the owned destination's UIKit launch service before probe install.
+
+    GUI-backed setup is standard but optional, not an established explanation
+    for earlier headless failures. At most two fresh Simulator GUI clients may
+    remain until this disposable CI job ends; never quit another GUI or device.
+    Neither GUI request acceptance nor a system-app launch proves probe/MV
+    readiness. The probe's unchanged 60/600-second clocks start later.
+    """
+    require(exact_owned_uuid(identifier),
+            'Simulator environment preflight requires an exact owned UUID')
+    began = time.monotonic()
+    deadline = began + ENVIRONMENT_SECONDS
+    receipt = {'schema': 1, 'status': 'STARTED_SIMULATOR_ENVIRONMENT_PREFLIGHT',
+               'owned_device_uuid': identifier, 'aggregate_budget_seconds': ENVIRONMENT_SECONDS,
+               'probe_installed_during_preflight': False, 'probe_launch_attempts': 0,
+               'gui_request_accepted': False, 'gui_window_proven': False,
+               'system_app_launch_acknowledged': False, 'system_app_kernel_identity_verified': False,
+               'system_app_confirmed_absent': False,
+               'system_app_device_binding': 'UUID_SCOPED_SIMCTL_REQUEST_AND_PID_REPLY',
+               'probe_or_MV_readiness_proven': False, 'commands': []}
+    stage = 'selected_xcode'
+    launch_requested = termination_requested = False
+    last_command = None
+
+    def remaining(limit):
+        budget = min(limit, deadline - time.monotonic())
+        require(budget > 0, 'Simulator environment preflight exceeded its aggregate deadline')
+        return budget
+
+    def retain_command_failure(row, result):
+        encoded = result.get('text', '').encode('utf-8')
+        raw = encoded[:8192].decode('utf-8', errors='ignore')
+        safe = diagnostics.redacted(raw, Path(__file__).resolve().parents[2]).encode('utf-8')
+        row['failure_output'] = safe[:8192].decode('utf-8', errors='ignore')
+        row['failure_output_truncated'] = bool(result.get('truncated')) or len(encoded) > 8192 or len(safe) > 8192
+        if result.get('error_type'):
+            row['error_type'] = result['error_type']
+
+    def command(arguments, limit, name):
+        nonlocal stage, last_command
+        stage = name
+        budget = remaining(limit)
+        result = diagnostics.bounded_command([str(part) for part in arguments], timeout=budget, cap=8192)
+        row = {'stage': name, 'budget_seconds': budget, 'returncode': result.get('returncode'),
+               'timed_out': bool(result.get('timed_out')), 'truncated': bool(result.get('truncated'))}
+        receipt['commands'].append(row)
+        last_command = row, result
+        try:
+            require(result.get('returncode') == 0 and not result.get('timed_out')
+                    and not result.get('truncated'), 'Simulator environment preflight command failed: ' + name)
+            remaining(1)
+        except ValueError:
+            # Preserve a bounded, redacted cause (e.g. FBS denial) rather than
+            # reducing the next environment failure to a generic launch error.
+            retain_command_failure(row, result)
+            raise
+        return result.get('text', '').strip()
+
+    def bundle_executable(bundle, expected_id, *, mac=False):
+        info = bundle / ('Contents/Info.plist' if mac else 'Info.plist')
+        require(info.is_file() and not info.is_symlink() and info.stat().st_size <= 128 * 1024,
+                'Simulator environment preflight bundle metadata differs')
+        value = plistlib.loads(info.read_bytes())
+        name = value.get('CFBundleExecutable')
+        require(value.get('CFBundleIdentifier') == expected_id and isinstance(name, str)
+                and re.fullmatch(r'[A-Za-z0-9_.-]+', name) and name not in ('.', '..'),
+                'Simulator environment preflight bundle identity differs')
+        executable = (bundle / ('Contents/MacOS' if mac else '') / name).resolve(strict=True)
+        require(executable.is_file() and executable.is_relative_to(bundle) and os.access(executable, os.X_OK),
+                'Simulator environment preflight executable differs')
+        return executable
+
+    try:
+        # xcrun selects the active Xcode, including a DEVELOPER_DIR override.
+        text = command(['xcrun', '--find', 'simctl'], 15, 'selected_xcode')
+        selected = Path(text)
+        require(selected.is_absolute() and '\n' not in text and '\0' not in text
+                and selected.name == 'simctl' and selected.parent.name == 'bin'
+                and selected.parent.parent.name == 'usr',
+                'Simulator environment preflight selected tool path differs')
+        developer = selected.parents[2].resolve(strict=True)
+        require(selected.resolve(strict=True).is_relative_to(developer),
+                'Simulator environment preflight selected tool escapes Xcode')
+        simulator = (developer / 'Applications/Simulator.app').resolve(strict=True)
+        require(simulator.is_relative_to(developer),
+                'Simulator environment preflight GUI escapes selected Xcode')
+        bundle_executable(simulator, 'com.apple.iphonesimulator', mac=True)
+        receipt['selected_simulator_app'] = str(simulator)
+        command(['open', '-n', '-a', simulator, '--args', '-CurrentDeviceUDID', identifier],
+                15, 'simulator_gui_request')
+        receipt['gui_request_accepted'] = True
+        text = command(['xcrun', 'simctl', 'get_app_container', identifier, SYSTEM_BUNDLE, 'app'],
+                       15, 'system_app_container')
+        require(Path(text).is_absolute() and '\n' not in text and '\0' not in text,
+                'Simulator environment preflight system app path differs')
+        system_app = Path(text).resolve(strict=True)
+        expected = bundle_executable(system_app, SYSTEM_BUNDLE)
+        launch_wall = time.time()
+        launch_requested = True
+        text = command(['xcrun', 'simctl', 'launch', identifier, SYSTEM_BUNDLE], 60, 'system_app_launch')
+        candidates = {int(match.group(1)) for line in text.splitlines()
+                      if (match := re.fullmatch(re.escape(SYSTEM_BUNDLE) + r': ([0-9]{1,10})', line.strip()))
+                      and 1 < int(match.group(1)) < 2**31}
+        require(len(candidates) == 1, 'Simulator environment preflight system app PID differs')
+        pid = candidates.pop()
+        receipt['system_app_launch_acknowledged'] = True
+        stage = 'system_app_kernel_identity'
+        value = diagnostics._darwin_process_snapshot(pid)
+        valid_birth = (type(value.get('start_sec')) is int and type(value.get('start_usec')) is int
+                       and 0 <= value['start_usec'] < 1000000)
+        checks = {'snapshot_kind': value.get('kind') if value.get('kind') in
+                  ('alive', 'exiting', 'gone', 'unavailable') else 'unavailable',
+                  'pid_matches': type(value.get('pid')) is int and value['pid'] == pid,
+                  'effective_uid_matches': type(value.get('uid')) is int and value['uid'] == os.geteuid(),
+                  'canonical_image_matches': value.get('executable') == str(expected),
+                  'birth_in_launch_window': valid_birth and launch_wall - 2 <=
+                  value['start_sec'] + value['start_usec'] / 1000000 <= time.time() + 2}
+        receipt['system_app_kernel_checks'] = checks
+        require(checks['snapshot_kind'] == 'alive' and all(checks[key] for key in
+                ('pid_matches', 'effective_uid_matches', 'canonical_image_matches', 'birth_in_launch_window')),
+                'Simulator environment preflight system app kernel identity differs')
+        birth = tuple(value[key] for key in ('pid', 'uid', 'start_sec', 'start_usec'))
+        receipt['system_app_kernel_identity_verified'] = True
+        receipt['system_app_identity'] = {key: value[key] for key in
+                                          ('pid', 'uid', 'start_sec', 'start_usec', 'executable')}
+        termination_requested = True
+        command(['xcrun', 'simctl', 'terminate', identifier, SYSTEM_BUNDLE], 15, 'system_app_terminate')
+        stage = 'system_app_absence'
+        absence_deadline = time.monotonic() + remaining(15)
+        while True:
+            remaining(1)
+            require(time.monotonic() < absence_deadline,
+                    'Simulator environment preflight system app did not exit')
+            current = diagnostics._darwin_bsd_snapshot(pid)
+            require(time.monotonic() < absence_deadline,
+                    'Simulator environment preflight system app absence observation exceeded its deadline')
+            if current.get('kind') == 'gone':
+                break
+            require(current.get('kind') == 'present'
+                    and tuple(current[key] for key in ('pid', 'uid', 'start_sec', 'start_usec')) == birth,
+                    'Simulator environment preflight system app identity changed while exiting')
+            time.sleep(min(.1, remaining(.1), max(0, absence_deadline - time.monotonic())))
+        remaining(1)
+        receipt['system_app_confirmed_absent'] = True
+        receipt['status'] = 'PASS_SIMULATOR_ENVIRONMENT_PREFLIGHT_ONLY'
+        receipt['elapsed_seconds'] = time.monotonic() - began
+        write_json(receipt_path, receipt)
+        return receipt
+    except Exception as error:
+        failed_stage = stage
+        if last_command and last_command[0]['stage'] == failed_stage:
+            # A zero exit code with malformed path/PID output is also a setup
+            # failure; retain that command's safe cause only on this path.
+            retain_command_failure(*last_command)
+        if launch_requested and not termination_requested and time.monotonic() < deadline:
+            termination_requested = True
+            try:
+                command(['xcrun', 'simctl', 'terminate', identifier, SYSTEM_BUNDLE],
+                        15, 'system_app_failure_cleanup')
+            except Exception:
+                receipt['system_app_failure_cleanup_incomplete'] = True
+        receipt.update(status='FAIL_SIMULATOR_ENVIRONMENT_PREFLIGHT_ONLY', failed_stage=failed_stage,
+                       error_type=type(error).__name__, elapsed_seconds=time.monotonic() - began)
+        try:
+            write_json(receipt_path, receipt)
+        except OSError:
+            pass  # Preserve the setup failure; outer cleanup still removes only this owned device.
+        raise ValueError('Simulator environment preflight failed at ' + failed_stage) from error
 
 
 def cleanup_owned_probe(identifier, process=None, *, terminate_only=False):
@@ -229,15 +412,18 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
     require(not any(port_open(port) for port in PORTS), 'A conflicting pre-existing loopback server is listening')
     before = inventory(app)
     runtime, devices = choose_runtime_and_types(ipad_first=require_parity_ui)
-    results = []
+    results, environment_preflights = [], []
     for model in devices:
         identifier = None
         try:
             name = 'Elichika-owned-probe-' + str(uuid.uuid4())
-            identifier = run(['xcrun', 'simctl', 'create', name, model['identifier'], runtime['identifier']], capture=True).strip()
-            require(identifier and len(identifier) < 80, 'Invalid owned Simulator identity')
+            created = run(['xcrun', 'simctl', 'create', name, model['identifier'], runtime['identifier']], capture=True).strip()
+            require(exact_owned_uuid(created), 'Invalid owned Simulator identity')
+            identifier = created
             run(['xcrun', 'simctl', 'boot', identifier])
             run(['xcrun', 'simctl', 'bootstatus', identifier, '-b'])
+            environment_preflights.append(prepare_simulator_environment(
+                identifier, evidence / (model['name'].replace('/', '-') + '-environment.json')))
             run(['xcrun', 'simctl', 'install', identifier, app])
             installed = Path(run(['xcrun', 'simctl', 'get_app_container', identifier, BUNDLE, 'app'], capture=True).strip())
             require(inventory(installed) == before, 'Simulator installation changed signed bundle bytes')
@@ -335,6 +521,7 @@ def execute(app, evidence, *, core_only, require_parity_ui=False):
               'results': results, 'all_owned_ports_closed_after_termination': True,
               'signed_bundle_readonly_and_unchanged': True, 'actual_SIFAS_game_executed': False,
               'physical_iPhone_iPad_execution': False, 'probe_not_a_device_IPA_input': True}
+    report['simulator_environment_preflights'] = environment_preflights
     report['actual_execution_order'] = [{'model': row['model'], 'launch_number': row['launch_number']}
                                         for row in results]
     write_json(evidence / 'result.json', report)
