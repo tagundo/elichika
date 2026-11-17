@@ -62,7 +62,7 @@ struct NativeArray { void *data; int32_t length; uint32_t allocator; };
 struct Bone { void *bone,*transform,*child;uint32_t bone_root,transform_root,child_root; uint8_t scalar[128]; Quat rotation; };
 struct Manager { void *object,*array;uint32_t object_root,array_root; uint8_t paused; };
 struct Methods {
-    Method hook[9],alive,find_objects,timeline,time_get,time_set,mode_get,mode_set,state_get,play,pause,evaluate;
+    Method hook[9],alive,find_objects,timeline,time_get,time_set,mode_get,mode_set,state_get,play,stop,pause,evaluate,deferred_evaluate;
     Method camera_manager,member_manager,music_machine,final_overlay,reset_components,resize_cameras;
     Method rt_constructor,rt_create,rt_release,rt_active_get,rt_active_set,texture_constructor;
     Method read_pixels,image_pointer,image_size,blit,destroy,job_complete,apply_transform,request_safe;
@@ -350,7 +350,9 @@ bool init_runtime() {
     M(time_set,pd,"set_time",false,"System.Void",1,d);
     M(mode_set,pd,"set_timeUpdateMode",false,"System.Void",1,mode);
     M(state_get,pd,"get_state",false,"UnityEngine.Playables.PlayState",0,nullptr);
-    M(play,pd,"Play",false,"System.Void",0,nullptr); M(pause,pd,"Pause",false,"System.Void",0,nullptr);
+    M(play,pd,"Play",false,"System.Void",0,nullptr); M(stop,pd,"Stop",false,"System.Void",0,nullptr);
+    M(deferred_evaluate,pd,"DeferredEvaluate",false,"System.Void",0,nullptr);
+    M(pause,pd,"Pause",false,"System.Void",0,nullptr);
     M(evaluate,pd,"Evaluate",false,"System.Void",0,nullptr);
     M(rt_constructor,render,".ctor",false,"System.Void",5,rctor);
     M(rt_create,render,"Create",false,"System.Boolean",0,nullptr);
@@ -503,13 +505,24 @@ bool snapshot_springs() {
     if(collider_size)memcpy(collider_bytes,saved_colliders.data,collider_size);
     return true;
 }
+// Immediate evaluation is used only to initialize a fresh graph at a seek
+// position. Normal playback follows the game's LiveTimeSynchronizer ordering:
+// set time, then let Unity evaluate the graph in its deferred PlayerLoop phase.
 bool set_time(double seconds) { void *args[]={&seconds}; return invoke_void(m.time_set,timeline,args)&&invoke_void(m.evaluate,timeline); }
+bool schedule_time(double seconds) { void *args[]={&seconds}; return invoke_void(m.time_set,timeline,args)&&invoke_void(m.deferred_evaluate,timeline); }
+bool restart_timeline_graph() {
+    // No-seek mixers keep started/completed clip indices across backward time
+    // assignments. Stop destroys that graph; Play constructs fresh mixers with
+    // their original -1 index sentinels. Reset the baseline before constructing
+    // the new graph, so authored tracks reapply camera/member/stage values.
+    uint8_t no=0;void *reset[]={&no};
+    return invoke_void(m.stop,timeline)&&invoke_void(m.reset_components,director,reset)&&invoke_void(m.play,timeline);
+}
 bool reset_springs() {
     uint8_t no=0; void *unpause[]={&no};
     for (uint32_t i=0;i<manager_count;i++) if (!invoke_void(m.manager_pause_set,managers[i].object,unpause)) return false;
     for (uint32_t i=0;i<bone_count;i++) { void *args[]={bones[i].scalar}; if (!invoke_void(m.rotation_set,bones[i].transform,args)) return false; }
-    void *reset[]={&no};
-    if (!invoke_void(m.reset_components,director,reset) || !set_time(0) || !invoke_void(m.apply_transform,members)) return false;
+    if (!set_time(0) || !invoke_void(m.apply_transform,members)) return false;
     for (uint32_t i=0;i<bone_count;i++) {
         Vec3 tip{}; if (!value(m.position,load<void *>(bones[i].bone,f.child.offset),&tip)) return false;
         put<Vec3>(saved_bones.data,(size_t)i*96+72,tip); put<Vec3>(saved_bones.data,(size_t)i*96+84,tip);
@@ -593,6 +606,9 @@ bool restore_scene() {
         // from absorbing all encoder wall time as one simulation delta.
     }
     if (safe) {
+        // The export graph has completed the song. A backward restore on that
+        // graph would skip the original MV's earlier lip/light/effect clips.
+        ok=restart_timeline_graph()&&ok;
         ok=set_time(saved_time)&&ok;
         NativeArray current=load<NativeArray>(members,f.bone_array.offset),colliders=load<NativeArray>(members,f.collider_array.offset);
         if (current.data!=saved_bones.data || current.length!=saved_bones.length ||
@@ -1062,11 +1078,13 @@ bool begin(const Request &begin_request) {
     active=true; abandoned=false; have_tick=false; accepted_frames=audio_index=0;
     advancing=awaiting_capture=finishing=pending_pixels=frame_ready=false;
     if(!resume_pause_state())return false;
-    if(!create_render_targets())return false;
     int32_t manual=3; void *mode[]={&manual};
     if (!invoke_void(m.mode_set,timeline,mode))return setup_rejected("Unity rejected manual MV timeline update mode");
-    if (!invoke_void(m.play,timeline))return setup_rejected("Unity rejected starting the MV timeline");
-    if (!reset_springs())return setup_rejected("The original MV spring reset/evaluation failed");
+    if (!restart_timeline_graph())return setup_rejected("Could not rebuild the MV timeline and reset its original lip/light/effect clip progression");
+    if (!reset_springs())return setup_rejected("The original MV spring reset/initial timeline evaluation failed");
+    // Build/reroute targets only after the original baseline reset and fresh
+    // track initialization; a later full reset would clear the routed state.
+    if(!create_render_targets())return false;
     uint8_t yes=1,no=0; void *pause_sound[]={&yes};
     if (!invoke_void(m.sound_pause,sound,pause_sound))return setup_rejected("The original SoundPlayer could not pause live audio for offline export");
     put<uint8_t>(music,f.playing.offset,yes); put<uint8_t>(music,f.pausing.offset,no);
@@ -1231,7 +1249,7 @@ extern "C" void amv_game_time_update(void *manager) {
     for(size_t off:{size_t(0x78),size_t(0x7c),size_t(0xa8),size_t(0xac)})put<float>(manager,off,(float)dt);
     put<int32_t>(music,f.music_time.offset,(int32_t)(tick*1000/simulation_hz));
     advancing=true;
-    if(!set_time((double)tick/simulation_hz)){fail("MV timeline evaluation failed");return;}
+    if(!schedule_time((double)tick/simulation_hz)){fail("MV deferred timeline evaluation could not be scheduled");return;}
     uint64_t divisor=simulation_hz/config.fps;
     if(tick%divisor==0){pending_frame=tick/divisor;awaiting_capture=true;}
     publish();
