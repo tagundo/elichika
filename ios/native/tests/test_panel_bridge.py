@@ -35,6 +35,9 @@ def _published_scripts(source):
     tool_append = literal(r'NSString \*toolSeed=\[seed stringByAppendingString:' + quoted + r'\];', method('probeRetainedPanels'))
     storage = literal(r'NSString \*script=\[NSString stringWithFormat:' + quoted + r',ELJSON\(arguments\)', source)
     tail = method('pollManagementProbe').split('NSString *script=_managementProbeStep==2', 1)[1]
+    helper = source.split('static NSString *ELAccountResponseValidationScript(void) {', 1)[1].split('\n}', 1)[0]
+    offline = ''.join(json.loads(match.group(1)) for match in _LITERAL.finditer(helper))
+    tail = tail.replace('? ELAccountResponseValidationScript()', '? ' + json.dumps(offline), 1)
     position, branch, bodies = 0, 0, ['', '']
     while True:
         while position < len(tail) and tail[position].isspace():
@@ -147,22 +150,32 @@ const flush=()=>new Promise(resolve=>setImmediate(resolve));
   const picker=page();picker.context.location.pathname='/ios/server/webui/user/login';
   picker.context.location.href='http://127.0.0.1:8772/ios/server/webui/user/login?session=fixture';
   picker.context.document.body.dataset.elichikaLocalAccess='true';
-  picker.fields.set('native-account-picker',{hidden:false});let count=1,httpOK=true,returned={accounts:[{user_id:7,rank:2}]},fetches=[];
+  picker.fields.set('native-account-picker',{hidden:false});let count=1,nativeReady=false,fetches=0;
   picker.fields.set('native-account-list',{querySelectorAll:()=>Array(count).fill({})});
-  picker.context.fetch=async url=>{fetches.push(String(url));return{ok:httpOK,json:async()=>returned}};
-  picker.onRequest=r=>queueMicrotask(()=>deliver(picker,r,{real_backend_ready:false}));
-  value=await body(picker,code.offline_body,{step:2,allowStart:true});assert.equal(value.offline_accounts,true);
+  picker.context.fetch=()=>{++fetches;throw Error('Proof must not repeat the account page request')};
+  picker.onRequest=r=>queueMicrotask(()=>deliver(picker,r,{real_backend_ready:nativeReady}));
+  const accountArgs={step:2,allowStart:true,accountNonce:'fresh-probe',accountGeneration:4};
+  const captured={schema:1,nonce:accountArgs.accountNonce,generation:accountArgs.accountGeneration,
+    document:picker.context.__elichikaNativeDocument,observed:true,valid:true,http_status:200,count:1};
+  picker.context.__elichikaAccountResponse={...captured};
+  value=await body(picker,code.offline_body,accountArgs);assert.equal(value.offline_accounts,true);
   assert.equal(picker.requests.at(-1).action,'status');
-  assert.equal(fetches[0],'http://127.0.0.1:8772/ios/server/webui/user/native_accounts?session=fixture');
-  httpOK=false;value=await body(picker,code.offline_body,{step:2,allowStart:true});assert.equal(value.error,true);
-  httpOK=true;returned={accounts:[{user_id:7,rank:1.5}]};
-  value=await body(picker,code.offline_body,{step:2,allowStart:true});assert.equal(value.error,true);
-  returned={accounts:[{user_id:7,rank:2}]};count=0;
-  value=await body(picker,code.offline_body,{step:2,allowStart:true});assert.equal(value.waiting,true);
+  for(const invalid of [{http_status:500},{valid:false},{count:-1},{count:1.5}]){
+    picker.context.__elichikaAccountResponse={...captured,...invalid};
+    value=await body(picker,code.offline_body,accountArgs);assert.equal(value.error,true);
+  }
+  for(const stale of [{nonce:'old-probe'},{generation:3},{document:'old-document'},{observed:false},{schema:2}]){
+    picker.context.__elichikaAccountResponse={...captured,...stale};
+    value=await body(picker,code.offline_body,accountArgs);assert.equal(value.waiting,true);
+  }
+  picker.context.__elichikaAccountResponse={...captured};nativeReady=true;
+  value=await body(picker,code.offline_body,accountArgs);assert.equal(value.offline_accounts,false);
+  nativeReady=false;count=0;
+  value=await body(picker,code.offline_body,accountArgs);assert.equal(value.waiting,true);
   count=1;picker.context.document.body.dataset.elichikaLocalAccess='false';
-  value=await body(picker,code.offline_body,{step:2,allowStart:true});assert.equal(value.waiting,true);
+  value=await body(picker,code.offline_body,accountArgs);assert.equal(value.waiting,true);
   picker.context.document.body.dataset.elichikaLocalAccess='true';picker.context.location.pathname='/other';
-  value=await body(picker,code.offline_body,{step:2,allowStart:true});assert.equal(value.waiting,true);
+  value=await body(picker,code.offline_body,accountArgs);assert.equal(value.waiting,true);assert.equal(fetches,0);
   for(const p of [manage,content,tools]){
     p.context.dispatchEvent({type:'pagehide'});assert.equal(p.run(formatted(code.checks[0],token)).same,false);
   }

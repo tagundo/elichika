@@ -334,6 +334,43 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 }
 @end
 
+#if ELICHIKA_SIMULATOR_PROBE
+static NSString *ELAccountResponseObserverScript(void) {
+    return @"/* ELICHIKA_ACCOUNT_RESPONSE_OBSERVER */((binding)=>{"
+    "const doc=window.__elichikaNativeDocument,original=window.fetch;let sequence=0;"
+    "let receipt=Object.freeze({schema:1,nonce:binding.nonce,generation:binding.generation,document:doc,observed:false,valid:false,http_status:0,count:0});"
+    "Object.defineProperty(window,'__elichikaAccountResponse',{get:()=>receipt});"
+    "const publish=(id,status,valid,count)=>{if(id!==sequence||window.__elichikaNativeDocument!==doc)return;"
+    "receipt=Object.freeze({schema:1,nonce:binding.nonce,generation:binding.generation,document:doc,observed:true,valid:valid,http_status:status,count:count});};"
+    "window.fetch=function(...args){const pending=Reflect.apply(original,this,args);try{"
+    "const input=args[0],options=args[1]||{};let address,method='GET',credentials='same-origin';"
+    "if(typeof input==='string')address=input;else if(typeof URL!=='undefined'&&input instanceof URL)address=input.href;"
+    "else if(typeof Request!=='undefined'&&input instanceof Request){address=input.url;method=input.method;credentials=input.credentials;}else return pending;"
+    "if(options.method!==undefined)method=options.method;if(options.credentials!==undefined)credentials=options.credentials;"
+    "const requested=new URL(address,location.href),endpoint=location.pathname.startsWith('/ios/server/')?'/ios/server/webui/user/native_accounts':'/webui/user/native_accounts';"
+    "if(typeof doc!=='string'||!doc||String(method).toUpperCase()!=='GET'||credentials==='omit'||requested.origin!==location.origin||"
+    "requested.username||requested.password||requested.search||requested.hash||requested.pathname!==endpoint)return pending;"
+    "const id=++sequence;receipt=Object.freeze({schema:1,nonce:binding.nonce,generation:binding.generation,document:doc,observed:false,valid:false,http_status:0,count:0});"
+    "pending.then(response=>{try{const received=new URL(response.url);"
+    "if(response.status!==200||!response.ok||response.redirected||received.origin!==location.origin||received.username||received.password||received.search||received.hash||received.pathname!==endpoint){publish(id,response.status,false,0);return;}"
+    "response.clone().json().then(data=>{const valid=!!data&&typeof data==='object'&&Array.isArray(data.accounts)&&"
+    "data.accounts.every(a=>!!a&&typeof a==='object'&&Number.isInteger(a.user_id)&&Number.isInteger(a.rank));"
+    "publish(id,200,valid,valid?data.accounts.length:0);},()=>publish(id,200,false,0));"
+    "}catch(_){publish(id,0,false,0);}},()=>publish(id,0,false,0));"
+    "}catch(_){}return pending;};})(__ELICHIKA_ACCOUNT_BINDING__);";
+}
+static NSString *ELAccountResponseValidationScript(void) {
+    return @"if(location.pathname!=='/ios/server/webui/user/login')return{waiting:true};"
+    "const picker=document.getElementById('native-account-picker'),list=document.getElementById('native-account-list');"
+    "if(!picker||!list||picker.hidden||document.body.dataset.elichikaLocalAccess!=='true')return{waiting:true};"
+    "const r=window.__elichikaAccountResponse;"
+    "if(!r||r.schema!==1||r.nonce!==accountNonce||r.generation!==accountGeneration||typeof r.document!=='string'||!r.document||r.document!==window.__elichikaNativeDocument||!r.observed)return{waiting:true};"
+    "if(r.valid!==true||r.http_status!==200||!Number.isInteger(r.count)||r.count<0)return{error:true};"
+    "if(list.querySelectorAll('button[data-user-id]').length!==r.count)return{waiting:true};"
+    "const native=await window.ElichikaIOS.request('status');return{offline_accounts:native.real_backend_ready===false};";
+}
+#endif
+
 @interface ELPanelController : UIViewController <WKNavigationDelegate,WKScriptMessageHandler,WKUIDelegate,WKDownloadDelegate>
 @property(nonatomic,strong) UILabel *statusLabel;
 @property(nonatomic,strong) UIActivityIndicatorView *spinner;
@@ -374,6 +411,7 @@ NSString *ElichikaHostDiagnosticsJSON(void) {
 @property(nonatomic,strong) WKNavigation *managementProbeNavigation;
 @property(nonatomic,strong) NSMutableDictionary *managementProof;
 @property(nonatomic,assign) NSUInteger managementProbeGeneration;
+@property(nonatomic,copy) NSString *managementAccountNonce;
 @property(nonatomic,assign) NSInteger managementProbeStep;
 @property(nonatomic,assign) NSInteger managementProbeHTTPStatus;
 @property(nonatomic,assign) BOOL retentionProbeRunning;
@@ -869,7 +907,7 @@ BOOL ElichikaHostShowGame(void) {
 }
 - (void)finishManagementProbe:(NSString *)error {
     void (^completion)(NSDictionary *)=_managementProbeReply; if (!completion) return;
-    _managementProbeReply=nil; _managementProbeNavigation=nil; _retentionProbeRunning=NO; ++_managementProbeGeneration;
+    _managementProbeReply=nil; _managementProbeNavigation=nil; _managementAccountNonce=nil; _retentionProbeRunning=NO; ++_managementProbeGeneration;
     _managementProof[@"error"]=error.length ? (id)error : (id)@NO;
     BOOL ready=!error.length;
     for (NSString *key in @[@"actual_management_webview",@"page_loaded",@"javascript_ready",@"state_fetch",@"controls_present",@"native_binding",@"retained_panels",@"go_stopped",@"offline_accounts",@"server_restarted"])
@@ -1001,16 +1039,10 @@ BOOL ElichikaHostShowGame(void) {
     }
     NSUInteger generation=_managementProbeGeneration;
     BOOL nativeStopped=ELCore().started() && !ELCore().ready() && ELPanelReady() && _managementAvailable;
-    NSDictionary *arguments=@{@"step":@(_managementProbeStep),@"allowStart":@(nativeStopped)};
+    NSDictionary *arguments=@{@"step":@(_managementProbeStep),@"allowStart":@(nativeStopped),
+                             @"accountNonce":_managementAccountNonce ?: @"",@"accountGeneration":@(generation)};
     NSString *script=_managementProbeStep==2
-        ? @"if(location.pathname!=='/ios/server/webui/user/login')return{waiting:true};"
-          "const picker=document.getElementById('native-account-picker'),list=document.getElementById('native-account-list');"
-          "if(!picker||!list||picker.hidden||document.body.dataset.elichikaLocalAccess!=='true')return{waiting:true};"
-          "const u=new URL('/ios/server/webui/user/native_accounts',location.href);u.search=location.search;"
-          "const response=await fetch(u,{cache:'no-store'});if(!response.ok)return{error:true};"
-          "const data=await response.json();if(!Array.isArray(data.accounts)||data.accounts.some(a=>!Number.isInteger(a.user_id)||!Number.isInteger(a.rank)))return{error:true};"
-          "if(list.querySelectorAll('button[data-user-id]').length!==data.accounts.length)return{waiting:true};"
-          "const native=await window.ElichikaIOS.request('status');return{offline_accounts:native.real_backend_ready===false};"
+        ? ELAccountResponseValidationScript()
         : @"if(!window.ElichikaManagementReady||typeof window.ElichikaManagementProbe!=='function')return{waiting:true};"
         "const p=await window.ElichikaManagementProbe();if(p.error)return{error:true};"
         "const s=window.ElichikaManagementProof||{};const r={javascript_ready:!!p.javascript_ready,state_fetch:!!p.state_fetch,controls_present:!!p.controls_present,native_binding:!!p.native_binding,server_ready:!!p.server_ready};"
@@ -1026,7 +1058,7 @@ BOOL ElichikaHostShowGame(void) {
             if (error || ![value isKindOfClass:NSDictionary.class] || [value[@"error"] boolValue]) { [self finishManagementProbe:ELProbeJavaScriptFailure(@"The actual management JavaScript/API probe failed.",error)]; return; }
             if (![value[@"waiting"] boolValue]) {
                 if (self.managementProbeStep==2) {
-                    if (![value[@"offline_accounts"] isEqual:@YES] || ELCore().ready() || !ELPanelReady() || !self.managementAvailable) {
+                    if (![value[@"offline_accounts"] isEqual:@YES] || !ELCore().started() || ELCore().ready() || !ELPanelReady() || !self.managementAvailable) {
                         [self finishManagementProbe:@"The stopped-server Accounts page or native account directory was unavailable."]; return;
                     }
                     self.managementProof[@"offline_accounts"]=@YES; self.managementProbeStep=3;
@@ -1039,6 +1071,16 @@ BOOL ElichikaHostShowGame(void) {
                 if (self.managementProbeStep==0 && [value[@"requested"] isEqual:@"stop"]) self.managementProbeStep=1;
                 else if (self.managementProbeStep==1 && [value[@"requested"] isEqual:@"offline_accounts"]) {
                     self.managementProof[@"go_stopped"]=@YES; self.managementProbeStep=2; self.selectedWebSection=1;
+                    WKWebView *accounts=[self activateSection:1];
+                    WKUserContentController *scripts=accounts.configuration.userContentController;
+                    NSArray<WKUserScript *> *existing=[scripts.userScripts copy];
+                    [scripts removeAllUserScripts];
+                    for (WKUserScript *item in existing) {
+                        if (![item.source hasPrefix:@"/* ELICHIKA_ACCOUNT_RESPONSE_OBSERVER */"]) [scripts addUserScript:item];
+                    }
+                    NSString *observer=[ELAccountResponseObserverScript() stringByReplacingOccurrencesOfString:@"__ELICHIKA_ACCOUNT_BINDING__"
+                        withString:ELJSON(@{@"nonce":self.managementAccountNonce,@"generation":@(generation)})];
+                    [scripts addUserScript:[[WKUserScript alloc] initWithSource:observer injectionTime:WKUserScriptInjectionTimeAtDocumentStart forMainFrameOnly:YES]];
                     self.managementProbeHTTPStatus=0; self.managementProbeNavigation=[self loadPanelURL:ELAccountsURL()];
                     if (!self.managementProbeNavigation) [self finishManagementProbe:@"Could not open Accounts while the game server was stopped."];
                     return;
@@ -1057,7 +1099,7 @@ BOOL ElichikaHostShowGame(void) {
 - (void)probeManagement:(void (^)(NSDictionary *))completion {
     if (_managementProbeReply || _storageProbeReply) { completion(@{@"ready":@NO,@"error":@"A management WebView probe is already running."}); return; }
     _managementProbeReply=[completion copy]; NSUInteger generation=++_managementProbeGeneration;
-    _managementProbeStep=0; _managementProbeHTTPStatus=0; _retainedDocumentsChecked=NO; _retentionProbeRunning=NO;
+    _managementProbeStep=0; _managementProbeHTTPStatus=0; _managementAccountNonce=NSUUID.UUID.UUIDString; _retainedDocumentsChecked=NO; _retentionProbeRunning=NO;
     _managementProof=[@{@"schema":@1,@"ready":@NO,@"actual_management_webview":@(_web && [_web isDescendantOfView:self.view] && _web.navigationDelegate==self),
         @"page_loaded":@NO,@"javascript_ready":@NO,@"state_fetch":@NO,@"controls_present":@NO,@"native_binding":@NO,@"retained_panels":@NO,@"go_stopped":@NO,@"offline_accounts":@NO,@"server_restarted":@NO,@"error":@NO} mutableCopy];
     NSURLComponents *parts=[NSURLComponents componentsWithString:ELRuntimeStatus[@"admin_url"] ?: @""];

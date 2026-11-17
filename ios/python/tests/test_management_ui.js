@@ -69,6 +69,103 @@ for (const [key, values] of Object.entries(ui.WORDS)) assert(values.length === 3
 assert(html.includes("https://gamebanana.com/games/20519"));
 assert(html.includes("https://ayakamods.com/games/love-live-school-idol-festival-all-stars.217/"));
 
+const nativeHost = fs.readFileSync(path.join(__dirname, "../../native/ElichikaHost.mm"), "utf8");
+function publishedAccountScript(name) {
+  const block = nativeHost.split("static NSString *" + name + "(void) {")[1]?.split("\n}")[0];
+  assert(block, "Missing actual native account script: " + name);
+  return [...block.matchAll(/@?("(?:\\.|[^"\\])*")/g)].map(match => JSON.parse(match[1])).join("");
+}
+const accountObserver = publishedAccountScript("ELAccountResponseObserverScript");
+const accountValidation = publishedAccountScript("ELAccountResponseValidationScript");
+async function observedAccountFixture(options = {}) {
+  const binding = { nonce: "fresh-probe-nonce", generation: 7 };
+  const location = new URL(options.location || "http://127.0.0.1:8772/ios/server/webui/user/login");
+  const endpoint = location.pathname.startsWith("/ios/server/") ? "/ios/server/webui/user/native_accounts" : "/webui/user/native_accounts";
+  const address = options.address || endpoint;
+  const raw = options.raw === undefined ? JSON.stringify(options.data === undefined ? { accounts: [{ user_id: 7, rank: 2 }], private: "private-capability" } : options.data) : options.raw;
+  const response = new Response(raw, { status: options.status || 200 });
+  Object.defineProperty(response, "url", { value: options.responseURL || new URL(endpoint, location).href });
+  Object.defineProperty(response, "redirected", { value: options.redirected === true });
+  let clones = 0, requests = 0, nativeRequests = 0, nativeReady = false;
+  const clone = response.clone.bind(response);
+  response.clone = () => { ++clones; return clone(); };
+  const pending = Promise.resolve(response), fetchOptions = options.fetchOptions || { cache: "no-store" };
+  const document = { body: { dataset: { elichikaLocalAccess: "true" } }, getElementById(id) {
+    if (id === "native-account-picker") return this.picker;
+    if (id === "native-account-list") return this.list;
+    return null;
+  }, picker: { hidden: false }, list: { querySelectorAll: () => Array(options.count === undefined ? 1 : options.count).fill({}) } };
+  let originalThis, originalArgs;
+  const window = { __elichikaNativeDocument: "fresh-document-nonce", fetch(...args) {
+    ++requests; originalThis = this; originalArgs = args; return pending;
+  }, ElichikaIOS: { async request(action) { assert.strictEqual(action, "status"); ++nativeRequests; return { real_backend_ready: nativeReady }; } } };
+  const sandbox = vm.createContext({ window, document, location, URL, Request });
+  vm.runInContext(accountObserver.replace("__ELICHIKA_ACCOUNT_BINDING__", JSON.stringify(binding)), sandbox);
+  const input = options.request ? new Request(new URL(address, location), options.request) : options.urlObject ? new URL(address, location) : address;
+  const returned = window.fetch(input, fetchOptions);
+  assert.strictEqual(returned, pending, "Observer must return the original fetch Promise");
+  assert.strictEqual(originalThis, window, "Observer preserves the fetch receiver");
+  assert.strictEqual(originalArgs[0], input); assert.strictEqual(originalArgs[1], fetchOptions);
+  assert.strictEqual(await returned, response, "Observer must preserve Response identity");
+  assert.strictEqual(response.bodyUsed, false, "Observer reads only a clone");
+  assert.strictEqual(await response.text(), raw, "The original caller can consume the unchanged body");
+  for (let i = 0; i < 30 && !window.__elichikaAccountResponse.observed; ++i) await new Promise(resolve => setImmediate(resolve));
+  const validate = vm.runInContext("(async function(accountNonce,accountGeneration){" + accountValidation + "})", sandbox);
+  return { window, document, binding, response, pending, nativeReady(value) { nativeReady = value; },
+    validate(nonce = binding.nonce, generation = binding.generation) { return validate(nonce, generation); },
+    get requests() { return requests; }, get clones() { return clones; }, get nativeRequests() { return nativeRequests; } };
+}
+async function testObservedAccountResponse() {
+  for (const input of [{}, { request: { method: "GET", credentials: "same-origin" } }, { urlObject: true }]) {
+    const captured = await observedAccountFixture(input);
+    assert.strictEqual(captured.window.__elichikaAccountResponse.valid, true);
+    assert.strictEqual((await captured.validate()).offline_accounts, true);
+    assert.strictEqual(captured.requests, 1, "Actual page request is observed; validation adds no GET");
+    assert.strictEqual(captured.clones, 1);
+    assert.strictEqual(captured.nativeRequests, 1, "Stopped state is checked freshly through native status");
+    const metadata = JSON.stringify(captured.window.__elichikaAccountResponse);
+    for (const privateField of ["user_id", "rank", "accounts", "private-capability", "credentials", "body"]) assert(!metadata.includes(privateField));
+    assert.strictEqual((await captured.validate("stale-probe-nonce")).waiting, true);
+    assert.strictEqual((await captured.validate(captured.binding.nonce, 6)).waiting, true);
+    captured.nativeReady(true);
+    assert.strictEqual((await captured.validate()).offline_accounts, false);
+    captured.window.__elichikaNativeDocument = "replaced-document";
+    assert.strictEqual((await captured.validate()).waiting, true);
+    assert.strictEqual(captured.requests, 1);
+  }
+  const original = await observedAccountFixture({ location: "http://127.0.0.1:8080/webui/user/login" });
+  assert.strictEqual(original.window.__elichikaAccountResponse.valid, true, "Direct origin matches its exact original endpoint");
+  for (const options of [
+    { data: null }, { data: {} }, { data: { accounts: {} } }, { data: { accounts: [null] } },
+    { data: { accounts: [{ user_id: "7", rank: 2 }] } }, { data: { accounts: [{ user_id: 7, rank: 2.5 }] } },
+    { raw: "not JSON" }, { status: 500 }, { status: 201 }, { redirected: true },
+    { responseURL: "http://127.0.0.1:8080/ios/server/webui/user/native_accounts" },
+    { responseURL: "http://127.0.0.1:8772/other" },
+    { responseURL: "http://127.0.0.1:8772/ios/server/webui/user/native_accounts?unexpected=1" }
+  ]) {
+    const captured = await observedAccountFixture(options);
+    assert.strictEqual((await captured.validate()).error, true);
+    assert.strictEqual(captured.requests, 1); assert.strictEqual(captured.nativeRequests, 0);
+  }
+  for (const options of [
+    { address: "http://127.0.0.1:8080/ios/server/webui/user/native_accounts" },
+    { address: "/ios/server/webui/user/native_accounts_extra" }, { address: "/webui/user/native_accounts" },
+    { address: "/ios/server/webui/user/native_accounts?unexpected=1" },
+    { address: "/ios/server/webui/user/native_accounts#fragment" },
+    { fetchOptions: { method: "POST" } }, { fetchOptions: { credentials: "omit" } }
+  ]) {
+    const captured = await observedAccountFixture(options);
+    assert.strictEqual((await captured.validate()).waiting, true);
+    assert.strictEqual(captured.requests, 1); assert.strictEqual(captured.clones, 0); assert.strictEqual(captured.nativeRequests, 0);
+  }
+  const mismatch = await observedAccountFixture({ count: 0 });
+  assert.strictEqual((await mismatch.validate()).waiting, true);
+  mismatch.document.picker.hidden = true;
+  assert.strictEqual((await mismatch.validate()).waiting, true);
+  const empty = await observedAccountFixture({ count: 0, data: { accounts: [] } });
+  assert.strictEqual((await empty.validate()).offline_accounts, true);
+}
+
 let failState = false;
 let backend = { schema: 1, server: { ready: true, state: "running", endpoint: "http://127.0.0.1:8080" }, job: null, logs: [{ cursor: 1, line: "initial" }], next_cursor: 1, archive: { available: false, error: "Archive publication is pending." }, preferences: { language: "auto", listen_address: "127.0.0.1:8080" }, confirmations: { rebuild_assets: "rebuild-token", reset_accounts: "reset-token", download_packs: "download-token", save_settings: "save-token" } };
 const calls = [], timers = new Map(), nativeCalls = []; let timerId = 0, settingsJobId = 11;
@@ -89,6 +186,7 @@ const window = { document, ElichikaUnifiedNavigation: true, navigator: { languag
 vm.runInNewContext(code, { window, module: { exports: {} }, console });
 const tick = async () => { for (let i = 0; i < 8; ++i) await Promise.resolve(); };
 (async () => {
+  await testObservedAccountResponse();
   await tick();
   assert.strictEqual(document.documentElement.lang, "ko");
   assert.strictEqual(window.ElichikaManagementReady, true);
