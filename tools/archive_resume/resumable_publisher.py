@@ -35,6 +35,7 @@ import layout_review as layout
 
 SOFT_SECONDS = 18000
 MAX_SEGMENTS = 12
+METADATA_WORKERS = 2
 TRACE_NAME = "slice-transfer-events.jsonl"
 RECEIPT_NAME = "segment.json"
 WORKFLOW_PATH = ".github/workflows/archive-upload-resume.yml"
@@ -123,7 +124,8 @@ class CooperativePublic:
 
     def open(self, url, headers=None, timeout=15):
         self.check()
-        response = self.public.open(url, headers, min(15, timeout))
+        client = getattr(self.local, "metadata_client", self.public)
+        response = client.open(url, headers, min(15, timeout))
         try:
             self.check()
         except BaseException:
@@ -236,6 +238,8 @@ class ResumablePublisher(frozen.OwnedPublisher):
                  public=None, s3=None, now=None, sleep=None):
         super().__init__(args, inputs, auth, work, plan, public=public, s3=s3)
         self.configure_segment(lineage, soft_seconds=soft_seconds, now=now, sleep=sleep)
+        if public is None:
+            self.metadata_client_factory = scope.BoundedPublic
 
     def configure_segment(self, lineage, *, soft_seconds=SOFT_SECONDS, now=None, sleep=None):
         self.lineage = validate_lineage(lineage)
@@ -245,6 +249,7 @@ class ResumablePublisher(frozen.OwnedPublisher):
         self.soft_deadline = self.now() + soft_seconds
         self.source_public = CooperativePublic(self.public, self.soft_deadline, self.now)
         self.public = self.source_public
+        self.metadata_client_factory = None
         self.trace = TransferTrace(self.work.path / TRACE_NAME)
         self.s3 = TrackingS3(self.s3, self.trace, self.check_budget)
         self.active_workers = 0
@@ -254,6 +259,35 @@ class ResumablePublisher(frozen.OwnedPublisher):
 
     def check_budget(self):
         if self.now() >= self.soft_deadline: raise BudgetPause()
+
+    def _bind_metadata_client(self):
+        # Each read worker owns an anonymous opener. Neither authenticated S3
+        # nor the source-stage public client is shared with this refresh pool.
+        self.source_public.local.metadata_client = self.metadata_client_factory()
+
+    def preflight(self):
+        if self.metadata_client_factory is None:
+            return super().preflight()
+        # The scheduler runs this only at a drained boundary. Publish a new
+        # snapshot only if all five ownership checks pass. Restore the prior
+        # cache on failure after all current reads finish.
+        with self.state_lock:
+            previous_cache = self.owner_cache.copy()
+        try:
+            with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=METADATA_WORKERS, initializer=self._bind_metadata_client) as pool:
+                futures = {item: pool.submit(self.files, item) for item in layout.ITEMS}
+                try:
+                    return {item: future.result() for item, future in futures.items()}
+                except BaseException:
+                    for future in futures.values():
+                        future.cancel()
+                    raise
+        except BaseException:
+            with self.state_lock:
+                self.owner_cache.clear()
+                self.owner_cache.update(previous_cache)
+            raise
 
     def one(self, name, *args, **kwargs):
         # stage_object removes its temporary data on BudgetPause. This exception

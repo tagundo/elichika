@@ -58,6 +58,105 @@ class SegmentTests(unittest.TestCase):
         with patch.object(frozen, "time", self.fake), patch.object(u, "stage_object", h.stage), contextlib.redirect_stdout(io.StringIO()):
             return h.pub.data()
 
+    def use_parallel_metadata(self, h, documents):
+        del h.pub.files
+        h.pub.session = "fixture-session"
+        h.pub.auth = {"account": "fixture-owner"}
+        first_reads = threading.Barrier(2, timeout=5)
+        state = types.SimpleNamespace(clients=[], reads=[], active=0, peak=0)
+        lock = threading.Lock()
+
+        class Response(io.BytesIO):
+            status = 200
+
+        class AnonymousClient:
+            def __init__(self):
+                self.thread = threading.get_ident()
+                self.first = True
+                with lock:
+                    state.clients.append(self)
+
+            def open(self, url, headers=None, timeout=15):
+                assert threading.get_ident() == self.thread
+                assert headers is None and timeout == 15
+                endpoint = "https://archive.org/metadata/"
+                assert url.startswith(endpoint)
+                item = url[len(endpoint):]
+                with lock:
+                    state.active += 1
+                    state.peak = max(state.peak, state.active)
+                    state.reads.append(item)
+                try:
+                    if self.first:
+                        self.first = False
+                        first_reads.wait()
+                    metadata = {"identifier": item, "elichikasession": h.pub.session,
+                                "elichikainventorysha256": h.pub.inputs.inventory_sha,
+                                "elichikaaccount": h.pub.auth["account"]}
+                    return Response(json.dumps(documents(item, metadata)).encode())
+                finally:
+                    with lock:
+                        state.active -= 1
+
+        h.pub.metadata_client_factory = AnonymousClient
+        return state
+
+    def test_metadata_refresh_uses_two_isolated_clients_and_returns_all_five_items(self):
+        h = self.make(count=0)
+        state = self.use_parallel_metadata(h, lambda item, metadata: {"metadata": metadata, "files": [{"name": item}]})
+        result = h.pub.preflight()
+        self.assertEqual(list(result), list(layout.ITEMS))
+        self.assertEqual(result, {item: {item: {"name": item}} for item in layout.ITEMS})
+        self.assertCountEqual(state.reads, layout.ITEMS)
+        self.assertEqual(len(state.clients), 2)
+        self.assertEqual(len({client.thread for client in state.clients}), 2)
+        self.assertEqual((state.peak, state.active), (2, 0))
+        self.assertEqual({item: files for item, (_, files) in h.pub.owner_cache.items()}, result)
+        self.assertFalse(h.puts)
+        self.assertEqual(h.pub.trace.state(), (0, []))
+
+    def test_metadata_refresh_failure_reaps_reads_and_halts_before_put_or_journal_changes(self):
+        for failure in ("foreign", "missing"):
+            with self.subTest(failure=failure):
+                h = self.make(count=2, seed_ack=1)
+                previous_cache = {layout.ITEMS[0]: (self.clock.monotonic(), {"prior": {"name": "prior"}})}
+                h.pub.owner_cache.update(previous_cache)
+                previous_records = copy.deepcopy(h.pub.records())
+
+                def documents(item, metadata):
+                    if item == layout.ITEMS[1]:
+                        if failure == "missing":
+                            return {}
+                        metadata["elichikasession"] = "foreign-session"
+                    return {"metadata": metadata, "files": []}
+
+                state = self.use_parallel_metadata(h, documents)
+                receipt = h.pub.execute()
+                self.assertEqual(receipt["status"], "HALTED")
+                self.assertIn("ownership markers" if failure == "foreign" else "absent",
+                              receipt["halt_reason"]["public_message"])
+                self.assertEqual((state.peak, state.active), (2, 0))
+                self.assertTrue(receipt["all_workers_reaped"])
+                self.assertEqual((receipt["active_workers"], receipt["active_puts"]), (0, 0))
+                self.assertEqual(h.pub.owner_cache, previous_cache)
+                self.assertEqual(h.pub.records(), previous_records)
+                self.assertFalse(h.puts)
+                self.assertEqual((h.work.path / r.TRACE_NAME).read_bytes(), b"")
+
+    def test_parallel_metadata_keeps_invisible_ack_barrier_checkpointable(self):
+        h = self.make(count=129, seed_ack=128)
+        h.pub.soft_deadline = self.clock.monotonic() + 7
+        previous_records = copy.deepcopy(h.pub.records())
+        state = self.use_parallel_metadata(h, lambda _item, metadata: {"metadata": metadata, "files": []})
+        with self.assertRaises(r.BudgetPause):
+            self.run_data(h)
+        receipt = h.pub.checkpoint("PAUSED_BUDGET")
+        self.assertEqual(receipt["counts"]["PUT_ACKNOWLEDGED"], 128)
+        self.assertEqual(h.pub.records(), previous_records)
+        self.assertEqual((state.peak, state.active), (2, 0))
+        self.assertFalse(h.puts)
+        self.assertEqual((h.work.path / r.TRACE_NAME).read_bytes(), b"")
+
     def test_complete_scheduler_retains_four_workers_128_barrier_and_all_md5(self):
         h = self.make(count=145, release=128)
         admitted = []
