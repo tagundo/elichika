@@ -13,25 +13,29 @@ from test_chain_control import GithubArtifact, Public, checkpoint, fixture, iden
 
 
 class RecoveryPublic(Public):
-    """Only the ambiguous object and an optional ACK are publicly listed."""
+    """Publish the ambiguous object and the selected durable ACKs."""
 
-    def __init__(self, records, payload, *, include_ack=True, missing=False,
-                 wrong=False, owner=False, status=200, encoding="identity",
-                 length=None, body=None, unavailable=False):
+    def __init__(self, records, payload, *, ack_names=("00jst0", "60abcd"), missing=False,
+                 wrong=False, wrong_ack=False, owner=False, status=200,
+                 encoding="identity", length=None, body=None, unavailable=False):
         visible = {name: row for name, row in records.items()
-                   if (name == "iwbf95" and not missing) or
-                   (name == "00jst0" and include_ack)}
+                   if (name == "iwbf95" and not missing) or name in ack_names}
         super().__init__(visible, include_staged=True, wrong=wrong)
         self.payload = payload if body is None else body
         self.length = len(payload) if length is None else length
         self.owner, self.status, self.encoding = owner, status, encoding
         self.unavailable = unavailable
+        self.wrong_ack = wrong_ack
         self.opens = []
 
     def metadata(self, item, attempts=1):
         value = super().metadata(item, attempts)
         if self.owner:
             value["metadata"]["elichikaaccount"] = "foreign-account"
+        if self.wrong_ack:
+            for row in value["files"]:
+                if row["name"] == "packs/00jst0":
+                    row["md5"] = "0" * 32
         return value
 
     def open(self, url, headers=None, timeout=60):
@@ -54,6 +58,8 @@ class HaltRecoveryTests(unittest.TestCase):
         self.inventory, self.plan, self.records = fixture(self.source, staged=True)
         self.payload = b"exact public bytes for the ambiguous iwbf95 fixture\n"
         self.pin = copy.deepcopy(c.HALT_RECOVERY)
+        self.pin["segment"] = 3
+        self.pin["never_submitted_staged"] = ["jzpao2", "k0jfna"]
         self.pin["unresolved_put"] = {
             "item": c.layout.ITEMS[0], "path": "packs/iwbf95",
             "size": len(self.payload),
@@ -65,7 +71,11 @@ class HaltRecoveryTests(unittest.TestCase):
             "sha256": "7" * 64, "md5": "6" * 32,
         }
         self.records["iwbf95"] = {**self.pin["unresolved_put"], "status": "STAGED"}
-        for name in ("k0jfna", "iwbf95"):
+        self.records["60abcd"] = {
+            **self.records["k0jfna"], "path": "packs/60abcd", "status": "PUT_ACKNOWLEDGED",
+        }
+        additional = ("k0jfna", "iwbf95", "60abcd")
+        for name in additional:
             row = self.records[name]
             self.inventory["objects"][name] = {
                 key: row[key] for key in ("size", "sha256", "path")}
@@ -73,7 +83,7 @@ class HaltRecoveryTests(unittest.TestCase):
         self.plan["layout"]["retained_locations"]["k0jfna"] = copy.deepcopy(
             self.records["k0jfna"])
         with (self.source / "journal.events.jsonl").open("ab") as stream:
-            for name in ("k0jfna", "iwbf95"):
+            for name in additional:
                 stream.write(c.u.canonical({"type": "objects", "name": name,
                                             "record": self.records[name]}))
             stream.write(c.u.canonical({"type": "status", "status": "SEGMENT_HALTED"}))
@@ -316,16 +326,17 @@ class HaltRecoveryTests(unittest.TestCase):
     def test_public_resolution_requires_owned_metadata_and_full_exact_body(self):
         records = self.validate()
         before = c.raw_journals(self.source)
-        public = self.public(include_ack=False)
+        public = self.public(ack_names=())
         checks = c.check_halt_recovery_public(records, public)
         self.assertIsInstance(checks, dict)
+        self.assertEqual(checks["acknowledged_metadata_verified"], [])
         self.assertTrue(public.opens)
         url = public.opens[0][0]
         self.assertIn(self.pin["unresolved_put"]["item"], url)
         self.assertIn("packs/iwbf95", url)
         self.assertEqual(c.raw_journals(self.source), before)
         self.assertEqual(records["objects"]["00jst0"]["status"], "PUT_ACKNOWLEDGED")
-        cases = [dict(missing=True), dict(wrong=True), dict(owner=True),
+        cases = [dict(missing=True), dict(wrong=True), dict(wrong_ack=True), dict(owner=True),
                  dict(unavailable=True), dict(status=206), dict(encoding="gzip"),
                  dict(length=len(self.payload) - 1), dict(body=self.payload[:-1]),
                  dict(body=self.payload + b"!"), dict(body=b"x" * len(self.payload))]
@@ -335,7 +346,7 @@ class HaltRecoveryTests(unittest.TestCase):
         self.assertEqual(c.raw_journals(self.source), before)
 
     def test_import_preserves_all_originals_and_appends_only_one_metadata_promotion(self):
-        work, receipt = self.import_checkpoint(self.public(include_ack=False))
+        work, receipt = self.import_checkpoint(self.public(ack_names=()))
         self.assert_originals(work)
         self.assertNotIn(receipt["status"], ("HALTED", "PAUSED_BUDGET", "COMPLETE",
                                             "VISIBILITY_HALT_IMPORTED"))
@@ -352,6 +363,43 @@ class HaltRecoveryTests(unittest.TestCase):
         self.assertEqual(sum(row["status"] == "STAGED" for row in records["objects"].values()), 2)
         self.assertFalse((work / c.TRACE).exists())
         self.assertTrue((work / c.RESOLUTION_AUDIT).is_file())
+
+    def test_import_promotes_only_publicly_visible_acks_in_sorted_order(self):
+        for acknowledgments in (("60abcd",), ("00jst0", "60abcd")):
+            with self.subTest(acknowledgments=acknowledgments):
+                public = self.public(ack_names=acknowledgments)
+                work, receipt = self.import_checkpoint(public, name="runner-" + str(len(acknowledgments)))
+                self.assert_originals(work)
+                self.assertEqual(len(public.opens), 1)
+                self.assertEqual(receipt["public_checks"]["acknowledged_metadata_verified"],
+                                 list(acknowledgments))
+                promoted = {
+                    name: {**self.records[name], "status": "REMOTE_METADATA_VERIFIED"}
+                    for name in ("iwbf95", *acknowledgments)
+                }
+                suffix = b"".join(c.u.canonical({"type": "objects", "name": name, "record": row})
+                                  for name, row in promoted.items())
+                self.assertEqual((work / "journal.events.jsonl").read_bytes(),
+                                 (self.source / "journal.events.jsonl").read_bytes() + suffix)
+                records = c.validate_halt_bootstrap(work, receipt, self.current,
+                                                    self.inventory, self.plan)
+                self.assertEqual(records["objects"], {**self.records, **promoted})
+                self.assertEqual(receipt["counts_at_import"].get("PUT_ACKNOWLEDGED", 0),
+                                 2 - len(acknowledgments))
+                self.assertEqual(receipt["counts_at_import"]["REMOTE_METADATA_VERIFIED"],
+                                 1 + len(acknowledgments))
+
+    def test_bootstrap_rejects_reordered_or_duplicate_ack_appends_with_matching_hash(self):
+        work, receipt = self.import_checkpoint()
+        events = work / "journal.events.jsonl"
+        prefix = (self.source / "journal.events.jsonl").read_bytes()
+        target, first_ack, second_ack = events.read_bytes()[len(prefix):].splitlines(keepends=True)
+        for suffix in (target + second_ack + first_ack, target + first_ack + first_ack):
+            with self.subTest(suffix=suffix):
+                events.write_bytes(prefix + suffix)
+                changed = {**receipt, "raw_journal_sha256": c.raw_journals(work)}
+                with self.assertRaises(c.ChainError):
+                    c.validate_halt_bootstrap(work, changed, self.current, self.inventory, self.plan)
 
     def test_failed_public_proof_cannot_create_promoted_bootstrap(self):
         runner = self.root / "failed-runner"

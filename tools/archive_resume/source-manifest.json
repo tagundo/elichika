@@ -6,10 +6,10 @@
     "tools/archive_inventory/activation.json": "bc47fbf5c5dd3ed2f1c9793c8bfc07fed28570dc5deabd5b8c67d58aaef71017",
     "tools/archive_inventory/source-files.json": "b3846891a36131f80d3b0bd1d53f482df02259c0e9d9f48f2744e42ec0adee46",
     "tools/archive_inventory/test_owned_publisher.py": "435873a6a447c485ed4c56f1b838602e8169158d47f31487a15f07dbfcbff945",
-    "tools/archive_resume/chain_control.py": "ac17696ad27ad3dde8680660cb9b553ef8dc634750fab8d901de8e9b469774dd",
+    "tools/archive_resume/chain_control.py": "784e0d39d448eb48cea1f22844cac301d9007759dcf6572ff0c6e41d2f7420f0",
     "tools/archive_resume/resumable_publisher.py": "a6911dccf10a08314732fd60817feedb80e365687774d8ca3baf8978a9352f15",
     "tools/archive_resume/test_chain_control.py": "07f3a6509be716b4ae08ddfede213267bbe2d82a5dcd5974cb6eebdba7768e49",
-    "tools/archive_resume/test_halt_recovery.py": "6dfaf698c85ffaea650b641fd990c6afb073cf1a72609c0764737e08e8cd88b2",
+    "tools/archive_resume/test_halt_recovery.py": "3a7a69e68f0508d90a6a82e77a58b9193fcd78fc4a82594eb169e41a538ae09d",
     "tools/archive_resume/test_resumable_publisher.py": "1fa65931b56f7f68e15320ce631c9873f6c1b4be5436dd60c39ae55f1a4474f8"
   },
   "hard_seconds": 20400,

@@ -69,44 +69,44 @@ TRACE = 'slice-transfer-events.jsonl'
 RECEIPT = 'segment.json'
 # Only this latest, drained HALT can be reconciled into a new bootstrap.
 # Its original receipt/journals/trace are immutable, never relabeled PAUSED.
-HALT_RECOVERY = {'run_id': 43757544497,
+HALT_RECOVERY = {'run_id': 43888933648,
  'run_attempt': 1,
- 'source_sha': '5ee47d61583ea34fa574e318128d52a84962c3d5',
+ 'source_sha': '0b2d7b4db62993fb2274e8b29d0057610cb03d15',
  'workflow_id': 419149617,
- 'job_id': 133128906585,
- 'segment': 3,
- 'artifact_id': 14221348304,
- 'artifact_name': 'archive-upload-segment-03-43757544497-a1',
- 'artifact_bytes': 3845806,
- 'artifact_sha256': '674b299d7884d234cbe7b6cdcf984fd02a6b33b9efd8d0a8571ff707fe898553',
- 'receipt_sha256': '0a9e47b5d70c3359fc9fa876ddb448261fc88e3977f3630ad96ccde81195ab69',
- 'raw_journal_sha256': {'journal.events.jsonl': 'df83f07262012983a60bbda22dad78e30ac5aaa4bbdb77ebd1b067571bc01156',
+ 'job_id': 133847864306,
+ 'segment': 4,
+ 'artifact_id': 14319979000,
+ 'artifact_name': 'archive-upload-segment-04-43888933648-a1',
+ 'artifact_bytes': 5501691,
+ 'artifact_sha256': 'efa439e5ff558f8ec10fb4fca9d3d7558104e552e1f40025cf11c51f9599f249',
+ 'receipt_sha256': 'fbd6fc7d6617e3970a79b8bc9027c7c5417cea13f660963f4f6e46a4a0b5f665',
+ 'raw_journal_sha256': {'journal.events.jsonl': '57f00a41429bbe3a69b3f676a504018d47ad0a1f4479876c03e39cdee400d3a3',
                         'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee'},
- 'transfer_events_sha256': '6d9cf24139bf2bd13a11694f54e7d6329d79c7724419b4a3cd0c2dc5d6dd739c',
- 'file_bytes': {'journal.events.jsonl': 19272077,
-                'segment.json': 1832,
+ 'transfer_events_sha256': '9c2f017b60617ed2a4ac08271ecb7787c8b3dba6250c7d742674fc2fd12fa5b8',
+ 'file_bytes': {'journal.events.jsonl': 29011851,
+                'segment.json': 1811,
                 'journal.json': 1160,
-                'slice-transfer-events.jsonl': 2498013},
- 'counts': {'PUT_ACKNOWLEDGED': 127,
-            'REMOTE_METADATA_VERIFIED': 22854,
-            'STAGED': 3,
-            'journal_objects': 22984,
+                'slice-transfer-events.jsonl': 1791776},
+ 'counts': {'PUT_ACKNOWLEDGED': 99,
+            'REMOTE_METADATA_VERIFIED': 34392,
+            'STAGED': 1,
+            'journal_objects': 34492,
             'total': 42830},
- 'parent': {'artifact_id': 14201879965,
-            'artifact_name': 'archive-upload-segment-02-43757544497-a1',
-            'artifact_sha256': '6fb2a2187554282d2f9f83af1905b552ddd1e05c1fa90c98c20aec34faaa8dfc',
-            'raw_journal_sha256': {'journal.events.jsonl': 'ab7527d38a5e24d7d875b807a5014cc861ccf28555996181e375a8ecee175a39',
+ 'parent': {'artifact_id': 14302594566,
+            'artifact_name': 'archive-upload-segment-03-43888933648-a1',
+            'artifact_sha256': '4efea81b66ab457921a3ce78ee69d3b34a66520c56707c1815b3be1b6fd9fdb9',
+            'raw_journal_sha256': {'journal.events.jsonl': 'f0ac5d750ab89212f3f5790491bffc27f3414359839386a9719e827d0a5f8caf',
                                    'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee'},
-            'receipt_sha256': 'd20ae34fdc85b64653159d2ade4d533bc545ffef6148b69f94ef6801728adc19',
+            'receipt_sha256': '5de94a819692842b3418c9781fa2aa0fca070ef1d396d4941ee0b0365c5e5c31',
             'run_attempt': 1,
-            'run_id': 43757544497,
-            'source_sha': '5ee47d61583ea34fa574e318128d52a84962c3d5'},
- 'unresolved_put': {'item': 'elichika-assets-20261115-e316340d-fa6f6031-b01',
-                    'md5': '14fd372e4bcbf5bc40c02292678c4051',
-                    'path': 'packs/iwbf95',
-                    'sha256': '42bb94692d7040adc19d567a8c3d8e1409925e4945d66bb03692f259977d3415',
-                    'size': 1040173},
- 'never_submitted_staged': ['jzpao2', 'k0jfna']}
+            'run_id': 43888933648,
+            'source_sha': '0b2d7b4db62993fb2274e8b29d0057610cb03d15'},
+ 'unresolved_put': {'item': 'elichika-assets-20261115-e316340d-fa6f6031-b04',
+                    'md5': '4f51c9603446c692f68379ad493a7dac',
+                    'path': 'packs/t2onpv',
+                    'sha256': 'bdf545de0edfdd2a3431f98573b7d17cd2574190df0c76c2bf584f582eca4993',
+                    'size': 4405},
+ 'never_submitted_staged': []}
 HALT_AUDIT = {name: 'recovered-halt-' + name for name in (*JOURNALS, RECEIPT, TRACE)}
 RESOLUTION_AUDIT = 'halt-resolution.json'
 ADDITIVE_PATHS = {
@@ -369,13 +369,14 @@ def publication_valid(report):
     return report
 
 
-def replay_journal(directory, inventory, plan, allow_torn_tail=False):
-    header = read_json(Path(directory) / 'journal.json', u.CHUNK)
+def replay_journal(directory, inventory, plan, allow_torn_tail=False, *, journal_names=JOURNALS):
+    header_name, events_name = journal_names
+    header = read_json(Path(directory) / header_name, u.CHUNK)
     require(header.get('schema') == 1 and header.get('identity') == EXPECTED_IDENTITY,
             'Checkpoint belongs to another source/account/session/layout')
     values = {'objects': {}, 'index_objects': {}}
     ranks = {'STAGED': 0, 'PUT_ACKNOWLEDGED': 1, 'REMOTE_METADATA_VERIFIED': 2, 'REMOTE_SHA256_VERIFIED': 3}
-    events = Path(directory) / 'journal.events.jsonl'
+    events = Path(directory) / events_name
     require(events.is_file() and not events.is_symlink() and events.stat().st_size < MAX_FILE,
             'Durable event journal is absent or unsafe')
     torn, continuation_markers, restaged = False, 0, set()
@@ -987,8 +988,9 @@ def validate_halt_recovery(directory, inventory, plan):
 
 
 def check_halt_recovery_public(records, public=None):
-    """Anonymous reads only, including a bounded complete SHA256 of the one file."""
+    """Check public ACK metadata and hash the complete body of the unresolved PUT."""
     public = public or scope.BoundedPublic(); target = HALT_RECOVERY['unresolved_put']; checked = 0; found = None
+    verified_acks = []
     for item in layout.ITEMS:
         remote = public.metadata(item, attempts=1)
         require(remote is not None, 'Owned recovery destination is absent')
@@ -1001,6 +1003,8 @@ def check_halt_recovery_public(records, public=None):
                     'Visible recovery file has no exact durable reference')
             require(u.remote_equal(file, record['size'], record['md5']), 'Recovery public size/MD5 conflicts')
             checked += 1
+            if record['status'] == 'PUT_ACKNOWLEDGED':
+                verified_acks.append(key[6:])
         if item == target['item']: found = files.get(target['path'])
     require(u.remote_equal(found, target['size'], target['md5']), 'The sole unresolved PUT is not publicly size/MD5 verified')
     url = 'https://archive.org/download/' + target['item'] + '/' + urllib.parse.quote(target['path'], safe='/')
@@ -1020,6 +1024,7 @@ def check_halt_recovery_public(records, public=None):
     require(count == target['size'] and sha.hexdigest() == target['sha256'] and md5.hexdigest() == target['md5'],
             'Recovery public full-file SHA256/MD5 differs')
     return {'owned_items_checked': len(layout.ITEMS), 'visible_exact_size_md5_checked': checked,
+            'acknowledged_metadata_verified': sorted(verified_acks),
             'missing_ack_allows_reput': False, 'unresolved_identity': target,
             'public_metadata_size_md5_verified': True, 'full_body_bytes': count,
             'full_body_sha256': sha.hexdigest(), 'full_body_md5': md5.hexdigest(), 'account_writes': 0}
@@ -1028,7 +1033,7 @@ def check_halt_recovery_public(records, public=None):
 def _halt_public_checks_valid(checks):
     target = HALT_RECOVERY['unresolved_put']
     require(isinstance(checks, dict) and set(checks) == {'owned_items_checked', 'visible_exact_size_md5_checked',
-        'missing_ack_allows_reput', 'unresolved_identity', 'public_metadata_size_md5_verified',
+        'acknowledged_metadata_verified', 'missing_ack_allows_reput', 'unresolved_identity', 'public_metadata_size_md5_verified',
         'full_body_bytes', 'full_body_sha256', 'full_body_md5', 'account_writes'} and
         checks['owned_items_checked'] == len(layout.ITEMS) and type(checks['visible_exact_size_md5_checked']) is int and
         1 <= checks['visible_exact_size_md5_checked'] <= HALT_RECOVERY['counts']['journal_objects'] and
@@ -1037,12 +1042,25 @@ def _halt_public_checks_valid(checks):
         checks['full_body_sha256'] == target['sha256'] and checks['full_body_md5'] == target['md5'] and
         type(checks['account_writes']) is int and checks['account_writes'] == 0,
         'Recovery public resolution proof differs')
+    names = checks['acknowledged_metadata_verified']
+    require(isinstance(names, list) and len(names) <= HALT_RECOVERY['counts'].get('PUT_ACKNOWLEDGED', 0) and
+            all(isinstance(name, str) and re.fullmatch('[0-9a-z]{6}', name) for name in names) and
+            names == sorted(set(names)) and len(names) < checks['visible_exact_size_md5_checked'],
+            'Recovery ACK metadata proof differs')
 
 
-def _halt_promotion():
+def _halt_promotions(records, checks):
     target = HALT_RECOVERY['unresolved_put']
-    return u.canonical({'type': 'objects', 'name': target['path'][6:],
-                        'record': {**target, 'status': 'REMOTE_METADATA_VERIFIED'}})
+    acknowledged = checks['acknowledged_metadata_verified']
+    objects = records['objects']
+    require(all(objects.get(name, {}).get('status') == 'PUT_ACKNOWLEDGED' for name in acknowledged),
+            'Recovery metadata proof refers to a file without a durable ACK')
+    names = [target['path'][6:], *acknowledged]
+    return {name: {**objects[name], 'status': 'REMOTE_METADATA_VERIFIED'} for name in names}
+
+
+def _halt_promotion(name, record):
+    return u.canonical({'type': 'objects', 'name': name, 'record': record})
 
 
 def _halt_resolution(identity, checks):
@@ -1054,9 +1072,15 @@ def _halt_resolution(identity, checks):
 
 
 def _halt_bootstrap(identity, hashes, audit_sha, checks):
-    counts = dict(HALT_RECOVERY['counts']); counts['STAGED'] -= 1
-    if not counts['STAGED']: counts.pop('STAGED')
-    counts['REMOTE_METADATA_VERIFIED'] = counts.get('REMOTE_METADATA_VERIFIED', 0) + 1
+    counts = dict(HALT_RECOVERY['counts'])
+    acknowledgments = len(checks['acknowledged_metadata_verified'])
+    for status, promoted in (('STAGED', 1), ('PUT_ACKNOWLEDGED', acknowledgments)):
+        remaining = counts.get(status, 0) - promoted
+        if remaining:
+            counts[status] = remaining
+        else:
+            counts.pop(status, None)
+    counts['REMOTE_METADATA_VERIFIED'] = counts.get('REMOTE_METADATA_VERIFIED', 0) + 1 + acknowledgments
     return {'schema': 1, 'status': 'RESOLVED_PUT_HALT_IMPORTED', 'current_identity': identity,
             'policy': 'ONE_EXACT_LATEST_HALT_PUBLIC_MD5_FULL_SHA256', 'recovery': HALT_RECOVERY,
             'original_halt_status_preserved': True, 'original_raw_journal_sha256': HALT_RECOVERY['raw_journal_sha256'],
@@ -1067,7 +1091,7 @@ def _halt_bootstrap(identity, hashes, audit_sha, checks):
 
 
 def validate_halt_bootstrap(directory, receipt, identity, inventory, plan):
-    """Independently check immutable originals plus exactly ONE appended promotion."""
+    """Check the immutable originals and the exact publicly verified journal appends."""
     directory = Path(directory); pin = HALT_RECOVERY
     expected = {**pin['raw_journal_sha256'], TRACE: pin['transfer_events_sha256'], RECEIPT: pin['receipt_sha256']}
     for name, sha in expected.items():
@@ -1076,24 +1100,23 @@ def validate_halt_bootstrap(directory, receipt, identity, inventory, plan):
                 file_sha(path) == sha, 'Immutable recovered HALT evidence is missing or changed')
     original = read_json(directory / HALT_AUDIT[RECEIPT], u.CHUNK); _halt_receipt_valid(original)
     _halt_final_event(directory / HALT_AUDIT[JOURNALS[1]])
+    records = replay_journal(directory, inventory, plan, journal_names=tuple(HALT_AUDIT[name] for name in JOURNALS))
+    _halt_trace_valid(original, directory / HALT_AUDIT[TRACE], records)
     require(file_sha(directory / JOURNALS[0]) == pin['raw_journal_sha256'][JOURNALS[0]],
             'Recovery working journal header changed')
-    append = _halt_promotion(); working = directory / JOURNALS[1]
+    audit = read_json(directory / RESOLUTION_AUDIT, u.CHUNK); checks = audit.get('public_checks')
+    require(audit == _halt_resolution(identity, checks), 'Recovery resolution audit differs')
+    promotions = _halt_promotions(records, checks)
+    append = b''.join(_halt_promotion(name, record) for name, record in promotions.items())
+    working = directory / JOURNALS[1]
     require(working.is_file() and not working.is_symlink() and
             working.stat().st_size == pin['file_bytes'][JOURNALS[1]] + len(append),
-            'Recovery working events are not exactly one appended promotion')
+            'Recovery working events do not match the verified promotions')
     with (directory / HALT_AUDIT[JOURNALS[1]]).open('rb') as old_events, working.open('rb') as new_events:
         while block := old_events.read(u.CHUNK):
             require(new_events.read(len(block)) == block, 'Recovery changed the original event prefix')
         require(new_events.read(len(append) + 1) == append, 'Recovery appended an unexpected journal event')
-    records = replay_journal(directory, inventory, plan, allow_torn_tail=False)
-    name = pin['unresolved_put']['path'][6:]
-    require(records['objects'].get(name) == {**pin['unresolved_put'], 'status': 'REMOTE_METADATA_VERIFIED'},
-            'Recovered file did not receive its sole allowed promotion')
-    previous = {**records, 'objects': {**records['objects'], name: {**pin['unresolved_put'], 'status': 'STAGED'}}}
-    _halt_trace_valid(original, directory / HALT_AUDIT[TRACE], previous)
-    audit = read_json(directory / RESOLUTION_AUDIT, u.CHUNK); checks = audit.get('public_checks')
-    require(audit == _halt_resolution(identity, checks), 'Recovery resolution audit differs')
+    records['objects'].update(promotions)
     expected_receipt = _halt_bootstrap(identity, raw_journals(directory), file_sha(directory / RESOLUTION_AUDIT), checks)
     require(receipt == expected_receipt and _record_counts(records) == receipt['counts_at_import'] and
             not records['index_objects'], 'Recovery bootstrap or promoted progress differs')
@@ -1112,14 +1135,17 @@ def import_halt_recovery(github, identity, incoming, work, inventory, plan, publ
     for source, destination in HALT_AUDIT.items():
         shutil.copyfile(Path(incoming) / source, Path(work) / destination)
         (Path(work) / destination).chmod(0o600)
-    target = HALT_RECOVERY['unresolved_put']
+    resolution = _halt_resolution(identity, checks)
+    promotions = _halt_promotions(records, checks)
     locked = u.Work(work)
     try:
         journal = u.Journal(locked, EXPECTED_IDENTITY)
-        try: journal.record(target['path'][6:], {**target, 'status': 'REMOTE_METADATA_VERIFIED'})
+        try:
+            for name, record in promotions.items():
+                journal.record(name, record)
         finally: journal.close()
     finally: locked.close()
-    u.atomic_json(Path(work) / RESOLUTION_AUDIT, _halt_resolution(identity, checks))
+    u.atomic_json(Path(work) / RESOLUTION_AUDIT, resolution)
     receipt = _halt_bootstrap(identity, raw_journals(work), file_sha(Path(work) / RESOLUTION_AUDIT), checks)
     validate_halt_bootstrap(work, receipt, identity, inventory, plan)
     u.atomic_json(Path(work) / 'bootstrap.json', receipt)
