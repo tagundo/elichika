@@ -1,0 +1,88 @@
+name: Compare existing signing certificate
+on:
+  push:
+    branches: [codex/sifas-signing-cert-check-20261120]
+    paths: [.github/workflows/sifas-signing-cert-check.yml]
+permissions:
+  contents: read
+jobs:
+  certificate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: android/app/elichika-debug.keystore
+      - name: Compare public certificate only without exporting a private key
+        env:
+          CERT_CHECK_STORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          CERT_CHECK_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          CERT_CHECK_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, re, shutil, subprocess, tempfile
+          expected = '5ccf5b5f73dcebad61255f6bfca848eb2022eedb741515d16ac84f94c405a9e3'
+          def inspect(label, path, password, alias=None):
+              if not shutil.which('keytool'):
+                  return {'candidate': label, 'status': 'KEYTOOL_UNAVAILABLE'}
+              environment = dict(os.environ)
+              environment['CERT_LIST_PASSWORD'] = password
+              command = ['keytool', '-J-Duser.language=en', '-J-Duser.country=US',
+                         '-list', '-rfc', '-keystore', str(path),
+                         '-storepass:env', 'CERT_LIST_PASSWORD']
+              if alias:
+                  command += ['-alias', alias]
+              try:
+                  result = subprocess.run(command, env=environment, capture_output=True,
+                                          text=True, timeout=30)
+              except subprocess.TimeoutExpired:
+                  return {'candidate': label, 'status': 'KEYTOOL_TIMEOUT'}
+              if result.returncode:
+                  return {'candidate': label, 'status': 'KEYSTORE_NOT_OPENED',
+                          'details_withheld': True}
+              fingerprints = []
+              for section in re.split(r'(?m)^Alias name: ', result.stdout):
+                  if 'Entry type: PrivateKeyEntry' not in section:
+                      continue
+                  match = re.search(r'-----BEGIN CERTIFICATE-----\s*(.*?)\s*-----END CERTIFICATE-----',
+                                    section, re.S)
+                  if match:
+                      cert = base64.b64decode(''.join(match.group(1).split()), validate=True)
+                      fingerprints.append(hashlib.sha256(cert).hexdigest())
+              return {'candidate': label, 'status': 'MATCH' if expected in fingerprints else 'DIFFERENT',
+                      'private_entry_certificate_sha256': sorted(set(fingerprints)),
+                      'private_entry_count': len(fingerprints)}
+          reports = []
+          encoded = os.environ.pop('CERT_CHECK_STORE_BASE64', '')
+          password = os.environ.pop('CERT_CHECK_PASSWORD', '')
+          alias = os.environ.pop('CERT_CHECK_ALIAS', '')
+          with tempfile.TemporaryDirectory(prefix='certificate-only-') as temporary:
+              if not encoded:
+                  reports.append({'candidate': 'RELEASE_KEYSTORE_BASE64',
+                                  'status': 'SECRET_NOT_CONFIGURED'})
+              elif not password:
+                  reports.append({'candidate': 'RELEASE_KEYSTORE_BASE64',
+                                  'status': 'STORE_PASSWORD_SECRET_NOT_CONFIGURED'})
+              else:
+                  path = pathlib.Path(temporary) / 'existing.p12'
+                  try:
+                      if len(encoded) > 2000000:
+                          raise ValueError('bounded input')
+                      raw = base64.b64decode(''.join(encoded.split()), validate=True)
+                      fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                      with os.fdopen(fd, 'wb') as stream:
+                          stream.write(raw)
+                      reports.append(inspect('RELEASE_KEYSTORE_BASE64', path, password, alias or None))
+                  except (ValueError, OSError):
+                      reports.append({'candidate': 'RELEASE_KEYSTORE_BASE64',
+                                      'status': 'SECRET_FORMAT_OR_FILE_ERROR', 'details_withheld': True})
+              public = pathlib.Path('android/app/elichika-debug.keystore')
+              if public.is_file():
+                  reports.append(inspect('committed_elichika_debug_keystore', public, 'android'))
+          print('CERTIFICATE_CHECK_RESULT=' + json.dumps({
+              'expected_sifas_certificate_sha256': expected,
+              'private_keys_exported': False, 'apks_modified': False,
+              'reports': reports}, sort_keys=True))
+          PY
