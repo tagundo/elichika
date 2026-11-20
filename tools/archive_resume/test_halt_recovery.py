@@ -58,6 +58,7 @@ class HaltRecoveryTests(unittest.TestCase):
         self.inventory, self.plan, self.records = fixture(self.source, staged=True)
         self.payload = b"exact public bytes for the ambiguous iwbf95 fixture\n"
         self.pin = copy.deepcopy(c.HALT_RECOVERY)
+        self.pin.pop("halt_reason", None)
         self.pin["segment"] = 3
         self.pin["never_submitted_staged"] = ["jzpao2", "k0jfna"]
         self.pin["unresolved_put"] = {
@@ -344,6 +345,35 @@ class HaltRecoveryTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs), self.assertRaises((c.ChainError, c.u.Failure, OSError)):
                 c.check_halt_recovery_public(records, self.public(**kwargs))
         self.assertEqual(c.raw_journals(self.source), before)
+
+    def test_drained_metadata_halt_preserves_acks_and_requires_complete_trace(self):
+        target = self.pin["unresolved_put"]
+        reason = {"exception_class": "Failure", "phase": "data",
+                  "public_message": "Bounded public metadata request failed"}
+        self.pin.update(unresolved_put=None, halt_reason=reason)
+        self.receipt.update(unresolved_puts=[], halt_reason=reason)
+        self.records["iwbf95"] = {**target, "status": "PUT_ACKNOWLEDGED"}
+        self.receipt["counts"] = c._record_counts({"objects": self.records})
+        with (self.source / c.JOURNALS[1]).open("ab") as stream:
+            stream.write(c.u.canonical({"type": "objects", "name": "iwbf95",
+                                        "record": self.records["iwbf95"]}))
+            stream.write(c.u.canonical({"type": "status", "status": "SEGMENT_HALTED"}))
+        self.repin()
+        with self.assertRaisesRegex(c.ChainError, "unambiguous result"):
+            self.validate()
+        self.trace_events.extend({"type": kind, "attempt": 2, **target}
+                                 for kind in ("put_begin", "put_ack"))
+        self.write_trace()
+        self.repin()
+        public = self.public(ack_names=("iwbf95",))
+        work, receipt = self.import_checkpoint(public)
+        self.assert_originals(work)
+        self.assertEqual(receipt["status"], "DRAINED_METADATA_HALT_IMPORTED")
+        self.assertEqual(receipt["public_checks"]["acknowledged_metadata_verified"], ["iwbf95"])
+        self.assertEqual(receipt["counts_at_import"]["PUT_ACKNOWLEDGED"], 2)
+        self.assertFalse(receipt["public_checks"]["missing_ack_allows_reput"])
+        self.assertEqual(public.opens, [])
+        self.assertEqual(receipt["account_writes"], 0)
 
     def test_import_preserves_all_originals_and_appends_only_one_metadata_promotion(self):
         work, receipt = self.import_checkpoint(self.public(ack_names=()))

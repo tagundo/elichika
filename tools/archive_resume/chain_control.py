@@ -69,43 +69,41 @@ TRACE = 'slice-transfer-events.jsonl'
 RECEIPT = 'segment.json'
 # Only this latest, drained HALT can be reconciled into a new bootstrap.
 # Its original receipt/journals/trace are immutable, never relabeled PAUSED.
-HALT_RECOVERY = {'run_id': 43888933648,
+HALT_RECOVERY = {'run_id': 44706156152,
  'run_attempt': 1,
- 'source_sha': '0b2d7b4db62993fb2274e8b29d0057610cb03d15',
+ 'source_sha': 'e18fb138fac96f4626df3569e0e4fe4fb1af34ed',
  'workflow_id': 419149617,
- 'job_id': 133847864306,
- 'segment': 4,
- 'artifact_id': 14319979000,
- 'artifact_name': 'archive-upload-segment-04-43888933648-a1',
- 'artifact_bytes': 5501691,
- 'artifact_sha256': 'efa439e5ff558f8ec10fb4fca9d3d7558104e552e1f40025cf11c51f9599f249',
- 'receipt_sha256': 'fbd6fc7d6617e3970a79b8bc9027c7c5417cea13f660963f4f6e46a4a0b5f665',
- 'raw_journal_sha256': {'journal.events.jsonl': '57f00a41429bbe3a69b3f676a504018d47ad0a1f4479876c03e39cdee400d3a3',
+ 'job_id': 136186442257,
+ 'segment': 1,
+ 'artifact_id': 14630955672,
+ 'artifact_name': 'archive-upload-segment-01-44706156152-a1',
+ 'artifact_bytes': 5725964,
+ 'artifact_sha256': '09fd5efc5d638a69437832a3206c46c69f39b434f6d5e8eaf5f278cb992f26f1',
+ 'receipt_sha256': 'ba0e58951b27cbb9f0ccffd740831a29b472ab5ba3ce7b2d3e63219bc0ce8972',
+ 'raw_journal_sha256': {'journal.events.jsonl': '5708aca12c1cbd427833240fe1764bab507f4b3090dec3a77a92007b49d2363e',
                         'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee'},
- 'transfer_events_sha256': '9c2f017b60617ed2a4ac08271ecb7787c8b3dba6250c7d742674fc2fd12fa5b8',
- 'file_bytes': {'journal.events.jsonl': 29011851,
-                'segment.json': 1811,
-                'journal.json': 1160,
-                'slice-transfer-events.jsonl': 1791776},
- 'counts': {'PUT_ACKNOWLEDGED': 99,
-            'REMOTE_METADATA_VERIFIED': 34392,
-            'STAGED': 1,
-            'journal_objects': 34492,
+ 'transfer_events_sha256': '9424aa1e09783d7ea94b5ccd231c60d307376db2d231393ee6682d656ad4ac77',
+ 'file_bytes': {'journal.json': 1160,
+                'journal.events.jsonl': 30864223,
+                'segment.json': 1578,
+                'slice-transfer-events.jsonl': 1072504},
+ 'counts': {'PUT_ACKNOWLEDGED': 128,
+            'REMOTE_METADATA_VERIFIED': 36564,
+            'journal_objects': 36692,
             'total': 42830},
- 'parent': {'artifact_id': 14302594566,
-            'artifact_name': 'archive-upload-segment-03-43888933648-a1',
-            'artifact_sha256': '4efea81b66ab457921a3ce78ee69d3b34a66520c56707c1815b3be1b6fd9fdb9',
-            'raw_journal_sha256': {'journal.events.jsonl': 'f0ac5d750ab89212f3f5790491bffc27f3414359839386a9719e827d0a5f8caf',
+ 'parent': {'artifact_id': 14615496560,
+            'artifact_name': 'archive-upload-bootstrap-44706156152-a1',
+            'artifact_sha256': '397014b6648ef32165e52123eecadfaa67d4bdd66fa13f0e01f08417487c0e01',
+            'raw_journal_sha256': {'journal.events.jsonl': '47911b3928218a9f85bff9f1a3524ebcaa27d8949a133f9365d1292b33ef0115',
                                    'journal.json': 'a27cdf735157f299e106a069a9ce403ad3664ba39e7a9be3d5f3394f0402d4ee'},
-            'receipt_sha256': '5de94a819692842b3418c9781fa2aa0fca070ef1d396d4941ee0b0365c5e5c31',
+            'receipt_sha256': 'bd01b77f3b7128bdede7cbc260863c3cacdbd41c71c48df2cf4af8cc235f0bf5',
             'run_attempt': 1,
-            'run_id': 43888933648,
-            'source_sha': '0b2d7b4db62993fb2274e8b29d0057610cb03d15'},
- 'unresolved_put': {'item': 'elichika-assets-20261115-e316340d-fa6f6031-b04',
-                    'md5': '4f51c9603446c692f68379ad493a7dac',
-                    'path': 'packs/t2onpv',
-                    'sha256': 'bdf545de0edfdd2a3431f98573b7d17cd2574190df0c76c2bf584f582eca4993',
-                    'size': 4405},
+            'run_id': 44706156152,
+            'source_sha': 'e18fb138fac96f4626df3569e0e4fe4fb1af34ed'},
+ 'halt_reason': {'exception_class': 'Failure',
+                 'phase': 'data',
+                 'public_message': 'Bounded public metadata request failed'},
+ 'unresolved_put': None,
  'never_submitted_staged': []}
 HALT_AUDIT = {name: 'recovered-halt-' + name for name in (*JOURNALS, RECEIPT, TRACE)}
 RESOLUTION_AUDIT = 'halt-resolution.json'
@@ -675,9 +673,9 @@ def raw_journals(directory):
     return {name: file_sha(Path(directory) / name) for name in JOURNALS}
 
 
-def validate_transfer_audit(receipt, directory, records):
+def validate_transfer_audit(receipt, directory, records, trace_name=TRACE):
     begins, finishes, unresolved, ever_begun = {}, set(), {}, set()
-    trace = Path(directory) / TRACE
+    trace = Path(directory) / trace_name
     require(trace.is_file() and not trace.is_symlink() and trace.stat().st_size < MAX_FILE, 'Safe transfer audit is absent')
     with trace.open('rb') as stream:
         while True:
@@ -884,22 +882,24 @@ def halt_recovery_provenance(github, identity):
 
 def _halt_receipt_valid(receipt):
     pin = HALT_RECOVERY
+    target = pin['unresolved_put']
+    reason = pin.get('halt_reason', {'exception_class': 'Failure', 'phase': 'data',
+        'public_message': 'Unresolved begun PUT prevents automatic continuation'})
     lineage = {'repository': REPOSITORY, 'run_id': pin['run_id'], 'run_attempt': pin['run_attempt'],
                'source_sha': pin['source_sha'], 'workflow_path': WORKFLOW,
                'segment': pin['segment'], 'parent': pin['parent']}
     require(receipt.get('schema') == 1 and receipt.get('status') == 'HALTED' and receipt.get('phase') == 'data' and
-            receipt.get('halt_reason') == {'exception_class': 'Failure', 'phase': 'data',
-                'public_message': 'Unresolved begun PUT prevents automatic continuation'} and
+            receipt.get('halt_reason') == reason and
             receipt.get('lineage') == lineage and receipt.get('identity_sha256') == IDENTITY_SHA and
             receipt.get('all_workers_reaped') is True and type(receipt.get('active_workers')) is int and
             receipt['active_workers'] == 0 and type(receipt.get('active_puts')) is int and receipt['active_puts'] == 0 and
-            receipt.get('unresolved_puts') == [pin['unresolved_put']] and
+            receipt.get('unresolved_puts') == ([] if target is None else [target]) and
             receipt.get('never_submitted_staged') == pin['never_submitted_staged'] and
             receipt.get('never_submitted_index_staged') == [] and receipt.get('counts') == pin['counts'] and
             receipt.get('credentials_in_receipt') is False and
             receipt.get('raw_journal_sha256') == pin['raw_journal_sha256'] and
             receipt.get('transfer_events_sha256') == pin['transfer_events_sha256'],
-            'Checkpoint is not the exact drained single-unresolved-PUT HALT')
+            'Checkpoint is not the exact drained HALT')
     validate_reference(lineage['parent'])
 
 
@@ -911,7 +911,10 @@ def _record_counts(records):
 
 
 def _halt_trace_valid(receipt, trace, records):
-    """This exception proves the ONE unresolved finish; the general audit stays strict."""
+    """Use the complete audit for a drained checkpoint; isolate any pinned unresolved PUT."""
+    if HALT_RECOVERY['unresolved_put'] is None:
+        validate_transfer_audit(receipt, Path(trace).parent, records, trace_name=Path(trace).name)
+        return
     begins, finishes, unresolved, ever = {}, set(), {}, set()
     with Path(trace).open('rb') as stream:
         while True:
@@ -988,7 +991,7 @@ def validate_halt_recovery(directory, inventory, plan):
 
 
 def check_halt_recovery_public(records, public=None):
-    """Check public ACK metadata and hash the complete body of the unresolved PUT."""
+    """Check public ACK metadata and hash the full body of any pinned unresolved PUT."""
     public = public or scope.BoundedPublic(); target = HALT_RECOVERY['unresolved_put']; checked = 0; found = None
     verified_acks = []
     for item in layout.ITEMS:
@@ -1005,7 +1008,13 @@ def check_halt_recovery_public(records, public=None):
             checked += 1
             if record['status'] == 'PUT_ACKNOWLEDGED':
                 verified_acks.append(key[6:])
-        if item == target['item']: found = files.get(target['path'])
+        if target is not None and item == target['item']: found = files.get(target['path'])
+    checks = {'owned_items_checked': len(layout.ITEMS), 'visible_exact_size_md5_checked': checked,
+              'acknowledged_metadata_verified': sorted(verified_acks),
+              'missing_ack_allows_reput': False, 'unresolved_identity': target,
+              'public_metadata_size_md5_verified': True, 'account_writes': 0}
+    if target is None:
+        return {**checks, 'full_body_bytes': 0, 'full_body_sha256': None, 'full_body_md5': None}
     require(u.remote_equal(found, target['size'], target['md5']), 'The sole unresolved PUT is not publicly size/MD5 verified')
     url = 'https://archive.org/download/' + target['item'] + '/' + urllib.parse.quote(target['path'], safe='/')
     sha, md5, count, deadline = hashlib.sha256(), hashlib.md5(), 0, time.monotonic() + 180
@@ -1023,29 +1032,27 @@ def check_halt_recovery_public(records, public=None):
             sha.update(block); md5.update(block)
     require(count == target['size'] and sha.hexdigest() == target['sha256'] and md5.hexdigest() == target['md5'],
             'Recovery public full-file SHA256/MD5 differs')
-    return {'owned_items_checked': len(layout.ITEMS), 'visible_exact_size_md5_checked': checked,
-            'acknowledged_metadata_verified': sorted(verified_acks),
-            'missing_ack_allows_reput': False, 'unresolved_identity': target,
-            'public_metadata_size_md5_verified': True, 'full_body_bytes': count,
-            'full_body_sha256': sha.hexdigest(), 'full_body_md5': md5.hexdigest(), 'account_writes': 0}
+    return {**checks, 'full_body_bytes': count, 'full_body_sha256': sha.hexdigest(),
+            'full_body_md5': md5.hexdigest()}
 
 
 def _halt_public_checks_valid(checks):
     target = HALT_RECOVERY['unresolved_put']
+    expected_body = (0, None, None) if target is None else (target['size'], target['sha256'], target['md5'])
     require(isinstance(checks, dict) and set(checks) == {'owned_items_checked', 'visible_exact_size_md5_checked',
         'acknowledged_metadata_verified', 'missing_ack_allows_reput', 'unresolved_identity', 'public_metadata_size_md5_verified',
         'full_body_bytes', 'full_body_sha256', 'full_body_md5', 'account_writes'} and
         checks['owned_items_checked'] == len(layout.ITEMS) and type(checks['visible_exact_size_md5_checked']) is int and
         1 <= checks['visible_exact_size_md5_checked'] <= HALT_RECOVERY['counts']['journal_objects'] and
         checks['missing_ack_allows_reput'] is False and checks['unresolved_identity'] == target and
-        checks['public_metadata_size_md5_verified'] is True and checks['full_body_bytes'] == target['size'] and
-        checks['full_body_sha256'] == target['sha256'] and checks['full_body_md5'] == target['md5'] and
+        checks['public_metadata_size_md5_verified'] is True and type(checks['full_body_bytes']) is int and
+        (checks['full_body_bytes'], checks['full_body_sha256'], checks['full_body_md5']) == expected_body and
         type(checks['account_writes']) is int and checks['account_writes'] == 0,
         'Recovery public resolution proof differs')
     names = checks['acknowledged_metadata_verified']
     require(isinstance(names, list) and len(names) <= HALT_RECOVERY['counts'].get('PUT_ACKNOWLEDGED', 0) and
             all(isinstance(name, str) and re.fullmatch('[0-9a-z]{6}', name) for name in names) and
-            names == sorted(set(names)) and len(names) < checks['visible_exact_size_md5_checked'],
+            names == sorted(set(names)) and len(names) + int(target is not None) <= checks['visible_exact_size_md5_checked'],
             'Recovery ACK metadata proof differs')
 
 
@@ -1055,7 +1062,7 @@ def _halt_promotions(records, checks):
     objects = records['objects']
     require(all(objects.get(name, {}).get('status') == 'PUT_ACKNOWLEDGED' for name in acknowledged),
             'Recovery metadata proof refers to a file without a durable ACK')
-    names = [target['path'][6:], *acknowledged]
+    names = acknowledged if target is None else [target['path'][6:], *acknowledged]
     return {name: {**objects[name], 'status': 'REMOTE_METADATA_VERIFIED'} for name in names}
 
 
@@ -1065,7 +1072,9 @@ def _halt_promotion(name, record):
 
 def _halt_resolution(identity, checks):
     _halt_public_checks_valid(checks)
-    return {'schema': 1, 'kind': 'EXACT_PUBLIC_MD5_AND_FULL_SHA256_RESOLUTION',
+    kind = ('EXACT_DRAINED_METADATA_HALT_PUBLIC_MD5' if HALT_RECOVERY['unresolved_put'] is None
+            else 'EXACT_PUBLIC_MD5_AND_FULL_SHA256_RESOLUTION')
+    return {'schema': 1, 'kind': kind,
             'current_identity': identity, 'original_recovery': HALT_RECOVERY,
             'public_checks': checks, 'journal_status': 'REMOTE_METADATA_VERIFIED',
             'original_halt_status_preserved': True, 'credentials_in_receipt': False, 'account_writes': 0}
@@ -1074,15 +1083,18 @@ def _halt_resolution(identity, checks):
 def _halt_bootstrap(identity, hashes, audit_sha, checks):
     counts = dict(HALT_RECOVERY['counts'])
     acknowledgments = len(checks['acknowledged_metadata_verified'])
-    for status, promoted in (('STAGED', 1), ('PUT_ACKNOWLEDGED', acknowledgments)):
+    resolved_put = int(HALT_RECOVERY['unresolved_put'] is not None)
+    for status, promoted in (('STAGED', resolved_put), ('PUT_ACKNOWLEDGED', acknowledgments)):
         remaining = counts.get(status, 0) - promoted
         if remaining:
             counts[status] = remaining
         else:
             counts.pop(status, None)
-    counts['REMOTE_METADATA_VERIFIED'] = counts.get('REMOTE_METADATA_VERIFIED', 0) + 1 + acknowledgments
-    return {'schema': 1, 'status': 'RESOLVED_PUT_HALT_IMPORTED', 'current_identity': identity,
-            'policy': 'ONE_EXACT_LATEST_HALT_PUBLIC_MD5_FULL_SHA256', 'recovery': HALT_RECOVERY,
+    counts['REMOTE_METADATA_VERIFIED'] = counts.get('REMOTE_METADATA_VERIFIED', 0) + resolved_put + acknowledgments
+    status, policy = ('RESOLVED_PUT_HALT_IMPORTED', 'ONE_EXACT_LATEST_HALT_PUBLIC_MD5_FULL_SHA256') if resolved_put else (
+        'DRAINED_METADATA_HALT_IMPORTED', 'ONE_EXACT_LATEST_DRAINED_METADATA_HALT_PUBLIC_MD5')
+    return {'schema': 1, 'status': status, 'current_identity': identity,
+            'policy': policy, 'recovery': HALT_RECOVERY,
             'original_halt_status_preserved': True, 'original_raw_journal_sha256': HALT_RECOVERY['raw_journal_sha256'],
             'raw_journal_sha256': hashes, 'resolution_audit_sha256': audit_sha, 'public_checks': checks,
             'counts_at_import': counts, 'unresolved_staged': [],

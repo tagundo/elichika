@@ -57,7 +57,7 @@ jobs:
         timeout-minutes: 5
         working-directory: tools/archive_inventory
         run: python3 -B ci_prepare.py prepare
-      - name: Reconcile the exact latest halted PUT with public MD5 and full SHA256 before continuation
+      - name: Validate the exact drained metadata HALT and promote public size and MD5 matches
         id: importer
         timeout-minutes: 20
         env:
