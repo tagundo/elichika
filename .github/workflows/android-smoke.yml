@@ -89,6 +89,7 @@ jobs:
           yuro6n 19955 c5c5e5e4bcc9b46c65908991b402db0b2f39f221840204e99a47e31f15ca5106
           OPENING
           fi
+          "$RUNNER_TEMP/elichika-game-qa" rebuild_assets > "$RUNNER_TEMP/rebuild-game-qa.log" 2>&1
           "$RUNNER_TEMP/elichika-game-qa" > "$RUNNER_TEMP/elichika-game-qa.log" 2>&1 &
           server_pid=$!
           printf '%s\n' "$server_pid" > "$RUNNER_TEMP/elichika-game-qa.pid"
@@ -119,6 +120,9 @@ jobs:
           if [[ -f $RUNNER_TEMP/elichika-game-qa.log ]]; then
             grep -E 'server address|/login/(startup|login)|/bootstrap/|/asset/getPackUrl|/static/' \
               "$RUNNER_TEMP/elichika-game-qa.log" | tail -n 250 > "$evidence/server-routes.txt" || true
+          fi
+          if [[ -f $RUNNER_TEMP/rebuild-game-qa.log ]]; then
+            tail -n 25 "$RUNNER_TEMP/rebuild-game-qa.log" > "$evidence/rebuild-tail.txt"
           fi
           if [[ -f $evidence/android-logcat.txt ]]; then
             grep -E 'Unity.*(Initialize engine version|GfxDevice|Renderer|OpenGL|Vulkan)|Fatal signal|EGL_BAD|AndroidRuntime.*FATAL EXCEPTION' \
