@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import concurrent.futures
 from dataclasses import dataclass
+import errno
 import hashlib
 from http.client import HTTPException
 import json
@@ -29,6 +30,7 @@ MAX_CATALOG = 256 * 1024
 MAX_PROFILE = 64 * 1024 * 1024
 MAX_OBJECT = 141834336
 TOTAL_OBJECTS = 42830
+MAX_REQUIRED_NAMES = 100000
 PROFILES = tuple(f"gl/{p}/{lang}" for p in ("android", "ios") for lang in ("en", "ko", "zh")) + ("jp/android/ja", "jp/ios/ja")
 NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
 ITEM = re.compile(r"[a-z0-9][a-z0-9_.-]{2,99}\Z")
@@ -113,6 +115,16 @@ def select_profiles(region="gl", platform="android", language="all"):
     require(language in allowed[region], "Choose a language valid for the selected region; both regions require all languages.")
     return tuple(p for p in PROFILES if (region == "both" or p.startswith(region + "/")) and
                  (platform == "both" or p.split("/")[1] == platform) and (language == "all" or p.endswith("/" + language)))
+
+
+def validate_required_names(value):
+    require(isinstance(value, (list, tuple, set, frozenset)) and len(value) <= MAX_REQUIRED_NAMES,
+            "The server's required archive file list is invalid or too large.")
+    require(all(isinstance(name, str) and NAME.fullmatch(name) for name in value),
+            "The server's required archive file list contains an invalid filename.")
+    names = set(value)
+    require(len(names) == len(value), "The server's required archive file list contains duplicate filenames.")
+    return names
 
 
 class Progress:
@@ -332,11 +344,64 @@ def add_profile(db, path, row, catalog, progress=None):
     require(count == row["expected_objects"] and size_total == row["declared_bytes"], f"{profile}: manifest record totals do not match its descriptor.")
 
 
-def existing_matches(root_fd, name, size, sha256, progress):
+def indexed_packs(packs, names, progress):
+    """Snapshot the same depth-first, last-basename index as the Go server."""
+    seen, files = set(), {}
+
+    def entries(path):
+        progress.check()
+        try:
+            resolved = Path(path).resolve(strict=True)
+            if resolved not in seen:
+                seen.add(resolved)
+                with os.scandir(path) as children:
+                    return iter(sorted(children, key=lambda child: os.fsencode(child.name)))
+        except (OSError, RuntimeError):
+            # The server skips unreadable folders and broken directory links.
+            pass
+        return iter(())
+
+    stack = [entries(packs)]
+    visited = 0
+    while stack:
+        entry = next(stack[-1], None)
+        if entry is None:
+            stack.pop()
+            continue
+        visited += 1
+        if visited % 128 == 0:
+            progress.check()
+        try:
+            if entry.is_dir():
+                stack.append(entries(entry.path))
+            elif len(stack) > 1 and entry.name in names and entry.is_file():
+                # Flat canonical files are always checked separately first.
+                files[entry.name] = Path(entry.path)
+        except OSError:
+            pass
+    return files
+
+
+def existing_matches(path, name, size, sha256, progress, *, root_fd=None):
+    """Return True for verified bytes, False for corruption, None if absent."""
+    opened = path
+    if root_fd is None:
+        # A cache read may follow the same owner symlink as Go. Open only its
+        # resolved regular file, then prove the named route still goes there.
+        try:
+            opened = path.resolve(strict=True)
+            if not stat.S_ISREG(opened.stat().st_mode):
+                return None
+        except RuntimeError:  # pathlib's symlink-loop error before Python 3.13
+            return None
+        except OSError as error:
+            if error.errno in (errno.ENOENT, errno.ENOTDIR, errno.ELOOP):
+                return None
+            raise DownloadError(f"{name}: the existing served file cannot be inspected safely.") from None
     try:
-        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
+        fd = os.open(opened, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
     except FileNotFoundError:
-        return False
+        return None
     except OSError:
         raise DownloadError(f"{name}: existing file cannot be opened safely; check permissions or symbolic links.") from None
     try:
@@ -351,13 +416,44 @@ def existing_matches(root_fd, name, size, sha256, progress):
                 sha.update(block)
                 progress.update(current=name)
         after = os.fstat(fd)
-        require((info.st_size, info.st_mtime_ns, info.st_ctime_ns) == (after.st_size, after.st_mtime_ns, after.st_ctime_ns), f"{name}: existing file changed while checking it; stop other asset writers.")
+        try:
+            current = os.stat(path, dir_fd=root_fd, follow_symlinks=root_fd is None)
+        except OSError:
+            current = None
+        require(current is not None and os.path.samestat(info, current) and
+                (info.st_size, info.st_mtime_ns, info.st_ctime_ns) == (after.st_size, after.st_mtime_ns, after.st_ctime_ns) ==
+                (current.st_size, current.st_mtime_ns, current.st_ctime_ns),
+                f"{name}: existing file changed while checking it; stop other asset writers.")
         return sha.hexdigest() == sha256
     finally:
         os.close(fd)
 
 
-def _download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None):
+def restrict_to_required(db, names):
+    """Retain exact names after validating the published selection's totals."""
+    with db:
+        db.execute("CREATE TEMP TABLE required (name TEXT PRIMARY KEY COLLATE BINARY)")
+        db.executemany("INSERT INTO required VALUES (?)", ((name,) for name in names))
+        # Use the indexed case-insensitive lookup first, then require the exact
+        # server filename. A case-folded match cannot authorize a download.
+        unpublished = [name for (name,) in db.execute("""
+            SELECT r.name FROM required r
+            LEFT JOIN objects o ON o.name=r.name AND o.name COLLATE BINARY=r.name
+            WHERE o.name IS NULL ORDER BY r.name
+        """)]
+        db.execute("DELETE FROM objects WHERE NOT EXISTS (SELECT 1 FROM required r WHERE r.name=objects.name)")
+    return unpublished
+
+
+def served_regular(path, *, root_fd=None):
+    try:
+        return stat.S_ISREG(os.stat(path, dir_fd=root_fd).st_mode)
+    except OSError:
+        return False
+
+
+def _download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None,
+              static_packs=None, required_names=None):
     """Download selected verified originals. Valid completed files resume across calls.
 
     Returns counts. Raises Cancelled or DownloadError. Does not start/stop a
@@ -366,11 +462,15 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
     require(isinstance(source, Source), "Archive source must contain reviewed publication URL and SHA256 pins.")
     source.validate()
     selected = select_profiles(region, platform, language)
+    required_names = None if required_names is None else validate_required_names(required_names)
     require(type(workers) is int and 1 <= workers <= 4, "Download workers must be between one and four.")
     report = Progress(progress, cancelled or (lambda: False))
     report.update(force=True)
     http = http or PublicHTTP()
     packs = Path(packs).absolute()
+    static_packs = Path(static_packs).absolute() if static_packs is not None else None
+    if static_packs == packs:
+        static_packs = None
     packs.mkdir(parents=True, exist_ok=True)
     root_fd = os.open(packs, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
@@ -394,12 +494,40 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
                 require(total <= TOTAL_OBJECTS, "Selected archive union exceeds the catalog's file count.")
                 if selected == PROFILES:
                     require(total == TOTAL_OBJECTS and total_bytes == catalog["declared_bytes"], "Complete selected profile union does not cover the catalog's 42,830 files and byte total.")
+                unpublished = []
+                if required_names is not None:
+                    unpublished = restrict_to_required(db, required_names)
+                    total, total_bytes = db.execute("SELECT count(*),coalesce(sum(size),0) FROM objects").fetchone()
                 report.update(force=True, stage="files", total_files=total, total_bytes=total_bytes, current="")
+                names = required_names if required_names is not None else {name for (name,) in db.execute("SELECT name FROM objects")}
+                indexed = indexed_packs(packs, names, report) if names else {}
+                missing = []
+                for name in unpublished:
+                    report.check()
+                    alternate = indexed.get(name)
+                    # The catalog has no digest for these names. Keep already
+                    # served local assets separate from verified public files.
+                    if not (served_regular(name, root_fd=root_fd) or
+                            (alternate is not None and served_regular(alternate)) or
+                            (static_packs is not None and served_regular(static_packs / name))):
+                        missing.append(name)
+                require(not missing, f"{len(missing)} required files are unavailable in this Archive selection and the local cache: {', '.join(missing[:8])}.")
 
                 def one(row):
                     name, size, sha256, md5, url = row
                     report.check()
-                    reused = existing_matches(root_fd, name, size, sha256, report)
+                    reused = existing_matches(name, name, size, sha256, report, root_fd=root_fd)
+                    if reused is None:
+                        alternate = indexed.get(name)
+                        if alternate is not None:
+                            reused = existing_matches(alternate, name, size, sha256, report)
+                        if reused is None and static_packs is not None:
+                            reused = existing_matches(static_packs / name, name, size, sha256, report)
+                        if reused:
+                            # A new canonical file shadows these read-only sources.
+                            canonical = existing_matches(name, name, size, sha256, report, root_fd=root_fd)
+                            if canonical is not None:
+                                reused = canonical
                     if not reused:
                         require(os.statvfs(work).f_bavail * os.statvfs(work).f_frsize >= size + 8 * 1024 * 1024,
                                 f"{name}: insufficient free disk space for the next verified asset.")
@@ -439,18 +567,20 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
                             future.cancel()
                         raise
                 report.update(force=True, stage="complete", current="")
-                return {"profiles": list(selected), **report.value}
+                return {"profiles": list(selected), "local_unpublished_files": len(unpublished), **report.value}
             finally:
                 db.close()
     finally:
         os.close(root_fd)
 
 
-def download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None):
-    """Public API; see _download for operation-barrier and resume requirements."""
+def download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None,
+             static_packs=None, required_names=None):
+    """Verify and reuse served cache files, including optional flat static/."""
     try:
         return _download(source, packs, region=region, platform=platform, language=language,
-                         workers=workers, progress=progress, cancelled=cancelled, http=http)
+                         workers=workers, progress=progress, cancelled=cancelled, http=http, static_packs=static_packs,
+                         required_names=required_names)
     except (Cancelled, DownloadError):
         raise
     except (json.JSONDecodeError, UnicodeError):

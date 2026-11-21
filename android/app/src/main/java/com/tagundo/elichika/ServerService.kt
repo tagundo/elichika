@@ -449,7 +449,8 @@ class ServerService : Service() {
 
     /** Public archive downloads keep the same foreground maintenance ownership as CLI actions. */
     private fun runArchiveDownload(args: List<String>) {
-        if (args.size != 4) {
+        val missingOnly = args.size == 5 && args[4] == "--missing"
+        if (args.size != 4 && !missingOnly) {
             Bus.log(getString(R.string.archive_download_invalid_scope))
             if (!Bus.serverRunning) finishService()
             return
@@ -496,9 +497,13 @@ class ServerService : Service() {
                             }
                         },
                         { cancelled.get() || destroyed })
+                    val inputs = arrayOf<Any>(workDir.absolutePath, library.absolutePath, config,
+                        args[1], args[2], args[3], observer)
+                    val runnerInputs = if (missingOnly) {
+                        inputs + File(applicationInfo.nativeLibraryDir, "libelichika.so").absolutePath
+                    } else inputs
                     val raw = EmbeddedPython.instance(this).getModule("archive_profile_download_bridge")
-                        .callAttr("run_android", workDir.absolutePath, library.absolutePath, config,
-                            args[1], args[2], args[3], observer).toString()
+                        .callAttr("run_android", *runnerInputs).toString()
                     val result = JSONObject(raw)
                     when (result.optString("status")) {
                         "done" -> Bus.log(getString(R.string.archive_download_done))

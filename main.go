@@ -47,18 +47,17 @@ func checkCli() bool {
 		}
 	}
 	if os.Args[1] == "download_archive" {
-		// bulk-download every game file from archive.org (does NOT use the game CDN),
-		// then extract into the cache dir. os.Args[2] picks the region: gl | jp | both.
-		regions := []string{"gl", "jp"}
-		if len(os.Args) > 2 {
-			switch os.Args[2] {
-			case "gl":
-				regions = []string{"gl"}
-			case "jp":
-				regions = []string{"jp"}
-			}
+		if err := runArchiveDownload(os.Args[2:]); err != nil {
+			log.Println("download_archive:", err)
+			os.Exit(1)
 		}
-		asset.DownloadArchive(regions)
+	}
+	if os.Args[1] == "archive_required" {
+		if err := writeArchiveRequired(os.Stdout, os.Args[2:]); err != nil {
+			log.Println("archive_required:", err)
+			os.Exit(1)
+		}
+		return false
 	}
 	if os.Args[1] == "reset_accounts" {
 		// wipe ALL accounts back to a new-account state while keeping their logins

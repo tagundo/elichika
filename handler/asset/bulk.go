@@ -1,9 +1,6 @@
 package asset
 
-// Bulk-download support: fetch every pack/metapack the game needs that isn't already cached, from
-// the game CDN. This is meant for the files that aren't in the archive.org dumps (content newer than
-// the dump snapshot) - get the bulk from the archive first (menu "Download all game files"), then
-// use this for the remainder. (Those files also download automatically as you play.)
+// Bulk-download support for the whole packs and metapacks the game needs.
 
 import (
 	"database/sql"
@@ -31,14 +28,21 @@ func DownloadAllMissing(workers int) {
 // DownloadMissing downloads only the selected profiles, including common files
 // and whole metapacks. Invalid or unloaded profiles fail before any CDN request.
 func DownloadMissing(workers int, selection assetdata.DownloadSelection) error {
-	names, err := assetdata.SelectWholeFilesWithFallback(selection, func(profile assetdata.AssetProfile, names map[string]struct{}) error {
-		return readInstalledDownloadProfile(config.AssetPath, profile, names)
-	})
+	names, err := SelectedDownloadFiles(selection)
 	if err != nil {
 		return err
 	}
 	log.Printf("download_packs: selected %d whole files (%s)\n", len(names), selection)
 	return downloadMissingFiles(workers, names)
+}
+
+// SelectedDownloadFiles uses the same effective served catalogs for CDN and
+// Archive repair. The published Archive can include historical GL-only extras
+// that were deliberately removed from the server's active catalog.
+func SelectedDownloadFiles(selection assetdata.DownloadSelection) (map[string]struct{}, error) {
+	return assetdata.SelectWholeFilesWithFallback(selection, func(profile assetdata.AssetProfile, names map[string]struct{}) error {
+		return readInstalledDownloadProfile(config.AssetPath, profile, names)
+	})
 }
 
 func readInstalledDownloadProfile(assetRoot string, profile assetdata.AssetProfile, names map[string]struct{}) error {

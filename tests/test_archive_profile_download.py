@@ -124,6 +124,102 @@ class Tests(unittest.TestCase):
             self.assertEqual(Path(root, "english").read_bytes(), f.payloads["english"])
             self.assertNotIn(f.rows["shared"]["url"], f.http.calls)
 
+    def test_reuses_flat_static_and_nested_alias_without_moving_either(self):
+        f = Fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packs, static, external = root / "packs", root / "static", root / "external"
+            for folder in (packs, static, external):
+                folder.mkdir()
+            (packs / "bucket").symlink_to(external, target_is_directory=True)
+            (external / "cycle").symlink_to(packs, target_is_directory=True)
+            source_shared = root / "shared-source"
+            source_shared.write_bytes(f.payloads["shared"])
+            (external / "shared").symlink_to(source_shared)
+            (static / "english").write_bytes(f.payloads["english"])
+
+            result = f.run(packs, language="en", static_packs=static)
+            self.assertEqual((result["reused_files"], result["downloaded_files"]), (2, 0))
+            self.assertEqual([path.name for path in packs.iterdir()], ["bucket"])
+            self.assertTrue((external / "shared").is_symlink())
+            self.assertEqual(source_shared.read_bytes(), f.payloads["shared"])
+            self.assertEqual((static / "english").read_bytes(), f.payloads["english"])
+            self.assertFalse(any(pack["url"] in f.http.calls for pack in f.rows.values()))
+
+    def test_repairs_served_corruption_even_with_valid_lower_priority_alias(self):
+        f = Fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packs, static = root / "packs", root / "static"
+            first, last = packs / "01-first", packs / "99-last"
+            for folder in (packs, static, first, last):
+                folder.mkdir()
+            wrong_english = b"?" * len(f.payloads["english"])
+            wrong_shared = b"?" * len(f.payloads["shared"])
+            (packs / "english").write_bytes(wrong_english)
+            (first / "english").write_bytes(f.payloads["english"])
+            (first / "shared").write_bytes(f.payloads["shared"])
+            (last / "shared").write_bytes(wrong_shared)
+            for name in ("shared", "english"):
+                (static / name).write_bytes(f.payloads[name])
+
+            result = f.run(packs, language="en", static_packs=static)
+            self.assertEqual((result["reused_files"], result["downloaded_files"]), (0, 2))
+            for name in ("shared", "english"):
+                self.assertIn(f.rows[name]["url"], f.http.calls)
+                self.assertEqual((packs / name).read_bytes(), f.payloads[name])
+                self.assertEqual((static / name).read_bytes(), f.payloads[name])
+            self.assertEqual((last / "shared").read_bytes(), wrong_shared)
+            self.assertEqual((first / "shared").read_bytes(), f.payloads["shared"])
+
+    def test_static_lookup_is_flat_and_uses_exact_filename(self):
+        f = Fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packs, static = root / "packs", root / "static"
+            (static / "bucket").mkdir(parents=True)
+            (static / "bucket" / "shared").write_bytes(f.payloads["shared"])
+            (static / "english-backup").write_bytes(f.payloads["english"])
+            result = f.run(packs, language="en", static_packs=static)
+            self.assertEqual((result["reused_files"], result["downloaded_files"]), (0, 2))
+            self.assertTrue((static / "bucket" / "shared").is_file())
+
+    def test_missing_only_uses_exact_required_scope_and_reports_local_unpublished_files(self):
+        f = Fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            packs, static = root / "packs", root / "static"
+            static.mkdir()
+            (static / "local-costume").write_bytes(b"owner content")
+            result = f.run(packs, language="en", static_packs=static,
+                           required_names={"local-costume", "english"})
+            self.assertEqual((result["total_files"], result["downloaded_files"], result["local_unpublished_files"]),
+                             (1, 1, 1))
+            self.assertEqual(result["completed_bytes"], len(f.payloads["english"]))
+            self.assertEqual((static / "local-costume").read_bytes(), b"owner content")
+            self.assertEqual([path.name for path in packs.iterdir()], ["english"])
+            self.assertNotIn(f.rows["shared"]["url"], f.http.calls)
+
+    def test_unavailable_required_names_are_reported_before_pack_transfer(self):
+        for missing in ("local-costume", "English"):
+            f = Fixture()
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as root:
+                with self.assertRaisesRegex(a.DownloadError, f"1 required files.*{missing}"):
+                    f.run(root, language="en", required_names={"shared", missing})
+                self.assertFalse(any(pack["url"] in f.http.calls for pack in f.rows.values()))
+                self.assertEqual(list(Path(root).iterdir()), [])
+
+    def test_required_names_cannot_bypass_manifest_validation(self):
+        f = Fixture()
+        with tempfile.TemporaryDirectory() as root, self.assertRaisesRegex(a.DownloadError, "42,830"):
+            f.run(root, region="both", platform="both", required_names=[])
+        invalid = ({"../escape"}, {"has/slash"}, ["english", "english"], {"english": 1}, [True])
+        for names in invalid:
+            f = Fixture()
+            with self.subTest(names=names), tempfile.TemporaryDirectory() as root, self.assertRaises(a.DownloadError):
+                f.run(root, required_names=names)
+                self.assertEqual(f.http.calls, [])
+
     def test_wrong_payload_sha_keeps_existing_file_and_cleans_temps(self):
         f = Fixture()
         f.values[f.rows["english"]["url"]] = b"WRONG---"

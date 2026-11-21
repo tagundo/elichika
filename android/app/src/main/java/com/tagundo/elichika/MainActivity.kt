@@ -1030,9 +1030,8 @@ class MainActivity : AppCompatActivity() {
      *  server) before launching; run others straight away. */
     private fun confirmAndRunBinary(a: JSONObject) {
         val id = a.optString("id")
-        // Both archive and CDN actions use the same explicit game-content scope.
-        if (id == "download_archive") { confirmDownloadArchive(a); return }
-        if (id == "download_packs") { confirmDownloadMissing(a); return }
+        if (id == "download_archive") { confirmGameDownload(a, missingOnly = false); return }
+        if (id == "download_packs") { confirmGameDownload(a, missingOnly = true); return }
         val stops = a.optBoolean("stop_server", true)
         if (!(stops && Bus.serverRunning)) { runBinary(a); return }
         val msg = getString(R.string.confirm_stops_server)
@@ -1073,8 +1072,8 @@ class MainActivity : AppCompatActivity() {
         ServerService.runAction(this, args, a.optBoolean("stop_server", true))
     }
 
-    /** Choose the missing-file source and game scope in a single dialog. */
-    private fun confirmDownloadMissing(a: JSONObject) {
+    /** Select an Archive or CDN scope in the game's download dialog. */
+    private fun confirmGameDownload(a: JSONObject, missingOnly: Boolean) {
         val regionValues = arrayOf("gl", "jp", "both")
         val regionLabels = arrayOf(getString(R.string.region_gl), getString(R.string.region_jp), getString(R.string.region_both))
         val platformValues = arrayOf("android", "ios", "both")
@@ -1086,44 +1085,55 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(padding, 0, padding, 0)
         }
-        fun paragraph(text: String) = TextView(this).apply {
+        fun paragraph(text: String, parent: LinearLayout = form) = TextView(this).apply {
             this.text = text
             setPadding(0, padding / 2, 0, padding / 4)
-        }.also { form.addView(it) }
-        fun selector(labelId: Int, labels: Array<String>): Spinner {
-            val label = paragraph(getString(labelId))
+        }.also { parent.addView(it) }
+        fun selector(labelId: Int, labels: Array<String>, parent: LinearLayout = form): Spinner {
+            val label = paragraph(getString(labelId), parent)
             return Spinner(this).apply {
                 id = View.generateViewId()
                 label.labelFor = id
                 adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, labels).apply {
                     setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 }
-                form.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                parent.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
         }
-        val source = selector(R.string.download_source, arrayOf("CDN", "archive.org")).apply { setSelection(0) }
-        fun useArchiveSource() = source.selectedItemPosition == 1
-        val sourceDescription = paragraph(getString(R.string.confirm_download_packs))
-        val region = selector(R.string.download_region, regionLabels)
-        val platform = selector(R.string.download_platform, platformLabels)
-        val language = selector(R.string.download_game_language, glLanguageLabels)
-        val selection = paragraph("")
-        paragraph(getString(R.string.download_scope_note))
-        if (a.optBoolean("stop_server", true) && Bus.serverRunning) {
-            paragraph(getString(R.string.confirm_stops_server))
+        val source = if (missingOnly) selector(R.string.download_source, arrayOf("CDN", "archive.org")) else null
+        fun useArchiveSource() = source == null || source.selectedItemPosition == 1
+        fun choices() = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            form.addView(this)
         }
+        val archive = choices()
+        paragraph(getString(R.string.confirm_download_archive), archive)
+        val scopes = ArchiveDownloadScope.entries
+        val scope = selector(R.string.archive_download_scope, scopes.map { getString(it.label) }.toTypedArray(), archive)
+        val initialJP = Lang.effective(this) == "ja"
+        scope.setSelection(if (initialJP) ArchiveDownloadScope.JP_ANDROID.ordinal else ArchiveDownloadScope.GL_ANDROID.ordinal)
+
+        val cdn = choices()
+        paragraph(getString(R.string.confirm_download_packs), cdn)
+        val region = selector(R.string.download_region, regionLabels, cdn)
+        val platform = selector(R.string.download_platform, platformLabels, cdn)
+        val language = selector(R.string.download_game_language, glLanguageLabels, cdn)
+        val selection = paragraph("", cdn)
+        paragraph(getString(R.string.download_scope_note), cdn)
         var languageValues = glLanguageValues
         fun updateSummary() {
-            sourceDescription.setText(if (useArchiveSource()) R.string.confirm_download_archive else R.string.confirm_download_packs)
+            val showArchive = useArchiveSource()
+            archive.visibility = if (showArchive) View.VISIBLE else View.GONE
+            cdn.visibility = if (showArchive) View.GONE else View.VISIBLE
             selection.text = getString(R.string.download_scope_selection,
                 region.selectedItem.toString(), platform.selectedItem.toString(), language.selectedItem.toString()) +
-                " · " + if (useArchiveSource()) "archive.org" else "CDN"
+                " · CDN"
         }
         val summaryListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = updateSummary()
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        source.onItemSelectedListener = summaryListener
+        source?.onItemSelectedListener = summaryListener
         platform.onItemSelectedListener = summaryListener
         language.onItemSelectedListener = summaryListener
         region.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -1142,34 +1152,19 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        // The app language chooses the initial region, never the game language.
-        region.setSelection(if (Lang.effective(this) == "ja") 1 else 0)
-        platform.setSelection(0) // This app runs on Android; other targets remain selectable.
+        region.setSelection(if (initialJP) 1 else 0)
+        updateSummary()
+        val stopServer = a.optBoolean("stop_server", true)
+        if (stopServer && Bus.serverRunning) paragraph(getString(R.string.confirm_stops_server))
         val scroll = NestedScrollView(this).apply { addView(form) }
         AlertDialog.Builder(this)
-            .setTitle(R.string.act_download_packs)
+            .setTitle(if (missingOnly) R.string.act_download_packs else R.string.act_download_archive)
             .setView(scroll)
             .setPositiveButton(R.string.confirm_continue) { _, _ ->
-                val regionValue = regionValues[region.selectedItemPosition]
-                val platformValue = platformValues[platform.selectedItemPosition]
-                val languageValue = languageValues[language.selectedItemPosition]
-                val args = if (useArchiveSource()) listOf("download_archive_profile", regionValue, platformValue, languageValue)
-                    else listOf("download_packs", "4", "--region", regionValue,
-                        "--platform", platformValue, "--language", languageValue)
-                ServerService.runAction(this, args, a.optBoolean("stop_server", true))
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
-    }
-
-    /** The existing full TAR download uses region scope and its original CLI verb. */
-    private fun confirmDownloadArchive(a: JSONObject) {
-        val regions = arrayOf("gl", "jp", "both")
-        val labels = arrayOf(getString(R.string.region_gl), getString(R.string.region_jp), getString(R.string.region_both))
-        AlertDialog.Builder(this)
-            .setTitle(R.string.confirm_download_archive_full)
-            .setItems(labels) { _, which ->
-                ServerService.runAction(this, listOf("download_archive", regions[which]), a.optBoolean("stop_server", true))
+                val args = if (useArchiveSource()) scopes[scope.selectedItemPosition].command(missingOnly)
+                    else listOf("download_packs", "4", "--region", regionValues[region.selectedItemPosition],
+                        "--platform", platformValues[platform.selectedItemPosition], "--language", languageValues[language.selectedItemPosition])
+                ServerService.runAction(this, args, stopServer)
             }
             .setNegativeButton(R.string.cancel, null)
             .show()

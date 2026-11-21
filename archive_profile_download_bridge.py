@@ -1,9 +1,18 @@
 """Native app adapters for the reviewed public individual-file publication."""
 import json
+import os
 from pathlib import Path
+import selectors
 import stat
+import subprocess
+import time
 
-from archive_profile_download import Source, Cancelled, DownloadError, digest, download, console_progress_record
+from archive_profile_download import (Source, Cancelled, DownloadError, digest, download, console_progress_record,
+                                      select_profiles, validate_required_names)
+
+REQUIRED_MARKER = b"ELICHIKA_ARCHIVE_REQUIRED="
+MAX_REQUIRED_OUTPUT = 16 * 1024 * 1024
+REQUIRED_TIMEOUT = 180
 
 
 def source_from_json(text, *, allow_incomplete=False):
@@ -78,9 +87,71 @@ def resolve_packs(data_dir, library_root):
     return target if target.is_absolute() else data_dir / target
 
 
-def run_from_config(config_path, packs, region, platform, language, *, progress=None, cancelled=None):
+def required_from_server(server_executable, data_dir, region, platform, language, *, cancelled=None, home=None):
+    """Read the authoritative requested pack names from the local Go server."""
+    select_profiles(region, platform, language)
+    cancelled = cancelled or (lambda: False)
+    if cancelled():
+        raise Cancelled()
+    env = {**os.environ, "HOME": os.fspath(home)} if home is not None else None
+    try:
+        child = subprocess.Popen([os.fspath(Path(server_executable).absolute()), "archive_required", region, platform, language],
+                                 cwd=data_dir, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL)
+    except OSError:
+        raise DownloadError("The local server could not start to determine required Archive files.") from None
+    capture = bytearray()
+    deadline = time.monotonic() + REQUIRED_TIMEOUT
+    with child, selectors.DefaultSelector() as selector:
+        try:
+            selector.register(child.stdout, selectors.EVENT_READ)
+            while True:
+                if cancelled():
+                    raise Cancelled()
+                if time.monotonic() >= deadline:
+                    raise DownloadError("The local server timed out determining required Archive files.")
+                if not selector.select(.2):
+                    continue
+                block = os.read(child.stdout.fileno(), 128 * 1024)
+                if block:
+                    capture.extend(block)
+                    if len(capture) > MAX_REQUIRED_OUTPUT:
+                        raise DownloadError("The local server's required Archive file list exceeded its size limit.")
+                else:
+                    try:
+                        status = child.wait(timeout=.2)
+                    except subprocess.TimeoutExpired:
+                        continue
+                    break
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+    if status:
+        raise DownloadError(f"The local server could not determine required Archive files (exit {status}).")
+    # Go may print startup diagnostics. They can contain runtime settings, so
+    # surface only the exact machine-readable selection and suppress all logs.
+    marked = [line[len(REQUIRED_MARKER):] for line in capture.splitlines() if line.startswith(REQUIRED_MARKER)]
+    if len(marked) != 1:
+        raise DownloadError("The local server did not return a unique required Archive file list.")
+    try:
+        value = json.loads(marked[0])
+    except (ValueError, UnicodeError):
+        raise DownloadError("The local server returned an unreadable required Archive file list.") from None
+    if not isinstance(value, list):
+        raise DownloadError("The local server returned an invalid required Archive file list.")
+    return validate_required_names(value)
+
+
+def run_from_config(config_path, packs, region, platform, language, *, static_packs=None, required_names=None,
+                    progress=None, cancelled=None):
     return download(load_source_config(config_path), packs, region=region, platform=platform,
-                    language=language, progress=progress, cancelled=cancelled)
+                    language=language, progress=progress, cancelled=cancelled, static_packs=static_packs,
+                    required_names=required_names)
 
 
 def byte_label(value):
@@ -91,7 +162,7 @@ def byte_label(value):
         size /= 1024
 
 
-def run_android(data_dir, library_root, config_json, region, platform, language, callbacks):
+def run_android(data_dir, library_root, config_json, region, platform, language, callbacks, server_executable=None):
     """Called synchronously on the native foreground service's worker thread."""
     from database_maintenance import guard
     from costume_management import assert_safe_to_start
@@ -99,10 +170,15 @@ def run_android(data_dir, library_root, config_json, region, platform, language,
         source = source_from_json(config_json)
         with guard(data_dir):
             assert_safe_to_start(data_dir)
+            cancelled = lambda: bool(callbacks.isCancelled())
+            required = (required_from_server(server_executable, data_dir, region, platform, language,
+                                             cancelled=cancelled, home=data_dir)
+                        if server_executable is not None else None)
             result = download(source, resolve_packs(data_dir, library_root), region=region,
-                              platform=platform, language=language,
+                              platform=platform, language=language, static_packs=Path(data_dir) / "static",
+                              required_names=required,
                               progress=lambda packet: callbacks.onProgress(json.dumps(packet, separators=(",", ":"))),
-                              cancelled=lambda: bool(callbacks.isCancelled()))
+                              cancelled=cancelled)
         return json.dumps({"status": "done", "result": result}, separators=(",", ":"))
     except Cancelled:
         return json.dumps({"status": "cancelled"})
