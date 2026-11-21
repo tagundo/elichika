@@ -269,6 +269,7 @@ jobs:
           node tests/mv_studio_dof_focus_test.js
           node tests/mv_studio_flare_test.js
           node tests/mv_studio_stage_overlay_test.js
+          node tests/mv_studio_title_test.js
           node tests/mv_studio_shaft_test.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node tests/mv_studio_hdr_browser_test.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio" node tests/mv_studio_browser.js
