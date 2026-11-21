@@ -18,7 +18,7 @@ type RuntimeConfig struct {
 	CdnPartialFileCapability *string `json:"cdn_partial_file_capability" of_type:"select" of_options:"Has static partial file\nstatic_file\nHas partial file mapping\nmapped_file\nHas range API\nhas_range_api\nNothing\nnothing" of_label:"CDN server's partial file capability" `
 	CdnCache                 *bool   `json:"cdn_cache" of_label:"Cache original game files locally"`                                                                                             // added mod packs are always served automatically; this controls caching missing originals from the source CDN
 	CdnCacheDir              *string `json:"cdn_cache_dir" of_label:"CDN cache directory (empty = the local static/ folder, the PC default; e.g. ~/storage/downloads/sukusta/packs on Android)"` // where cached packs are stored/shared; empty (the PC default) means the local static/ folder
-	ArchiveConnections       *int32  `json:"archive_connections" of_label:"Parallel connections for the archive.org bulk download (1-32)" of_attrs:"min=\"1\" max=\"32\""`                       // starting connection count for the multi-part IA download; steps down on throttling
+	ArchiveConnections       *int32  `json:"archive_connections" of_label:"Concurrent Archive.org pack downloads (1-4)" of_attrs:"min=\"1\" max=\"4\""`
 	AdminPassword            *string `json:"admin_password" of_label:"Admin password" of_type:"password"`
 	TapBondGain              *int32  `json:"tap_bond_gain" of_label:"Partner tap bond reward" of_attrs:"min=\"0\" max=\"20000000\""`
 	AutoJudgeType            *int32  `json:"auto_judge_type" of_type:"select" of_options:"None\n1\nMiss\n10\nBad\n12\nGood\n14\nGreat\n20\nPerfect\n30" of_label:"Autoplay judge type"`
@@ -113,7 +113,7 @@ func defaultConfigs() *RuntimeConfig {
 	*configs.CdnPartialFileCapability = "nothing"
 	*configs.CdnCache = false
 	*configs.CdnCacheDir = defaultCdnCacheDir()
-	*configs.ArchiveConnections = 8
+	*configs.ArchiveConnections = 2
 	*configs.AdminPassword = ""
 	*configs.TapBondGain = 20
 	*configs.AutoJudgeType = enum.JudgeTypePerfect
@@ -145,6 +145,9 @@ func Load(p string) *RuntimeConfig {
 	}
 	d := defaultConfigs()
 	changed := false
+	if c.ArchiveConnections != nil {
+		*c.ArchiveConnections = c.ArchiveWorkers()
+	}
 	for i := 0; i < reflect.TypeOf(c).NumField(); i++ {
 		f := reflect.ValueOf(&c).Elem().Field(i)
 		if f.IsNil() {
@@ -203,10 +206,21 @@ func (c *RuntimeConfig) Save(p string) error {
 	return nil
 }
 
+func (c RuntimeConfig) ArchiveWorkers() int32 {
+	if c.ArchiveConnections == nil {
+		return 2
+	}
+	// Older installations may configure up to 32 ranged connections to a TAR.
+	// The new provider bounds concurrent complete file downloads.
+	return max(1, min(4, *c.ArchiveConnections))
+}
+
 var confs = []*RuntimeConfig{}
 
 func UpdateConfig(newConfig *RuntimeConfig) {
 	confs = append(confs, Conf)
+	workers := newConfig.ArchiveWorkers()
+	newConfig.ArchiveConnections = &workers
 	newConfig.Save("./config.json") // this has lock so the file can't be corrupted
 	// this should be safe because we overwrite the pointer, not the object
 	// if someone had an old version of confs then they would just have an access to the old config until they discard it

@@ -32,12 +32,14 @@ class BridgeTests(unittest.TestCase):
                     bridge.run_from_config(config, Path(root, "packs"), "gl", "ios", "all")
                 implementation.assert_not_called()
                 config.write_text(self.config())
-                bridge.run_from_config(config, Path(root, "packs"), "gl", "ios", "ko", static_packs=Path(root, "static"))
+                bridge.run_from_config(config, Path(root, "packs"), "gl", "ios", "ko",
+                                       static_packs=Path(root, "static"), workers=3)
                 args, kwargs = implementation.call_args
                 self.assertEqual(args[0].catalog_sha256, "1" * 64)
                 self.assertEqual(args[0].target_manifest_sha256, "2" * 64)
                 self.assertEqual((kwargs["region"], kwargs["platform"], kwargs["language"]), ("gl", "ios", "ko"))
                 self.assertEqual(kwargs["static_packs"], Path(root, "static"))
+                self.assertEqual(kwargs["workers"], 3)
 
     def test_packaging_accepts_only_valid_complete_or_incomplete_configs(self):
         with tempfile.TemporaryDirectory() as root:
@@ -63,27 +65,31 @@ class BridgeTests(unittest.TestCase):
             data, library = Path(root, "data"), Path(root, "external library")
             data.mkdir()
             config = data / "config.json"
-            self.assertEqual(bridge.resolve_packs(data, library), data / "static")
+            self.assertEqual(bridge.resolve_download_settings(data, library), (data / "static", 2))
             for mapping in ({}, {"cdn_cache_dir": ""}, {"cdn_cache_dir": None}):
                 with self.subTest(mapping=mapping):
                     config.write_text(json.dumps(mapping))
-                    self.assertEqual(bridge.resolve_packs(data, library), data / "static")
+                    self.assertEqual(bridge.resolve_download_settings(data, library), (data / "static", 2))
             for value, expected in [(str(library / "packs"), library / "packs"),
                                     (str(library / "custom-packs"), library / "custom-packs"),
                                     ("~/storage/downloads/sukusta/packs", library / "packs"),
                                     ("relative-packs", data / "relative-packs")]:
                 config.write_text(json.dumps({"cdn_cache_dir": value}))
-                self.assertEqual(bridge.resolve_packs(data, library), expected)
+                self.assertEqual(bridge.resolve_download_settings(data, library), (expected, 2))
+            for raw, expected in ((32, 4), (8, 4), (3, 3), (1, 1), (0, 1), (True, 2), (None, 2)):
+                with self.subTest(connections=raw):
+                    config.write_text(json.dumps({"archive_connections": raw}))
+                    self.assertEqual(bridge.resolve_download_settings(data, library), (data / "static", expected))
             for raw, expected in [("{invalid", "invalid JSON at line 1, column 2"), ("[]", "must contain a JSON object"),
                                   (json.dumps({"cdn_cache_dir": []}), "must be a filesystem path string or null"),
                                   (json.dumps({"cdn_cache_dir": True}), "must be a filesystem path string or null")]:
                 with self.subTest(raw=raw):
                     config.write_text(raw)
                     with self.assertRaisesRegex(DownloadError, expected):
-                        bridge.resolve_packs(data, library)
+                        bridge.resolve_download_settings(data, library)
             config.write_bytes(b"\xff")
             with self.assertRaisesRegex(DownloadError, "not valid UTF-8"):
-                bridge.resolve_packs(data, library)
+                bridge.resolve_download_settings(data, library)
 
     def test_android_bridge_keeps_guard_and_reports_done_cancel_specific_error(self):
         from database_maintenance import guard, BusyError
@@ -91,10 +97,12 @@ class BridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             data, library = Path(root, "data"), Path(root, "library")
             data.mkdir()
+            (data / "config.json").write_text('{"archive_connections": 3}')
             observer = Observer()
             def implementation(source, packs, **callbacks):
                 self.assertEqual(packs, data / "static")
                 self.assertEqual(callbacks["static_packs"], data / "static")
+                self.assertEqual(callbacks["workers"], 3)
                 refused = []
                 def other_writer():
                     try:

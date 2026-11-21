@@ -34,7 +34,7 @@ if str(CODE_DIR) not in sys.path:
     sys.path.insert(0, str(CODE_DIR))
 
 from archive_profile_download import Cancelled, DownloadError
-from archive_profile_download_bridge import run_from_config, load_source_config, resolve_packs, console_progress_record, byte_label
+from archive_profile_download_bridge import run_from_config, load_source_config, resolve_download_settings, console_progress_record, byte_label
 from elichika_macos_lifecycle import ServerController
 from elichika_macos_memory import fresh_macos_memory_env
 from elichika_macos_payload import atomic_json, ensure_config, install_payload, install_tool_data
@@ -684,10 +684,10 @@ class Runtime:
                                 "Reading the selected archive file list…" if packet["stage"] in ("catalog", "profile") else
                                 f"{packet['completed_files']} / {packet['total_files']} files · "
                                 f"{byte_label(packet['completed_bytes'])} / {byte_label(packet['total_bytes'])}")
-                    result = run_from_config(self.resources / "python-app/archive-hosted-catalog.json",
-                                             resolve_packs(self.data, self.sukusta),
+                    packs, workers = resolve_download_settings(self.data, self.sukusta)
+                    result = run_from_config(self.resources / "python-app/archive-hosted-catalog.json", packs,
                                              region, platform, language, static_packs=self.data / "static",
-                                             progress=report_archive, cancelled=cancelled.is_set, **selection)
+                                             workers=workers, progress=report_archive, cancelled=cancelled.is_set, **selection)
                     self.logs.write(f"[console] Archive complete: {result['total_files']} verified files; "
                                     f"{result['downloaded_files']} downloaded, {result['reused_files']} reused.")
                     if result.get("local_unpublished_files"):

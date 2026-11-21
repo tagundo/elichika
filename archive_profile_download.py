@@ -33,6 +33,8 @@ MAX_PROFILE = 64 * 1024 * 1024
 MAX_OBJECT = 141834336
 TOTAL_OBJECTS = 42830
 MAX_REQUIRED_NAMES = 100000
+DEFAULT_WORKERS = 2
+MAX_WORKERS = 4
 PROFILES = tuple(f"gl/{p}/{lang}" for p in ("android", "ios") for lang in ("en", "ko", "zh")) + ("jp/android/ja", "jp/ios/ja")
 NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\Z")
 ITEM = re.compile(r"[a-z0-9][a-z0-9_.-]{2,99}\Z")
@@ -511,7 +513,7 @@ def pack_destination(packs):
         yield packs, None
 
 
-def _download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None,
+def _download(source, packs, *, region="gl", platform="android", language="all", workers=DEFAULT_WORKERS, progress=None, cancelled=None, http=None,
               static_packs=None, required_names=None):
     """Download selected verified originals. Valid completed files resume across calls.
 
@@ -522,7 +524,7 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
     source.validate()
     selected = select_profiles(region, platform, language)
     required_names = None if required_names is None else validate_required_names(required_names)
-    require(type(workers) is int and 1 <= workers <= 4, "Download workers must be between one and four.")
+    require(type(workers) is int and 1 <= workers <= MAX_WORKERS, "Download workers must be between one and four.")
     report = Progress(progress, cancelled or (lambda: False))
     report.update(force=True)
     http = http or PublicHTTP()
@@ -633,7 +635,7 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
                 db.close()
 
 
-def download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None,
+def download(source, packs, *, region="gl", platform="android", language="all", workers=DEFAULT_WORKERS, progress=None, cancelled=None, http=None,
              static_packs=None, required_names=None):
     """Verify and reuse served cache files, including optional flat static/."""
     try:

@@ -124,9 +124,10 @@ def progress(packet):
               f' {packet["reused_files"]} reused', flush=True)
 try:
     source = bridge.source_from_json(` + strconv.Quote(archivePin) + `)
-    packs, static, region, platform, language = sys.argv[1:]
+    packs, static, region, platform, language, workers = sys.argv[1:]
     provider.download(source, packs, static_packs=static, region=region, platform=platform,
-                      language=language, required_names=json.loads(` + strconv.Quote(string(namesJSON)) + `), progress=progress)
+                      language=language, workers=int(workers),
+                      required_names=json.loads(` + strconv.Quote(string(namesJSON)) + `), progress=progress)
 except provider.DownloadError as error:
     print(str(error), file=sys.stderr)
     sys.exit(1)
@@ -134,7 +135,7 @@ except KeyboardInterrupt:
     sys.exit(130)
 `
 	process := exec.Command(python, "-I", "-B", "-", config.CdnPackDirectory(), config.StaticDataPath,
-		string(scope.Region), string(scope.Platform), string(scope.Language))
+		string(scope.Region), string(scope.Platform), string(scope.Language), strconv.Itoa(int(config.Conf.ArchiveWorkers())))
 	process.Stdin = strings.NewReader(entry)
 	process.Stdout, process.Stderr = os.Stdout, os.Stderr
 	return process.Run()
