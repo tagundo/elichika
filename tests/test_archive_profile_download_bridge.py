@@ -28,7 +28,7 @@ class BridgeTests(unittest.TestCase):
             config = Path(root, "archive-hosted-catalog.json")
             config.write_text(json.dumps({"schema": 1, "status": "INCOMPLETE", "requested_total": 42830}))
             with patch.object(bridge, "download") as implementation:
-                with self.assertRaisesRegex(DownloadError, "not configured or fully verified"):
+                with self.assertRaisesRegex(DownloadError, "Choose CDN under Download missing"):
                     bridge.run_from_config(config, Path(root, "packs"), "gl", "ios", "all")
                 implementation.assert_not_called()
                 config.write_text(self.config())
@@ -37,6 +37,25 @@ class BridgeTests(unittest.TestCase):
                 self.assertEqual(args[0].catalog_sha256, "1" * 64)
                 self.assertEqual(args[0].target_manifest_sha256, "2" * 64)
                 self.assertEqual((kwargs["region"], kwargs["platform"], kwargs["language"]), ("gl", "ios", "ko"))
+
+    def test_packaging_accepts_only_valid_complete_or_incomplete_configs(self):
+        with tempfile.TemporaryDirectory() as root:
+            config = Path(root, "archive-hosted-catalog.json")
+            complete = json.loads(self.config())
+            pending = dict(complete, status="INCOMPLETE", catalog_url=None, catalog_sha256=None)
+            config.write_text(json.dumps(pending))
+            self.assertIsNone(bridge.load_source_config(config, allow_incomplete=True))
+            with self.assertRaisesRegex(DownloadError, "Choose CDN"):
+                bridge.load_source_config(config)
+            config.write_text(json.dumps(complete))
+            self.assertEqual(bridge.load_source_config(config, allow_incomplete=True).catalog_sha256, "1" * 64)
+            for bad in (dict(pending, status="PARTIAL"), dict(pending, catalog_sha256="1" * 64),
+                        dict(pending, catalog_url=complete["catalog_url"]), dict(pending, target_manifest_sha256=None),
+                        dict(pending, requested_total=42830.0), dict(complete, catalog_url=None)):
+                with self.subTest(bad=bad):
+                    config.write_text(json.dumps(bad))
+                    with self.assertRaises(DownloadError):
+                        bridge.load_source_config(config, allow_incomplete=True)
 
     def test_destination_uses_configured_external_cache_and_managed_alias(self):
         with tempfile.TemporaryDirectory() as root:

@@ -103,6 +103,7 @@ var sourceProfiles = [...]AssetProfile{
 }
 var loadedProfiles profileMask
 var wholeFileProfiles = map[string]profileMask{}
+var servedDownloadProfiles = map[AssetProfile]map[string]struct{}{}
 
 func (p AssetProfile) mask() (profileMask, error) {
 	for i, profile := range sourceProfiles {
@@ -129,15 +130,37 @@ func recordWholeFile(name string, mask profileMask) {
 	}
 }
 
+// RegisterServedDownloadProfile supplies the exact whole files referenced by
+// a derived client catalog during one-shot download initialization. The map's
+// ownership transfers to the profile index. The stock pack routes stay intact.
+func RegisterServedDownloadProfile(profile AssetProfile, names map[string]struct{}) error {
+	if _, err := profile.mask(); err != nil {
+		return err
+	}
+	if names == nil {
+		return fmt.Errorf("no served file set for asset profile %s", profile)
+	}
+	servedDownloadProfiles[profile] = names
+	return nil
+}
+
 // SelectWholeFiles requires every requested source catalog to have been loaded.
 // A config-limited or legacy unprofiled load cannot silently become a full download.
 func SelectWholeFiles(selection DownloadSelection) (map[string]struct{}, error) {
+	return SelectWholeFilesWithFallback(selection, nil)
+}
+
+// SelectWholeFilesWithFallback can read installed profiles outside the running
+// server's locale configuration without changing its pack routing tables.
+func SelectWholeFilesWithFallback(selection DownloadSelection, readProfile func(AssetProfile, map[string]struct{}) error) (map[string]struct{}, error) {
 	if err := selection.Validate(); err != nil {
 		return nil, err
 	}
 	selection = selection.normalized()
 	var selected profileMask
+	matched := false
 	missing := []string{}
+	names := make(map[string]struct{})
 	for i, profile := range sourceProfiles {
 		if selection.Region != RegionBoth && profile.Region != selection.Region {
 			continue
@@ -148,19 +171,29 @@ func SelectWholeFiles(selection DownloadSelection) (map[string]struct{}, error) 
 		if selection.Language != LanguageAll && profile.Language != selection.Language {
 			continue
 		}
-		mask := profileMask(1) << i
-		selected |= mask
-		if loadedProfiles&mask == 0 {
-			missing = append(missing, profile.String())
+		matched = true
+		if served, ok := servedDownloadProfiles[profile]; ok {
+			for name := range served {
+				names[name] = struct{}{}
+			}
+			continue
 		}
+		mask := profileMask(1) << i
+		if loadedProfiles&mask == 0 {
+			if readProfile == nil {
+				missing = append(missing, profile.String())
+			} else if err := readProfile(profile, names); err != nil {
+				return nil, fmt.Errorf("asset profile %s: %w", profile, err)
+			}
+		}
+		selected |= mask
 	}
 	if len(missing) != 0 {
 		return nil, fmt.Errorf("asset profiles not loaded: %s; enable their locales in config and restart", strings.Join(missing, ", "))
 	}
-	if selected == 0 {
+	if !matched {
 		return nil, fmt.Errorf("no asset profiles match %s", selection)
 	}
-	names := make(map[string]struct{})
 	for name, profiles := range wholeFileProfiles {
 		if profiles&selected != 0 {
 			names[name] = struct{}{}

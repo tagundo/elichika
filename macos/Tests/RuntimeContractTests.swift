@@ -354,7 +354,8 @@ final class RuntimeContractTests: XCTestCase {
             XCTAssertEqual(ConsoleRegion.defaultRegion(language: language), .gl)
         }
         XCTAssertEqual(Set(ConsoleRegion.allCases.map(\.rawValue)), ["gl", "jp", "both"])
-        XCTAssertEqual(ConsoleAction.downloadArchive.requestBody(region: .both)["region"], "both")
+        XCTAssertEqual(ConsoleAction.downloadArchive.requestBody(region: .both, platform: .ios, gameLanguage: .ja),
+            ["action": "download_archive", "confirmation": "STOP_SERVER", "region": "both"])
         XCTAssertEqual(ConsoleAction.downloadPacks.requestBody(region: .jp, platform: .android, gameLanguage: .ja),
             ["action": "download_packs", "confirmation": "STOP_SERVER", "region": "jp", "platform": "android", "language": "ja"])
         XCTAssertEqual(ConsoleAction.downloadPacks.requestBody(),
@@ -362,7 +363,7 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertEqual(ConsoleGameLanguage.choices(region: .gl), [.all, .en, .ko, .zh])
         XCTAssertEqual(ConsoleGameLanguage.choices(region: .jp), [.ja])
         XCTAssertEqual(ConsoleGameLanguage.choices(region: .both), [.all])
-        let archive = ConsoleAction.downloadArchive.requestBody(region: .gl, platform: .android, gameLanguage: .en)
+        let archive = ConsoleAction.downloadArchiveProfile.requestBody(region: .gl, platform: .android, gameLanguage: .en)
         XCTAssertEqual(archive["platform"], "android")
         XCTAssertEqual(archive["language"], "en")
     }
@@ -384,22 +385,23 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertEqual(model.consoleDownloadSource, .cdn)
     }
 
-    func testMissingDownloadSourceKeepsCDNDefaultAndResolvesExistingArchiveAction() {
+    func testMissingDownloadSourceKeepsCDNDefaultAndResolvesArchiveProfileAction() {
         XCTAssertEqual(ConsoleDownloadSource.allCases, [.cdn, .archive])
         XCTAssertEqual(ConsoleAction.downloadPacks.resolvedDownloadAction(source: .cdn), .downloadPacks)
-        XCTAssertEqual(ConsoleAction.downloadPacks.resolvedDownloadAction(source: .archive), .downloadArchive)
+        XCTAssertEqual(ConsoleAction.downloadPacks.resolvedDownloadAction(source: .archive), .downloadArchiveProfile)
         XCTAssertEqual(ConsoleAction.downloadArchive.resolvedDownloadAction(source: .cdn), .downloadArchive)
+        XCTAssertEqual(ConsoleAction.downloadArchive.resolvedDownloadAction(source: .archive), .downloadArchive)
         XCTAssertEqual(ConsoleAction.rebuildAssets.resolvedDownloadAction(source: .archive), .rebuildAssets)
         let request = ConsoleAction.downloadPacks.resolvedDownloadAction(source: .archive)
             .requestBody(region: .gl, platform: .android, gameLanguage: .ko)
-        XCTAssertEqual(request, ["action":"download_archive", "confirmation":"STOP_SERVER", "region":"gl", "platform":"android", "language":"ko"])
+        XCTAssertEqual(request, ["action":"download_archive_profile", "confirmation":"STOP_SERVER", "region":"gl", "platform":"android", "language":"ko"])
         XCTAssertNil(request["source"])
     }
 
     func testConsoleActionsUseFixedNamesAndExplicitResetConfirmation() throws {
-        let actions: [ConsoleAction] = [.downloadArchive, .downloadPacks, .cdnCacheToggle,
+        let actions: [ConsoleAction] = [.downloadArchive, .downloadArchiveProfile, .downloadPacks, .cdnCacheToggle,
                                        .rebuildAssets, .fixTrainingTrees, .resetServer]
-        XCTAssertEqual(Set(actions.map(\.rawValue)), ["download_archive", "download_packs", "cdn_cache_toggle",
+        XCTAssertEqual(Set(actions.map(\.rawValue)), ["download_archive", "download_archive_profile", "download_packs", "cdn_cache_toggle",
                                                      "rebuild_assets", "fix_training_trees", "reset_server"])
         for action in actions {
             let body = action.requestBody(region: .gl)
@@ -426,13 +428,16 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertEqual(state.cacheEnabled, true)
         XCTAssertEqual(state.job?.action, .downloadArchive)
         XCTAssertEqual(state.job?.region, .gl)
+        XCTAssertNil(state.job?.platform)
+        XCTAssertNil(state.job?.language)
         XCTAssertEqual(state.job?.progress?.fraction, 0.5)
         var scopedJob = job
-        scopedJob["action"] = "download_packs"
+        scopedJob["action"] = "download_archive_profile"
         scopedJob["platform"] = "android"
         scopedJob["language"] = "en"
         let scopedData = try JSONSerialization.data(withJSONObject: ["job": scopedJob])
         let scopedState = try JSONDecoder().decode(ConsoleState.self, from: scopedData)
+        XCTAssertEqual(scopedState.job?.action, .downloadArchiveProfile)
         XCTAssertEqual(scopedState.job?.platform, .android)
         XCTAssertEqual(scopedState.job?.language, .en)
         let invalidProgress = try JSONSerialization.data(withJSONObject: ["completed": 11, "total": 10])

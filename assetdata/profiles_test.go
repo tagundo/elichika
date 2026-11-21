@@ -136,3 +136,59 @@ func TestLegacyInitDoesNotInferAPlatform(t *testing.T) {
 		t.Fatalf("legacy Init silently invented profile membership: %v %v", names, err)
 	}
 }
+
+func TestScopedWholeFilesReadsOnlySelectedUnloadedProfiles(t *testing.T) {
+	resetPackFixture(t)
+	loadProfileFixture(t, AssetProfile{RegionGL, PlatformAndroid, LanguageEN})
+	selection := DownloadSelection{RegionGL, PlatformAndroid, LanguageAll}
+	var called []AssetProfile
+	names, err := SelectWholeFilesWithFallback(selection, func(profile AssetProfile, files map[string]struct{}) error {
+		called = append(called, profile)
+		files["common"] = struct{}{}
+		files["lang-"+string(profile.Language)] = struct{}{}
+		return nil
+	})
+	wantCalls := []AssetProfile{{RegionGL, PlatformAndroid, LanguageKO}, {RegionGL, PlatformAndroid, LanguageZH}}
+	if err != nil || !reflect.DeepEqual(called, wantCalls) {
+		t.Fatalf("fallback called for %v, want %v (%v)", called, wantCalls, err)
+	}
+	if _, ok := names["common"]; !ok || len(names) != 7 {
+		t.Fatalf("catalog union should deduplicate shared packs: %v", names)
+	}
+	if _, err := SelectWholeFiles(selection); err == nil {
+		t.Fatal("fallback changed the active server's loaded profiles")
+	}
+}
+
+func TestScopedWholeFilesUsesServedProfileWithCommonFilesAndPreservesLegacy(t *testing.T) {
+	resetPackFixture(t)
+	android := AssetProfile{RegionGL, PlatformAndroid, LanguageEN}
+	ios := AssetProfile{RegionGL, PlatformIOS, LanguageEN}
+	loadProfileFixture(t, android)
+	if err := RegisterServedDownloadProfile(android, map[string]struct{}{"common": {}, "derived-android": {}}); err != nil {
+		t.Fatal(err)
+	}
+	// The exact served iOS catalog can be present even when this profile is
+	// outside the active server locale configuration.
+	if err := RegisterServedDownloadProfile(ios, map[string]struct{}{"common": {}, "derived-ios": {}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []struct {
+		selection DownloadSelection
+		want      []string
+	}{
+		{DownloadSelection{RegionGL, PlatformAndroid, LanguageEN}, []string{"common", "derived-android"}},
+		{DownloadSelection{RegionGL, PlatformIOS, LanguageEN}, []string{"common", "derived-ios"}},
+		{DownloadSelection{RegionGL, PlatformBoth, LanguageEN}, []string{"common", "derived-android", "derived-ios"}},
+	} {
+		if got := profileNames(t, scenario.selection); !reflect.DeepEqual(got, scenario.want) {
+			t.Fatalf("%s: got %v want %v", scenario.selection, got, scenario.want)
+		}
+	}
+	if _, exists := AllWholeFiles()["gl-android"]; !exists {
+		t.Fatal("legacy union dropped the original catalog file")
+	}
+	if _, exists := AllWholeFiles()["derived-android"]; exists {
+		t.Fatal("legacy union picked up a derived-only file")
+	}
+}

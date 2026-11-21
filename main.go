@@ -36,9 +36,11 @@ func checkCli() bool {
 		options, err := asset.ParseDownloadOptions(os.Args[2:])
 		if err != nil {
 			log.Println("download_packs:", err)
+			os.Exit(1)
 		} else if options.Scoped {
 			if err := asset.DownloadMissing(options.Workers, options.Selection); err != nil {
 				log.Println("download_packs:", err)
+				os.Exit(1)
 			}
 		} else {
 			asset.DownloadAllMissing(options.Workers)

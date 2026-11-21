@@ -4,14 +4,12 @@
     {
       "id": "download_archive",
       "label_id": "act_download_archive",
-      "label": "Download game files (archive.org)",
+      "label": "Download all game files (archive.org)",
       "group": "grp_downloads",
       "type": "binary",
       "args": [
-        "download_archive_profile",
-        "gl",
-        "android",
-        "all"
+        "download_archive",
+        "both"
       ],
       "stop_server": true
     },

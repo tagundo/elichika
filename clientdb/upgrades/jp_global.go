@@ -450,6 +450,16 @@ func updateJPGlobalPackages(tx *sql.Tx, plan []jpGlobalTable, before map[string]
 	if err != nil {
 		return 0, err
 	}
+	columns := jpGlobalMappingColumns(plan)
+	for _, item := range changed {
+		if err := writeJPGlobalPackage(tx, columns, item.key, item.count); err != nil {
+			return 0, err
+		}
+	}
+	return int64(len(changed)), nil
+}
+
+func jpGlobalMappingColumns(plan []jpGlobalTable) []string {
 	var columns []string
 	for _, table := range plan {
 		if strings.EqualFold(table.name, "m_asset_package_mapping") {
@@ -458,48 +468,50 @@ func updateJPGlobalPackages(tx *sql.Tx, plan []jpGlobalTable, before map[string]
 			}
 		}
 	}
+	return columns
+}
+
+func writeJPGlobalPackage(tx *sql.Tx, columns []string, key string, packCount int64) error {
 	list := strings.Join(columns, ", ")
-	for _, item := range changed {
-		rows, err := tx.Query("SELECT "+list+" FROM m_asset_package_mapping WHERE package_key = ? ORDER BY "+list, item.key)
-		if err != nil {
-			return 0, err
-		}
-		hash := sha1.New() // Client package versions are 40 hexadecimal characters.
-		io.WriteString(hash, jpGlobalAlgorithm+"\n"+list+"\n")
-		for rows.Next() {
-			values := make([]any, len(columns))
-			pointers := make([]any, len(values))
-			for index := range values {
-				pointers[index] = &values[index]
-			}
-			if err = rows.Scan(pointers...); err != nil {
-				rows.Close()
-				return 0, err
-			}
-			encoded, err := json.Marshal(values)
-			if err != nil {
-				rows.Close()
-				return 0, err
-			}
-			hash.Write(encoded)
-			hash.Write([]byte{'\n'})
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return 0, err
-		}
-		result, err := tx.Exec("UPDATE m_asset_package SET version = ?, pack_num = ? WHERE package_key = ?", hex.EncodeToString(hash.Sum(nil)), item.count, item.key)
-		if err != nil {
-			return 0, err
-		}
-		count, err := result.RowsAffected()
-		if err != nil {
-			return 0, err
-		}
-		if count != 1 {
-			return 0, fmt.Errorf("package mappings have no unique package header: %s", item.key)
-		}
+	rows, err := tx.Query("SELECT "+list+" FROM m_asset_package_mapping WHERE package_key = ? ORDER BY "+list, key)
+	if err != nil {
+		return err
 	}
-	return int64(len(changed)), nil
+	hash := sha1.New() // Client package versions are 40 hexadecimal characters.
+	io.WriteString(hash, jpGlobalAlgorithm+"\n"+list+"\n")
+	for rows.Next() {
+		values := make([]any, len(columns))
+		pointers := make([]any, len(values))
+		for index := range values {
+			pointers[index] = &values[index]
+		}
+		if err = rows.Scan(pointers...); err != nil {
+			rows.Close()
+			return err
+		}
+		encoded, err := json.Marshal(values)
+		if err != nil {
+			rows.Close()
+			return err
+		}
+		hash.Write(encoded)
+		hash.Write([]byte{'\n'})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	result, err := tx.Exec("UPDATE m_asset_package SET version = ?, pack_num = ? WHERE package_key = ?", hex.EncodeToString(hash.Sum(nil)), packCount, key)
+	if err != nil {
+		return err
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("package mappings have no unique package header: %s", key)
+	}
+	return nil
 }

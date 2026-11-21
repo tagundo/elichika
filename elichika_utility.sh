@@ -322,23 +322,37 @@ download_all_archive() {
 # server (few parallel downloads); for large amounts prefer download_all_archive.
 download_missing_cdn() {
     clear
+    local dl_region dl_platform dl_language dl_workers
     # show the actual game-CDN host from config (cdn_server), used only as a fallback.
     cdn_val=$(grep -oE '"cdn_server":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
     cdn_host=$(printf '%s' "$cdn_val" | sed -E 's#^[a-z]+://##; s#/.*##')
     [ -z "$cdn_host" ] && cdn_host="the configured CDN"
-    echo "Download the files you're still missing, from the CDN ($cdn_host)."
-    echo "These are files newer than the archive (so they're not in option 7),"
-    echo "and they only come from the game CDN. Skips anything you already have."
+    echo "Download missing files for the selected client from $cdn_host."
+    echo "Required shared files are included. Cached files are reused."
     echo ""
-    echo "IMPORTANT: run option 7 (download all) FIRST so this only has to fetch the"
-    echo "           few newest files from the CDN, instead of a lot."
-    echo "(These files also download automatically as you play, so this is optional.)"
-    echo ""
+    read -r -p "Region (gl/jp/both) [gl]: " dl_region || return
+    dl_region=${dl_region:-gl}
+    read -r -p "Game platform (android/ios/both) [android]: " dl_platform || return
+    dl_platform=${dl_platform:-android}
+    case "$dl_region" in
+        gl) read -r -p "Game language (all/en/ko/zh) [all]: " dl_language || return ;;
+        jp) dl_language=ja ;;
+        both) dl_language=all ;;
+    esac
+    dl_language=${dl_language:-all}
+    read -r -p "Simultaneous downloads [3]: " dl_workers || return
+    dl_workers=${dl_workers:-3}
+    if [[ ! "$dl_region" =~ ^(gl|jp|both)$ || ! "$dl_platform" =~ ^(android|ios|both)$ ||
+          ! "$dl_language" =~ ^(all|en|ko|zh|ja)$ || "$dl_region/$dl_language" == gl/ja ||
+          ! "$dl_workers" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Invalid download selection."
+        read -r -p "Press Enter to continue..." _dummy_dlmiss
+        return
+    fi
     wake_lock   # keep going with the screen off
     stop_server
     sleep 1
-    read -p "Simultaneous downloads [3]: " dl_workers; dl_workers=${dl_workers:-3}
-    "$(server_bin)" download_packs "$dl_workers"
+    "$(server_bin)" download_packs "$dl_workers" --region "$dl_region" --platform "$dl_platform" --language "$dl_language"
     wake_unlock
     read -p "Press Enter to continue..." _dummy_dlmiss
 }
@@ -355,7 +369,7 @@ while true; do
     echo "5. Reset CDN to default (public server)"
     echo "6. CDN Cache: $cache_state (store game files locally & serve them)"
     echo "7. Download all game files (fast, from archive.org)"
-    echo "8. Get remaining files not in the archive (from the CDN)"
+    echo "8. Download missing files for a selected client (from the CDN)"
     echo "9. Developer Menu"
     echo "10. Modding Menu"
     echo "0. Exit"

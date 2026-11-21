@@ -36,7 +36,7 @@
     <string name="restart_hint">Applied. Restart the server to update the web UIs.</string>
     <string name="about_body">elichika is a private server for SIFAS (Love Live! School Idol Festival All Stars). This app runs the server, its WebUI, and the dev/modding tools on your phone — point the game at 127.0.0.1:8080.\n\nServer + dev tools by the elichika project (forks of YumeMichi / arina999999997 / tatara_hisoka). Modding tools: SIFAS-MODDING-HELPING-TOOLS.</string>
 
-    <string name="act_download_archive">Download game files (archive.org)</string>
+    <string name="act_download_archive">Download all game files (archive.org)</string>
     <string name="act_download_packs">Download missing…</string>
     <string name="act_cdn_cache">CDN cache on/off</string>
     <string name="act_import_addon">Import addon zip</string>
@@ -75,6 +75,7 @@
     <string name="confirm_continue">Continue</string>
     <string name="cancel">Cancel</string>
     <string name="confirm_download_archive">Use archive.org for the selected original game files and required shared files. Existing files are checked by SHA256: matching files are reused, and missing or different files are downloaded and repaired. The selected count and size appear during preparation. Wi-Fi is recommended.</string>
+    <string name="confirm_download_archive_full">Download the full game data from archive.org. Wi-Fi is recommended. Choose a region:</string>
     <string name="region_gl">GL (Global — EN / KO / ZH)</string>
     <string name="region_jp">JP (Japan)</string>
     <string name="region_both">Both (GL + JP)</string>
@@ -174,6 +175,7 @@
     <string name="archive_download_progress">%1$d%% · %2$d / %3$d files</string>
     <string name="archive_download_bytes">%1$s / %2$s</string>
     <string name="archive_download_invalid_scope">Choose a region, game platform and game language for the archive download.</string>
+    <string name="archive_download_unavailable">The archive.org publication is still pending verification. Choose CDN under Download missing.</string>
     <string name="archive_download_start">[archive] Preparing %1$s / %2$s / %3$s…</string>
     <string name="archive_download_done">[archive] Complete. Selected files have been verified; the server remains stopped.</string>
     <string name="archive_download_cancelled">[archive] Cancelled. Verified files are kept for the next download.</string>

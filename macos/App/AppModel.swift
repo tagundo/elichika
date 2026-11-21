@@ -441,9 +441,7 @@ final class AppModel: ObservableObject {
         if action == .resetServer && !consoleResetFinal { consoleResetFinal = true; return false }
         do {
             try await runConsoleAction(action.resolvedDownloadAction(source: consoleDownloadSource),
-                region: action == .downloadArchive || action == .downloadPacks ? consoleRegion : nil,
-                platform: action == .downloadArchive || action == .downloadPacks ? consolePlatform : nil,
-                gameLanguage: action == .downloadArchive || action == .downloadPacks ? consoleGameLanguage : nil)
+                region: consoleRegion, platform: consolePlatform, gameLanguage: consoleGameLanguage)
             dismissConsolePresentation()
             return true
         } catch {

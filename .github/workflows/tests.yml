@@ -41,6 +41,11 @@ jobs:
           python3 -m unittest discover -s tests -p test_android_texture65_packaging.py -v
           python3 -m unittest discover -s tests -p test_android_installer_packaging.py -v
 
+      - name: Check profile-scoped downloads and cancellation
+        run: |
+          python3 -m unittest discover -s tests -p 'test_archive_profile_download*.py' -v
+          python3 -m unittest discover -s tests -p test_archive_worker_fence.py -v
+
       - name: Check costume extraction and installer lifecycle
         run: |
           python3 -m unittest discover -s tests -p test_assets_extract.py -v

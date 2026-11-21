@@ -3,10 +3,10 @@ import json
 from pathlib import Path
 import stat
 
-from archive_profile_download import Source, Cancelled, DownloadError, download, console_progress_record
+from archive_profile_download import Source, Cancelled, DownloadError, digest, download, console_progress_record
 
 
-def source_from_json(text):
+def source_from_json(text, *, allow_incomplete=False):
     if not isinstance(text, str) or len(text.encode("utf-8")) > 16384:
         raise DownloadError("The bundled archive publication configuration is invalid or too large.")
     try:
@@ -15,22 +15,31 @@ def source_from_json(text):
         raise DownloadError("The bundled archive publication configuration is not valid JSON.") from None
     if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
         raise DownloadError("The bundled archive publication configuration has an unsupported schema.")
-    if value.get("status") != "COMPLETE":
-        raise DownloadError("The new archive.org individual-file publication is not configured or fully verified in this build. Update to a build containing the verified catalog; the old full TAR download was not started.")
-    if value.get("requested_total") != 42830:
+    status = value.get("status")
+    if status not in ("COMPLETE", "INCOMPLETE"):
+        raise DownloadError("The bundled archive publication configuration has an invalid status.")
+    if type(value.get("requested_total")) is not int or value["requested_total"] != 42830:
         raise DownloadError("The bundled archive publication does not target all 42,830 game files.")
+    if status == "INCOMPLETE":
+        if not allow_incomplete:
+            raise DownloadError("The archive.org publication is still pending verification. Choose CDN under Download missing.")
+        if ("catalog_url" not in value or value["catalog_url"] is not None or
+                "catalog_sha256" not in value or value["catalog_sha256"] is not None or
+                not digest(value.get("target_manifest_sha256"))):
+            raise DownloadError("The pending archive marker must retain the target SHA256 and leave the catalog URL and SHA256 empty.")
+        return None
     source = Source(value.get("catalog_url"), value.get("catalog_sha256"), value.get("target_manifest_sha256"))
     source.validate()
     return source
 
 
-def load_source_config(path):
+def load_source_config(path, *, allow_incomplete=False):
     path = Path(path)
     try:
         info = path.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_size > 16384:
             raise DownloadError("The bundled archive publication configuration is not a regular small file.")
-        return source_from_json(path.read_text(encoding="utf-8"))
+        return source_from_json(path.read_text(encoding="utf-8"), allow_incomplete=allow_incomplete)
     except (OSError, UnicodeError):
         raise DownloadError("The bundled archive publication configuration is missing or unreadable.") from None
 

@@ -454,6 +454,14 @@ class ServerService : Service() {
             if (!Bus.serverRunning) finishService()
             return
         }
+        val config = runCatching {
+            assets.open("archive-hosted-catalog.json").bufferedReader().use { it.readText() }
+        }.getOrNull()
+        if (config == null || runCatching { JSONObject(config).optString("status") }.getOrNull() != "COMPLETE") {
+            Bus.log(getString(R.string.archive_download_unavailable))
+            if (!Bus.serverRunning) finishService()
+            return
+        }
         val lease = archiveWorkers.tryAcquire()
         if (lease == null) {
             Bus.log(getString(R.string.log_archive_draining))
@@ -476,7 +484,6 @@ class ServerService : Service() {
                     check(ServerProcess.awaitStopped(previous)) { "The game server did not stop; no archive files were changed." }
                     if (cancelled.get() || destroyed) return@Thread
                     Bus.log(getString(R.string.archive_download_start, args[1], args[2], args[3]))
-                    val config = assets.open("archive-hosted-catalog.json").bufferedReader().use { it.readText() }
                     @Suppress("DEPRECATION")
                     val library = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "sukusta")
                     val observer = ArchiveDownloadCallbacks(

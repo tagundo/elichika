@@ -15,11 +15,14 @@ func resetPackFixture(t testing.TB) {
 	t.Helper()
 	oldPack, oldMetapack, oldLocale := Pack, Metapack, NameToLocale
 	oldProfiles, oldWholeFiles := loadedProfiles, wholeFileProfiles
+	oldServed := servedDownloadProfiles
 	loadedProfiles, wholeFileProfiles = 0, map[string]profileMask{}
+	servedDownloadProfiles = map[AssetProfile]map[string]struct{}{}
 	Pack, Metapack, NameToLocale = map[string]*PackType{}, map[string]*MetapackType{}, map[string]string{}
 	t.Cleanup(func() {
 		Pack, Metapack, NameToLocale = oldPack, oldMetapack, oldLocale
 		loadedProfiles, wholeFileProfiles = oldProfiles, oldWholeFiles
+		servedDownloadProfiles = oldServed
 	})
 }
 

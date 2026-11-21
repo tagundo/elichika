@@ -35,7 +35,7 @@
     <string name="restart_hint">適用しました。Web UI に反映するにはサーバーを再起動してください。</string>
     <string name="about_body">elichika は SIFAS（ラブライブ！スクールアイドルフェスティバル ALL STARS）用の私設サーバーです。このアプリはサーバー・WebUI・開発/MODツールを端末上で動かします — ゲームを 127.0.0.1:8080 に接続してください。\n\nサーバー・開発ツール: elichika プロジェクト（YumeMichi / arina999999997 / tatara_hisoka フォーク）。MODツール: SIFAS-MODDING-HELPING-TOOLS。</string>
 
-    <string name="act_download_archive">ゲームファイル取得 (archive.org)</string>
+    <string name="act_download_archive">全ゲームファイルを取得 (archive.org)</string>
     <string name="act_download_packs">不足分を取得…</string>
     <string name="act_cdn_cache">CDNキャッシュ オン/オフ</string>
     <string name="act_import_addon">アドオンzipを取り込む</string>
@@ -74,6 +74,7 @@
     <string name="confirm_continue">続行</string>
     <string name="cancel">キャンセル</string>
     <string name="confirm_download_archive">選択した元ゲームファイルと必要な共通ファイルをarchive.orgから取得します。既存ファイルをSHA256で確認し、一致すれば再利用、不足または内容が異なるファイルは取得して修復します。準備中にファイル数と容量を表示します。Wi-Fiを推奨します。</string>
+    <string name="confirm_download_archive_full">archive.org から全ゲームデータを取得します。Wi-Fi の使用を推奨します。地域を選択してください。</string>
     <string name="region_gl">GL (グローバル — EN / KO / ZH)</string>
     <string name="region_jp">JP (日本)</string>
     <string name="region_both">両方 (GL + JP)</string>
@@ -171,6 +172,7 @@
     <string name="archive_download_progress">%1$d%% · ファイル %2$d / %3$d</string>
     <string name="archive_download_bytes">%1$s / %2$s</string>
     <string name="archive_download_invalid_scope">取得する地域・ゲームプラットフォーム・ゲーム言語を選択してください。</string>
+    <string name="archive_download_unavailable">archive.org の公開データを検証中です。不足分を取得するには CDN を選択してください。</string>
     <string name="archive_download_start">[archive] %1$s / %2$s / %3$s の準備中…</string>
     <string name="archive_download_done">[archive] 選択ファイルの検証が完了しました。サーバーは停止したままです。</string>
     <string name="archive_download_cancelled">[archive] キャンセルしました。検証済みファイルは次回再利用します。</string>

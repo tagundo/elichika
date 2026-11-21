@@ -33,8 +33,8 @@ CODE_DIR = Path(__file__).resolve().parent
 if str(CODE_DIR) not in sys.path:
     sys.path.insert(0, str(CODE_DIR))
 
-from archive_profile_download import Cancelled
-from archive_profile_download_bridge import run_from_config, resolve_packs, console_progress_record, byte_label
+from archive_profile_download import Cancelled, DownloadError
+from archive_profile_download_bridge import run_from_config, load_source_config, resolve_packs, console_progress_record, byte_label
 from elichika_macos_lifecycle import ServerController
 from elichika_macos_memory import fresh_macos_memory_env
 from elichika_macos_payload import atomic_json, ensure_config, install_payload, install_tool_data
@@ -561,21 +561,33 @@ class Runtime:
         if set(value) - {"action", "region", "platform", "language", "confirmation", "reset_confirmation"}:
             raise RuntimeErrorResponse("Unexpected Console request fields.")
         action = value.get("action")
-        if not isinstance(action, str) or action not in (*CONSOLE_COMMANDS, "download_archive", "download_packs"):
+        scoped_downloads = ("download_archive_profile", "download_packs")
+        if not isinstance(action, str) or action not in (*CONSOLE_COMMANDS, "download_archive", *scoped_downloads):
             raise RuntimeErrorResponse("Unknown Console action.")
         if value.get("confirmation") != "STOP_SERVER":
             raise RuntimeErrorResponse("Confirm that this action stops the game server.")
         region, platform, language = value.get("region"), value.get("platform"), value.get("language")
-        if action in ("download_archive", "download_packs"):
+        if action == "download_archive" or action in scoped_downloads:
             if not isinstance(region, str) or region not in ("gl", "jp", "both"):
                 raise RuntimeErrorResponse("Choose GL, JP, or both regions.")
+        if action == "download_archive":
+            if "platform" in value or "language" in value:
+                raise RuntimeErrorResponse("The full archive download only accepts a region.")
+            arguments = ("download_archive", region)
+        elif action in scoped_downloads:
             if not isinstance(platform, str) or platform not in ("android", "ios", "both"):
                 raise RuntimeErrorResponse("Choose Android, iOS, or both game platforms.")
             allowed_languages = {"gl": ("all", "en", "ko", "zh"), "jp": ("all", "ja"), "both": ("all",)}
             if not isinstance(language, str) or language not in allowed_languages[region]:
                 raise RuntimeErrorResponse("Choose a game language valid for the selected region; both regions require all languages.")
-            arguments = (("download_archive_profile", region, platform, language) if action == "download_archive" else
-                         ("download_packs", "4", "--region", region, "--platform", platform, "--language", language))
+            if action == "download_archive_profile":
+                try:
+                    load_source_config(self.resources / "python-app/archive-hosted-catalog.json")
+                except DownloadError as error:
+                    raise RuntimeErrorResponse(str(error)) from None
+                arguments = (action, region, platform, language)
+            else:
+                arguments = (action, "4", "--region", region, "--platform", platform, "--language", language)
         else:
             if any(field in value for field in ("region", "platform", "language")):
                 raise RuntimeErrorResponse("This action does not accept a download scope.")
@@ -641,7 +653,7 @@ class Runtime:
                     return
                 from costume_management import assert_safe_to_start
                 assert_safe_to_start(self.data)
-                if action == "download_archive":
+                if action == "download_archive_profile":
                     with self._lock:
                         self._console_job.update(status="running", message="Preparing selected archive files…")
                     self.logs.write("[console] Archive scope: " + " / ".join(arguments[1:]))

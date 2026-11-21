@@ -55,7 +55,7 @@ def copy_python_sources(repo, destination):
     # This immutable public index is shared with Android; never copy a user's config.
     sys.path.insert(0, str(repo))
     from archive_profile_download_bridge import load_source_config
-    load_source_config(repo / "archive-hosted-catalog.json")
+    load_source_config(repo / "archive-hosted-catalog.json", allow_incomplete=True)
     shutil.copy2(repo / "archive-hosted-catalog.json", destination / "archive-hosted-catalog.json")
     runtime = repo / "macos/runtime"
     require((runtime / "elichika_macos.py").is_file(), "The desktop runtime entry point is missing")

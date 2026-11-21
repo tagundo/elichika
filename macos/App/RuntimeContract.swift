@@ -241,16 +241,19 @@ enum ConsoleDownloadSource: String, CaseIterable, Identifiable {
 
 enum ConsoleAction: String, Decodable, Identifiable {
     case downloadArchive = "download_archive"
+    case downloadArchiveProfile = "download_archive_profile"
     case downloadPacks = "download_packs"
     case cdnCacheToggle = "cdn_cache_toggle"
     case rebuildAssets = "rebuild_assets"
     case fixTrainingTrees = "fix_training_trees"
     case resetServer = "reset_server"
     var id: String { rawValue }
+    var usesDownloadScope: Bool { self == .downloadArchiveProfile || self == .downloadPacks }
     func title(_ language: String) -> String {
         let values: (String, String, String)
         switch self {
-        case .downloadArchive: values = ("Download game files (archive.org)…", "게임 파일 받기 (archive.org)…", "ゲームファイル取得 (archive.org)…")
+        case .downloadArchive: values = ("Download all (archive.org)…", "전체 받기 (archive.org)…", "全ファイル取得 (archive.org)…")
+        case .downloadArchiveProfile: values = ("Download selected files (archive.org)…", "선택한 파일 받기 (archive.org)…", "選択したファイルを取得 (archive.org)…")
         case .downloadPacks: values = ("Download missing…", "누락분 받기…", "不足分を取得…")
         case .cdnCacheToggle: values = ("CDN cache", "CDN 캐시", "CDNキャッシュ")
         case .rebuildAssets: values = ("Rebuild master data…", "마스터 데이터 재빌드…", "マスターデータ再構築…")
@@ -261,14 +264,16 @@ enum ConsoleAction: String, Decodable, Identifiable {
     }
 
     func resolvedDownloadAction(source: ConsoleDownloadSource) -> ConsoleAction {
-        self == .downloadPacks && source == .archive ? .downloadArchive : self
+        self == .downloadPacks && source == .archive ? .downloadArchiveProfile : self
     }
 
     func requestBody(region: ConsoleRegion? = nil, platform: ConsolePlatform? = nil,
                      gameLanguage: ConsoleGameLanguage? = nil) -> [String: String] {
         var body = ["action": rawValue, "confirmation": "STOP_SERVER"]
-        if self == .downloadArchive || self == .downloadPacks {
+        if self == .downloadArchive || usesDownloadScope {
             body["region"] = (region ?? .gl).rawValue
+        }
+        if usesDownloadScope {
             body["platform"] = (platform ?? .ios).rawValue
             body["language"] = (gameLanguage ?? .all).rawValue
         }

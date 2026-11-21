@@ -304,6 +304,9 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
             ]],
             {"action":"download_archive", "confirmation":"STOP_SERVER", "region":"gl", "platform":"android"},
             {"action":"download_archive", "confirmation":"STOP_SERVER", "region":"gl", "language":"en"},
+            {"action":"download_archive", "confirmation":"STOP_SERVER", "region":"gl", "platform":"android", "language":"en"},
+            {"action":"download_archive_profile", "confirmation":"STOP_SERVER", "region":"gl"},
+            {"action":"download_archive_profile", "confirmation":"STOP_SERVER", "region":"both", "platform":"ios", "language":"ko"},
             {"action":"rebuild_assets", "confirmation":"STOP_SERVER", "language":"en"},
         ]
         with patch("elichika_macos.subprocess.Popen") as spawn, patch.object(runtime.controller, "stop_for_console") as stop:
@@ -317,6 +320,7 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
     def test_console_exact_fixed_commands_regions_cache_persistence_and_reset_order(self):
         runtime, ready = self.start()
         self.console_binary(runtime)
+        self.archive_source_fixture(runtime, complete=False)
         cases = [("download_packs", region,
                    ["download_packs", "4", "--region", region, "--platform", platform, "--language", language])
                   for region, platform, language in [
@@ -324,6 +328,7 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
                       ("gl", "ios", "ko"), ("gl", "both", "zh"),
                       ("jp", "android", "ja"), ("jp", "ios", "all"),
                       ("both", "both", "all")]]
+        cases += [("download_archive", region, ["download_archive", region]) for region in ("gl", "jp", "both")]
         cases += [("cdn_cache_toggle", None, ["cdn_cache", "toggle"]),
                   ("rebuild_assets", None, ["rebuild_assets"]),
                   ("fix_training_trees", None, ["fix_training_trees"]),
@@ -353,13 +358,25 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
                 if action == "download_packs":
                     self.assertEqual((job["region"], job["platform"], job["language"]),
                                      (value["region"], value["platform"], value["language"]))
+                if action == "download_archive":
+                    self.assertEqual((job["region"], job["platform"], job["language"]), (region, None, None))
                 self.assertEqual(reset_payload.call_count, 1 if action == "reset_server" else 0)
                 self.assertFalse(runtime.controller.busy())
         self.assertFalse(runtime.console_state()["cache_enabled"])
         self.assertFalse(json.loads((runtime.data / "config.json").read_text())["cdn_cache"])
 
+    def archive_source_fixture(self, runtime, complete=True):
+        config = runtime.resources / "python-app/archive-hosted-catalog.json"
+        config.parent.mkdir(exist_ok=True)
+        config.write_text(json.dumps({"schema": 1, "status": "COMPLETE" if complete else "INCOMPLETE",
+            "requested_total": 42830, "target_manifest_sha256": "2" * 64,
+            "catalog_url": "https://archive.org/download/elichika-test-index/catalog.json" if complete else None,
+            "catalog_sha256": "1" * 64 if complete else None}))
+        return config
+
     def test_archive_scope_uses_python_destination_and_progress_without_go(self):
         runtime, ready = self.start()
+        self.archive_source_fixture(runtime)
         external = self.root / "external asset library/packs"
         config = json.loads((runtime.data / "config.json").read_text())
         config["cdn_cache_dir"] = str(external)
@@ -374,10 +391,11 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
             self.assertEqual(runtime.console_state()["job"]["progress"]["percent"], 50)
             return {"total_files":2, "downloaded_files":1, "reused_files":1}
         with patch("elichika_macos.run_from_config", side_effect=download) as implementation, patch("elichika_macos.subprocess.Popen") as spawn:
-            status, _ = self.console_request(ready, {"action":"download_archive", "region":"gl", "platform":"android", "language":"ko", "confirmation":"STOP_SERVER"})
+            status, _ = self.console_request(ready, {"action":"download_archive_profile", "region":"gl", "platform":"android", "language":"ko", "confirmation":"STOP_SERVER"})
             self.assertEqual(status, 202)
             job = self.wait_console(runtime)
             self.assertEqual((job["status"], job["exit_code"]), ("done", 0))
+            self.assertEqual(job["action"], "download_archive_profile")
             implementation.assert_called_once()
             spawn.assert_not_called()
         self.assertFalse(runtime.controller.busy())
@@ -385,6 +403,7 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
     def test_archive_cancel_keeps_reservation_until_python_worker_exits(self):
         from archive_profile_download import Cancelled
         runtime, ready = self.start()
+        self.archive_source_fixture(runtime)
         entered, release = threading.Event(), threading.Event()
         def download(*args, **callbacks):
             entered.set()
@@ -392,7 +411,7 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
             self.assertTrue(callbacks["cancelled"]())
             raise Cancelled()
         with patch("elichika_macos.run_from_config", side_effect=download):
-            status, _ = self.console_request(ready, {"action":"download_archive", "region":"jp", "platform":"ios", "language":"ja", "confirmation":"STOP_SERVER"})
+            status, _ = self.console_request(ready, {"action":"download_archive_profile", "region":"jp", "platform":"ios", "language":"ja", "confirmation":"STOP_SERVER"})
             self.assertEqual(status, 202)
             self.assertTrue(entered.wait(3))
             with self.assertRaises(BusyError), guard(runtime.data):
@@ -406,18 +425,15 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
             self.assertEqual((job["status"], job["exit_code"]), ("cancelled", 130))
         self.assertFalse(runtime.controller.busy())
 
-    def test_archive_unconfigured_error_is_specific_and_never_runs_legacy_tar(self):
+    def test_archive_unconfigured_error_offers_cdn_before_stopping_server(self):
         runtime, ready = self.start()
-        config = runtime.resources / "python-app/archive-hosted-catalog.json"
-        config.parent.mkdir()
-        config.write_text(json.dumps({"schema":1, "status":"INCOMPLETE", "requested_total":42830}))
-        with patch("elichika_macos.subprocess.Popen") as spawn:
-            status, _ = self.console_request(ready, {"action":"download_archive", "region":"gl", "platform":"ios", "language":"all", "confirmation":"STOP_SERVER"})
-            self.assertEqual(status, 202)
-            job = self.wait_console(runtime)
-            self.assertEqual(job["status"], "error")
-            self.assertIn("not configured or fully verified", job["error"])
-            self.assertIn("old full TAR download was not started", job["error"])
+        self.archive_source_fixture(runtime, complete=False)
+        with patch("elichika_macos.subprocess.Popen") as spawn, patch.object(runtime.controller, "stop_for_console") as stop:
+            status, result = self.console_request(ready, {"action":"download_archive_profile", "region":"gl", "platform":"ios", "language":"all", "confirmation":"STOP_SERVER"})
+            self.assertEqual(status, 400)
+            self.assertIn("Choose CDN under Download missing", result["error"])
+            self.assertIsNone(runtime.console_state()["job"])
+            stop.assert_not_called()
             spawn.assert_not_called()
         self.assertFalse(runtime.controller.busy())
 

@@ -1074,9 +1074,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Choose the missing-file source and game scope in a single dialog. */
-    private fun confirmDownloadMissing(a: JSONObject) = confirmDownloadScope(a, archive = false)
-
-    private fun confirmDownloadScope(a: JSONObject, archive: Boolean) {
+    private fun confirmDownloadMissing(a: JSONObject) {
         val regionValues = arrayOf("gl", "jp", "both")
         val regionLabels = arrayOf(getString(R.string.region_gl), getString(R.string.region_jp), getString(R.string.region_both))
         val platformValues = arrayOf("android", "ios", "both")
@@ -1103,10 +1101,9 @@ class MainActivity : AppCompatActivity() {
                 form.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
         }
-        val source = if (archive) null else selector(R.string.download_source,
-            arrayOf("CDN", "archive.org")).apply { setSelection(0) } // Keep CDN as the default.
-        fun useArchiveSource() = archive || source?.selectedItemPosition == 1
-        val sourceDescription = paragraph(getString(if (archive) R.string.confirm_download_archive else R.string.confirm_download_packs))
+        val source = selector(R.string.download_source, arrayOf("CDN", "archive.org")).apply { setSelection(0) }
+        fun useArchiveSource() = source.selectedItemPosition == 1
+        val sourceDescription = paragraph(getString(R.string.confirm_download_packs))
         val region = selector(R.string.download_region, regionLabels)
         val platform = selector(R.string.download_platform, platformLabels)
         val language = selector(R.string.download_game_language, glLanguageLabels)
@@ -1126,7 +1123,7 @@ class MainActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = updateSummary()
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-        source?.onItemSelectedListener = summaryListener
+        source.onItemSelectedListener = summaryListener
         platform.onItemSelectedListener = summaryListener
         language.onItemSelectedListener = summaryListener
         region.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -1150,7 +1147,7 @@ class MainActivity : AppCompatActivity() {
         platform.setSelection(0) // This app runs on Android; other targets remain selectable.
         val scroll = NestedScrollView(this).apply { addView(form) }
         AlertDialog.Builder(this)
-            .setTitle(if (archive) R.string.act_download_archive else R.string.act_download_packs)
+            .setTitle(R.string.act_download_packs)
             .setView(scroll)
             .setPositiveButton(R.string.confirm_continue) { _, _ ->
                 val regionValue = regionValues[region.selectedItemPosition]
@@ -1165,8 +1162,18 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Archive uses verified individual objects, with the same scope as CDN. */
-    private fun confirmDownloadArchive(a: JSONObject) = confirmDownloadScope(a, archive = true)
+    /** The existing full TAR download uses region scope and its original CLI verb. */
+    private fun confirmDownloadArchive(a: JSONObject) {
+        val regions = arrayOf("gl", "jp", "both")
+        val labels = arrayOf(getString(R.string.region_gl), getString(R.string.region_jp), getString(R.string.region_both))
+        AlertDialog.Builder(this)
+            .setTitle(R.string.confirm_download_archive_full)
+            .setItems(labels) { _, which ->
+                ServerService.runAction(this, listOf("download_archive", regions[which]), a.optBoolean("stop_server", true))
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
 
     private fun loadActions(): List<JSONObject> {
         return try {

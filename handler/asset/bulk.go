@@ -6,11 +6,15 @@ package asset
 // use this for the remainder. (Those files also download automatically as you play.)
 
 import (
+	"database/sql"
 	"elichika/assetdata"
 	"elichika/config"
 	"elichika/log"
 
 	"fmt"
+	"net/url"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,13 +31,55 @@ func DownloadAllMissing(workers int) {
 // DownloadMissing downloads only the selected profiles, including common files
 // and whole metapacks. Invalid or unloaded profiles fail before any CDN request.
 func DownloadMissing(workers int, selection assetdata.DownloadSelection) error {
-	names, err := assetdata.SelectWholeFiles(selection)
+	names, err := assetdata.SelectWholeFilesWithFallback(selection, func(profile assetdata.AssetProfile, names map[string]struct{}) error {
+		return readInstalledDownloadProfile(config.AssetPath, profile, names)
+	})
 	if err != nil {
 		return err
 	}
-	log.Printf("download_packs: selected %d whole files (%s); all loaded profiles contain %d whole files\n",
-		len(names), selection, assetdata.ProfileWholeFileCount())
+	log.Printf("download_packs: selected %d whole files (%s)\n", len(names), selection)
 	return downloadMissingFiles(workers, names)
+}
+
+func readInstalledDownloadProfile(assetRoot string, profile assetdata.AssetProfile, names map[string]struct{}) error {
+	platform := "a"
+	if profile.Platform == assetdata.PlatformIOS {
+		platform = "i"
+	}
+	file := "asset_" + platform + "_" + string(profile.Language) + ".db"
+	path, err := filepath.Abs(filepath.Join(assetRoot, "db", string(profile.Region), file))
+	if err != nil {
+		return err
+	}
+	uri := url.URL{Scheme: "file", Path: filepath.ToSlash(path), RawQuery: "mode=ro"}
+	if strings.HasPrefix(uri.Path, "//") {
+		uri.Host = "localhost"
+	} else if !strings.HasPrefix(uri.Path, "/") {
+		uri.Path = "/" + uri.Path
+	}
+	database, err := sql.Open("sqlite", uri.String())
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+	// Match the profile index: a metapack and its constituent slices use
+	// one whole file, and rows common to multiple profiles share one key.
+	rows, err := database.Query(`SELECT metapack_name FROM metapack
+		UNION SELECT COALESCE(metapack_name, pack_name) FROM m_asset_package_mapping`)
+	if err != nil {
+		return fmt.Errorf("read installed %s: %w", file, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name sql.NullString
+		if err := rows.Scan(&name); err != nil {
+			return err
+		}
+		if name.Valid && name.String != "" {
+			names[name.String] = struct{}{}
+		}
+	}
+	return rows.Err()
 }
 
 func downloadMissingFiles(workers int, names map[string]struct{}) error {

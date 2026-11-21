@@ -243,7 +243,7 @@ jobs:
           cmp sukusta_paths.py "$PY/sukusta_paths.py"
           cmp archive_profile_download.py "$PY/archive_profile_download.py"
           cmp archive_profile_download_bridge.py "$PY/archive_profile_download_bridge.py"
-          python3 -c 'from archive_profile_download_bridge import load_source_config; load_source_config("archive-hosted-catalog.json")'
+          python3 -c 'from archive_profile_download_bridge import load_source_config; load_source_config("archive-hosted-catalog.json", allow_incomplete=True)'
           cp archive-hosted-catalog.json android/app/src/main/assets/archive-hosted-catalog.json
           cmp archive-hosted-catalog.json android/app/src/main/assets/archive-hosted-catalog.json
           cmp costume_management.py "$PY/costume_management.py"
