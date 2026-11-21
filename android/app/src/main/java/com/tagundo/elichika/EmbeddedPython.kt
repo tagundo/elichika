@@ -21,6 +21,10 @@ internal object EmbeddedPython {
         environment.callAttr("__setitem__", "ELICHIKA_NATIVE_DIR", nativeDir)
         environment.callAttr("__setitem__", "ELICHIKA_HCA_LIBRARY", File(nativeDir, "libelichika_hca.so").absolutePath)
         environment.callAttr("__setitem__", "ELICHIKA_TEXTURE65_BIN", File(nativeDir, "libelichika_texture65.so").absolutePath)
+        val mvCache = runCatching { context.cacheDir?.let { File(it, "mv-studio").canonicalPath } }.getOrNull()
+        if (mvCache != null) {
+            environment.callAttr("__setitem__", "ELICHIKA_MV_PRIVATE_CACHE", mvCache)
+        }
         return python
     }
 }

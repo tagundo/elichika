@@ -252,6 +252,8 @@ jobs:
           done
           curl --fail --silent "$VIEWER_URL/api/tools" > /dev/null
           EVIDENCE_DIR="$EVIDENCE_DIR/navigation" node tests/viewer_navigation_browser.js
+          node tests/mv_studio_scene_lifecycle_test.js
+          node tests/mv_studio_outfit_reuse_test.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio" node tests/mv_studio_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js
           node tests/viewer_rig_browser.js
