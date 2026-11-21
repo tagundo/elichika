@@ -138,14 +138,14 @@ class Handler(BaseHTTPRequestHandler):
         return self._serve_file(WEB_DIR / "ui" / rel)
 
     def _serve_thumbnail_static(self, rel):
-        """Serve the existing renderer on this authenticated UI's own origin."""
+        """Serve allowlisted shared UI scripts and thumbnail resources."""
         from adminui.tools.costume_thumbnail import ensure_webtools
         ensure_webtools()
         from webtools.server import WEB_DIR as tools_web
         from pathlib import PurePosixPath
         rel = unquote(rel)
         shared = {"vendor/three-r128/three.min.js", "vendor/three-r128/GLTFLoader.js",
-                  "sifas-material.js", "viewer-quality.js", "viewer-thumbnails.js"}
+                  "platform.js", "sifas-material.js", "viewer-quality.js", "viewer-thumbnails.js"}
         parts = PurePosixPath(rel).parts
         template = (len(parts) == 2 and parts[0] == "thumbnail-sdk" and
                     PurePosixPath(parts[1]).suffix in (".png", ".json"))

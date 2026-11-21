@@ -210,6 +210,8 @@ TOOLS = [
         "run": run_extract,
         "options": extract_costume_options,
         "fields": [
+            {"name": "platform", "label": "Asset platform", "type": "select", "default": "android",
+             "options": [{"value": "android", "label": "Android"}, {"value": "ios", "label": "iOS"}]},
             _char_field("character", "Character",
                         "Pick a character to list their costumes — or use search below.",
                         choices=_EXTRACT_CHARACTERS, required=False),
