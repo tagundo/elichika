@@ -1,4 +1,4 @@
-name: Isolated GL SIFAS catalog QA
+name: Isolated GL SIFAS Google Play AVD QA
 
 on:
   workflow_dispatch:
@@ -12,16 +12,22 @@ on:
         type: choice
         options: [screen, assets]
         default: screen
+      android_api:
+        description: Official x86_64 Google Play AVD API level
+        type: choice
+        options: ["30", "32", "34"]
+        default: "30"
 
 permissions:
   contents: read
 
 jobs:
   stock-gl:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:
       QA_MODE: ${{ inputs.mode }}
+      QA_AVD_API: ${{ inputs.android_api }}
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
     steps:
       - name: Checkout isolated QA scripts
@@ -46,7 +52,7 @@ jobs:
           go-version-file: candidate/go.mod
           cache-dependency-path: candidate/go.sum
 
-      - name: Prepare the validated ARM host and diagnostics
+      - name: Prepare the validated x86_64 host and diagnostics
         working-directory: candidate
         run: |
           set -euo pipefail
@@ -100,7 +106,7 @@ jobs:
             sleep 2
           done
 
-      - name: Launch the verified native GL game on ARM64 Redroid
+      - name: Verify and launch the stock GL game on an official Google Play AVD
         timeout-minutes: 35
         env:
           ELICHIKA_GAME_QA_FOLLOWUP: ${{ github.workspace }}/qa/.github/qa/capture-stock-gl-screen.sh
@@ -108,7 +114,7 @@ jobs:
           set -euo pipefail
           plan="$GITHUB_WORKSPACE/qa/.github/qa/stock-gl-asset-plan.sh"
           if [[ $QA_MODE == assets && -f $plan ]]; then export ELICHIKA_GAME_QA_ASSET_PLAN="$plan"; fi
-          script="$GITHUB_WORKSPACE/qa/.github/qa/launch-native-gl.sh"
+          script="$GITHUB_WORKSPACE/qa/.github/qa/launch-native-gl-avd.sh"
           bash "$script" "$GITHUB_WORKSPACE/evidence" "$QA_MODE"
           grep -E ' [2][0][0] .*POST .*/(startup|login|signup)' "$RUNNER_TEMP/elichika-game-qa.log" >/dev/null ||
             grep -E ' [2][0][0] .*/static/.*/(masterdata_a_en|asset_a_en.db)' "$RUNNER_TEMP/elichika-game-qa.log" >/dev/null
@@ -139,7 +145,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stock-gl-b25-catalog-qa
+          name: stock-gl-b25-google-play-avd-api-${{ inputs.android_api }}
           path: evidence
           if-no-files-found: error
           retention-days: 3
