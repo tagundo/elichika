@@ -260,6 +260,9 @@ jobs:
           node tests/mv_studio_props_test.js
           node tests/mv_studio_split_test.js
           node tests/mv_studio_stage_coloring_test.js
+          node tests/mv_studio_stage_display_test.js
+          node tests/mv_studio_stage_motion_test.js
+          node tests/mv_studio_bloom_test.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio" node tests/mv_studio_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio-stream" node tests/mv_studio_game_stream_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js

@@ -128,6 +128,7 @@ static_files = ['vendor/three-r128/three.min.js', 'style.css', 'platform.js', 'v
     'mv-studio.js', 'mv-studio.css', 'mv-studio-scene.js',
     'mv-studio-lighting.js', 'mv-studio-penlight.js', 'mv-studio-props.js', 'mv-studio-split.js',
     'mv-studio-stage-material.js', 'mv-studio-stage-coloring.js', 'mv-studio-physics.js',
+    'mv-studio-stage-display.js', 'mv-studio-stage-motion.js', 'mv-studio-post.js',
     'model-viewer.js', 'viewer-rig.js', 'panel-settings.js',
     'viewer-signed-inputs.js', 'viewer-signed-inputs.css', 'viewer-editing.js',
     'texture-png.js', 'texture-color-math.js', 'texture-color-worker.js',
