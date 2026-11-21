@@ -73,10 +73,12 @@ device shell getprop > "$evidence/android-properties.txt"
 device shell settings --user 0 put secure immersive_mode_confirmations confirmed
 device reverse tcp:8080 tcp:8080
 device reverse --list > "$evidence/reverse.txt"
-device shell "printf 'GET /webui/user/ HTTP/1.0\r\nHost: localhost:8080\r\n\r\n' | toybox nc -w 5 127.0.0.1 8080" \
-    > "$workspace/device-http.txt"
-head -n 1 "$workspace/device-http.txt" > "$evidence/device-http.txt"
-grep -q '^HTTP/' "$evidence/device-http.txt"
+# Some toybox netcat builds close the socket as soon as stdin closes. Keep
+# the pipe open briefly and preserve evidence even when this optional probe
+# exits before it can read the reply. The game request is checked separately.
+device shell "{ printf 'GET /webui/user/ HTTP/1.0\\r\\nHost: localhost:8080\\r\\n\\r\\n'; sleep 2; } | toybox nc -w 5 127.0.0.1 8080" \
+    > "$workspace/device-http.txt" 2>&1 || true
+head -n 3 "$workspace/device-http.txt" > "$evidence/device-http.txt"
 
 if device shell pm path "$game" | grep -q '^package:'; then
     printf '%s\n' 'The disposable Android system already has the game installed.' >&2

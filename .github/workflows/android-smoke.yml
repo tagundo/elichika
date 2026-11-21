@@ -110,6 +110,8 @@ jobs:
           if [[ $QA_MODE == assets && -f $plan ]]; then export ELICHIKA_GAME_QA_ASSET_PLAN="$plan"; fi
           script="$GITHUB_WORKSPACE/qa/.github/qa/launch-native-gl.sh"
           bash "$script" "$GITHUB_WORKSPACE/evidence" "$QA_MODE"
+          grep -E ' [2][0][0] .*POST .*/(startup|login|signup)' "$RUNNER_TEMP/elichika-game-qa.log" >/dev/null ||
+            grep -E ' [2][0][0] .*/static/.*/(masterdata_a_en|asset_a_en.db)' "$RUNNER_TEMP/elichika-game-qa.log" >/dev/null
 
       - name: Record sanitized server and client routing evidence
         if: always()
