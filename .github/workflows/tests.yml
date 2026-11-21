@@ -277,6 +277,7 @@ jobs:
           node tests/mv_studio_center_stars_test.js
           node tests/mv_studio_moving_companions_test.js
           node tests/mv_studio_display_lights_test.js
+          node tests/mv_studio_falling_display_test.js
           node tests/mv_studio_ribbon_shine_test.js
           node tests/mv_studio_shaft_test.js
           node tests/mv_studio_spotlight_area_test.js
