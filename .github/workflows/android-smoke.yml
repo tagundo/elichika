@@ -1,710 +1,139 @@
-name: Android ARM64 release smoke tests
+name: Isolated GL SIFAS catalog QA
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
-      candidate_sha256:
+      candidate_sha:
+        description: Exact server candidate commit (40 hex digits)
         type: string
         required: true
-      version_name:
-        type: string
-        required: true
-      version_code:
-        type: string
-        required: true
-      noop_probe_sha256:
-        type: string
-        required: true
-      focused_header_diagnostic:
-        type: boolean
-        required: false
-        default: false
-      focused_header_font_scale:
-        type: string
-        required: false
-        default: "1.0"
+      mode:
+        description: Initial screen or allow the one-time stock CDN test
+        type: choice
+        options: [screen, assets]
+        default: screen
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  android:
+  stock-gl:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 35
+    timeout-minutes: 55
+    env:
+      QA_MODE: ${{ inputs.mode }}
+      CANDIDATE_SHA: ${{ inputs.candidate_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout isolated QA scripts
+        uses: actions/checkout@v4
+        with:
+          path: qa
+          persist-credentials: false
 
-      - name: Select reachable Ubuntu-signature-verified package mirrors
-        run: |
-          mkdir -p evidence
-          sudo env ELICHIKA_APT_EVIDENCE="$PWD/evidence" python3 android/ci/prepare_ubuntu_apt.py
+      - name: Validate exact candidate reference
+        run: '[[ $CANDIDATE_SHA =~ ^[0-9a-f]{40}$ ]]'
 
-      - name: Prepare native ARM64 Android host
+      - name: Checkout the exact server candidate and locked dependencies
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          path: candidate
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: candidate/go.mod
+          cache-dependency-path: candidate/go.sum
+
+      - name: Prepare the validated ARM host and diagnostics
+        working-directory: candidate
         run: |
           set -euo pipefail
-          test "$(uname -m)" = aarch64
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -s assets/db/gl/asset_a_en.db
+          mkdir -p "$GITHUB_WORKSPACE/evidence"
+          sudo env ELICHIKA_APT_EVIDENCE="$GITHUB_WORKSPACE/evidence/apt" python3 android/ci/prepare_ubuntu_apt.py
           sudo apt-get update -qq
-          sudo apt-get install -y adb apksigner
-          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
-            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
-            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
-          fi
-          mkdir -p evidence "$RUNNER_TEMP/android-data"
-          uname -a > evidence/host.txt
-          getconf PAGESIZE >> evidence/host.txt
-          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
-          docker image inspect redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
-            --format '{{json .RepoDigests}} {{.Architecture}}' >> evidence/host.txt
-          docker run --detach --privileged --name android-release-smoke \
-            --publish 127.0.0.1:5555:5555 \
-            --volume "$RUNNER_TEMP/android-data:/data" \
-            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
-            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
-            androidboot.redroid_width=720 androidboot.redroid_height=1280 \
-            androidboot.redroid_fps=10 ro.secure=0
+          sudo apt-get install -y adb apksigner tesseract-ocr
+          df -h "$RUNNER_TEMP" | tee "$GITHUB_WORKSPACE/evidence/disk.txt"
 
-      - name: Wait for Android boot and verify native ABI
+      - name: Build and start the isolated candidate server
+        working-directory: candidate
+        timeout-minutes: 14
         run: |
           set -euo pipefail
-          ready=0
-          for attempt in $(seq 1 120); do
-            adb connect 127.0.0.1:5555 >/dev/null || true
-            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then
-              ready=1
-              break
-            fi
+          CGO_ENABLED=0 go build -p 2 -o "$RUNNER_TEMP/elichika-game-qa" .
+          mkdir -p static
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          screen = os.environ['QA_MODE'] == 'screen'
+          default_cdn = 'https://llsifas.imsofucking.gay/static/'
+          Path('config.json').write_text(json.dumps({
+              'server_address': '127.0.0.1:8080', 'locales': 'en', 'timezone': 'UTC',
+              'tutorial': False, 'cdn_server': 'elichika' if screen else default_cdn,
+              'cdn_cache': not screen, 'cdn_partial_file_capability': 'has_range_api',
+          }))
+          PY
+          if [[ $QA_MODE == screen ]]; then
+            source_base='https://llsifas.imsofucking.gay/static/'
+            while read -r pack bytes digest; do
+              curl --silent --show-error --fail --location --proto '=https' --proto-redir '=https' \
+                --max-time 30 --max-filesize "$bytes" --output "static/$pack" "$source_base$pack"
+              printf '%s  static/%s\n' "$digest" "$pack" | sha256sum --check
+            done <<'OPENING'
+          6oy69z 116983 4b8eb4adbd2093c0339c6d9b19b6f9da63573e94becb9bffe834429d96f76ed4
+          jjze2p 3041702 47ac807bd3c9b18b0e6e1b90f149eef1c2743cac2a4138ae102faa2299e5e9d5
+          lijvp6 262654 dc2aa94f5d5b9cf78af1359e3d5649a559b953a61c6438658806ed3fc1bf7a9c
+          yuro6n 19955 c5c5e5e4bcc9b46c65908991b402db0b2f39f221840204e99a47e31f15ca5106
+          OPENING
+          fi
+          "$RUNNER_TEMP/elichika-game-qa" > "$RUNNER_TEMP/elichika-game-qa.log" 2>&1 &
+          server_pid=$!
+          printf '%s\n' "$server_pid" > "$RUNNER_TEMP/elichika-game-qa.pid"
+          deadline=$((SECONDS + 300))
+          until curl --silent --max-time 2 --output /dev/null http://127.0.0.1:8080/webui/user/; do
+            kill -0 "$server_pid"
+            (( SECONDS < deadline ))
             sleep 2
           done
-          test "$ready" = 1
-          adb -s 127.0.0.1:5555 shell getprop > evidence/android-properties.txt
-          test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
-          adb -s 127.0.0.1:5555 shell id >> evidence/host.txt
-          adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/android-boot.png
 
-      - name: Confirm Android immersive-mode education for the test user
-        run: |
-          set -euo pipefail
-          # The one-time system tutorial steals focus from fullscreen captures.
-          # Acknowledge it on this disposable user without changing app assertions.
-          adb -s 127.0.0.1:5555 shell settings --user 0 get secure immersive_mode_confirmations | tr -d '\r' > evidence/immersive-mode-confirmations-before.txt
-          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
-          adb -s 127.0.0.1:5555 shell settings --user 0 get secure immersive_mode_confirmations | tr -d '\r' | tee evidence/immersive-mode-confirmations-after.txt
-          test "$(cat evidence/immersive-mode-confirmations-after.txt)" = confirmed
-
-      - name: Use Chromium ANGLE for Redroid WebGL
-        run: |
-          set -euo pipefail
-          # The pinned Redroid image's vendor ANGLE crashes compiling WebGL
-          # shaders. WebView's own ANGLE uses the same CPU Vulkan device and
-          # preserves the textured-render assertions used by the instrumentation checks.
-          printf '%s\n' '_ --use-gl=angle --use-angle=vulkan --webview-verbose-logging' > "$RUNNER_TEMP/webview-command-line"
-          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/webview-command-line" /data/local/tmp/webview-command-line
-          adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
-          adb -s 127.0.0.1:5555 shell cat /data/local/tmp/webview-command-line > evidence/webview-command-line.txt
-
-      - name: Download this build's signed release artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-release-apk
-          path: candidate
-
-      - name: Download the same-data APK version-change probe
-        if: ${{ !inputs.focused_header_diagnostic }}
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-revision-noop-probe-apk
-          path: noop-probe
-
-      - name: Download the latest official APK
-        if: ${{ !inputs.focused_header_diagnostic }}
-        run: >-
-          curl --fail --location --retry 2 --output official.apk
-          https://github.com/tagundo/elichika/releases/download/v2026.08.23.1/elichika-2026.08.23.1.apk
-
-      - name: Test actual APK upgrade, accounts, services and gameplay APIs
-        if: ${{ !inputs.focused_header_diagnostic }}
-        run: >-
-          python3 -u tests/android_release_smoke.py
-          --old official.apk --candidate "candidate/elichika-${{ inputs.version_name }}.apk"
-          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
-          --version-code "${{ inputs.version_code }}"
-          --noop-probe-dir noop-probe
-          --noop-probe-sha256 "${{ inputs.noop_probe_sha256 }}"
-          --evidence evidence
-
-      - name: Download native-package instrumentation
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-native-test-apk
-          path: instrumentation
-
-      - name: Compare native header policies on the frozen APK
-        if: ${{ inputs.focused_header_diagnostic }}
-        timeout-minutes: 5
+      - name: Launch the verified native GL game on ARM64 Redroid
+        timeout-minutes: 35
         env:
-          EXPECTED_CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
-          EXPECTED_VERSION_NAME: ${{ inputs.version_name }}
-          HEADER_DIAGNOSTIC_FONT_SCALE: ${{ inputs.focused_header_font_scale }}
+          ELICHIKA_GAME_QA_FOLLOWUP: ${{ github.workspace }}/qa/.github/qa/capture-stock-gl-screen.sh
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import hashlib, json, os
-          from pathlib import Path
-          apks = list(Path('candidate').glob('*.apk'))
-          assert len(apks) == 1 and apks[0].name == 'elichika-' + os.environ['EXPECTED_VERSION_NAME'] + '.apk'
-          with apks[0].open('rb') as stream:
-              actual = hashlib.file_digest(stream, 'sha256').hexdigest()
-          assert actual == os.environ['EXPECTED_CANDIDATE_SHA']
-          assert os.environ['HEADER_DIAGNOSTIC_FONT_SCALE'] in ('1.0', '1.2', '2.0')
-          Path('evidence/focused-header-diagnostic-mode.json').write_text(json.dumps({
-              'candidate_sha256': actual,
-              'font_scale': float(os.environ['HEADER_DIAGNOSTIC_FONT_SCALE']),
-              'scope': 'Fresh frozen APK; original native header versus test-only public START gravity setter. No product APK rebuild or release validation claim.',
-              'does_not_replace_full_release_qa': True
-          }, indent=2))
-          PY
-          adb -s 127.0.0.1:5555 install "candidate/elichika-${{ inputs.version_name }}.apk"
-          adb -s 127.0.0.1:5555 shell pm grant com.tagundo.elichika android.permission.POST_NOTIFICATIONS
-          adb -s 127.0.0.1:5555 shell appops set com.tagundo.elichika MANAGE_EXTERNAL_STORAGE allow
-          adb -s 127.0.0.1:5555 install -r instrumentation/*.apk
-          adb -s 127.0.0.1:5555 shell wm size | tr -d '\r' > evidence/header-display-before.txt
-          adb -s 127.0.0.1:5555 shell wm density | tr -d '\r' >> evidence/header-display-before.txt
-          previous_size=$(sed -n 's/^Override size: //p' evidence/header-display-before.txt)
-          previous_density=$(sed -n 's/^Override density: //p' evidence/header-display-before.txt)
-          previous_font_scale=$(adb -s 127.0.0.1:5555 shell settings get system font_scale | tr -d '\r')
-          restore_header_display() {
-            qa_exit_code=$?
-            trap - EXIT
-            qa_restore_failed=0
-            if [[ -z "$previous_font_scale" || "$previous_font_scale" == "null" ]]; then
-              adb -s 127.0.0.1:5555 shell settings delete system font_scale || qa_restore_failed=1
-            else
-              adb -s 127.0.0.1:5555 shell settings put system font_scale "$previous_font_scale" || qa_restore_failed=1
-            fi
-            adb -s 127.0.0.1:5555 shell wm density "${previous_density:-reset}" || qa_restore_failed=1
-            adb -s 127.0.0.1:5555 shell wm size "${previous_size:-reset}" || qa_restore_failed=1
-            if (( qa_restore_failed )); then exit 1; fi
-            exit "$qa_exit_code"
-          }
-          trap restore_header_display EXIT
-          adb -s 127.0.0.1:5555 shell wm size 1600x1000
-          adb -s 127.0.0.1:5555 shell wm density 160
-          adb -s 127.0.0.1:5555 shell settings put system font_scale "$HEADER_DIAGNOSTIC_FONT_SCALE"
-          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-          adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e requireWideUi true -e headerDiagnosticOnly true -e expectedFontScale "$HEADER_DIAGNOSTIC_FONT_SCALE" \
-            -e class com.tagundo.elichika.MeshWebViewTest \
-            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee evidence/native-header-diagnostic.txt
-          python3 -c 'from pathlib import Path; text=Path("evidence/native-header-diagnostic.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
+          plan="$GITHUB_WORKSPACE/qa/.github/qa/stock-gl-asset-plan.sh"
+          if [[ $QA_MODE == assets && -f $plan ]]; then export ELICHIKA_GAME_QA_ASSET_PLAN="$plan"; fi
+          script="$GITHUB_WORKSPACE/qa/.github/qa/launch-native-gl.sh"
+          bash "$script" "$GITHUB_WORKSPACE/evidence" "$QA_MODE"
 
-      - name: Exercise Python, console, multiwindow and service configuration
-        if: ${{ !inputs.focused_header_diagnostic }}
-        env:
-          EXPECTED_CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
-        run: |
-          set -euo pipefail
-          adb -s 127.0.0.1:5555 install -r instrumentation/*.apk
-          # These service-control checks intentionally require a stopped server.
-          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-          adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e allowPublicFixtureInstall true \
-            -e class com.tagundo.elichika.ModelViewerWebViewTest,com.tagundo.elichika.ModelViewerAutoFaceTest,com.tagundo.elichika.ModelViewerRigTest,com.tagundo.elichika.ViewerPersistenceTest,com.tagundo.elichika.NativePythonTest,com.tagundo.elichika.PayloadFileHasherTest,com.tagundo.elichika.PayloadRevisionTest,com.tagundo.elichika.PayloadProgressTest,com.tagundo.elichika.ServerReadinessTest,com.tagundo.elichika.ConsoleLayoutTest,com.tagundo.elichika.WindowBusTest,com.tagundo.elichika.ServerPreparationTest,com.tagundo.elichika.ServerControlTest,com.tagundo.elichika.ServerConfigTest,com.tagundo.elichika.MeshWebViewTest \
-            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee evidence/native-instrumentation.txt
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          text = Path('evidence/native-instrumentation.txt').read_text()
-          # Preserve every prior case and add native partial graft + multi-ZIP updater cases.
-          assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text) == ['35'] and 'FAILURES' not in text, text
-          PY
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-texture65-report.json > evidence/native-texture65-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-cdn-catalog-report.json > evidence/native-cdn-catalog-report.json
-          python3 - <<'PY'
-          import gzip, hashlib, json, os, zipfile
-          from pathlib import Path
-          report = json.loads(Path('evidence/native-cdn-catalog-report.json').read_text())
-          assert report['status'] == 'PASS_BUNDLED_CATALOG_READ_ONLY_PLAN', report
-          assert report['native_java_bridge'] is True and report['source_preserved'] is True, report
-          assert report['network_requests'] == 0 and report['read_only_database_connections'] >= 4, report
-          assert report['apk_sha256'] == os.environ['EXPECTED_CANDIDATE_SHA'], report
-          apks = list(Path('candidate').glob('*.apk')); assert len(apks) == 1
-          with zipfile.ZipFile(apks[0]) as apk:
-              raw = apk.read('assets/payload/assets/costume-cdn-index.json.gz')
-          original = json.loads(gzip.decompress(raw))
-          assert report['index_sha256'] == hashlib.sha256(raw).hexdigest() and report['index_bytes'] == len(raw), report
-          assert report['source_commit'] == original['source_commit'], report
-          assert report['original_costumes'] == {region: len(original['regions'][region]['suits']) for region in ('gl','jp')}, report
-          assert [(row['region'], row['platforms']) for row in report['plans']] == [('gl',['android']),('jp',['ios'])], report
-          assert all(row['packs'] and row['models'] and row['catalogs'] and row['source_commit'] == report['source_commit'] for row in report['plans']), report
-          PY
-          python3 - <<'PY'
-          from pathlib import Path
-          import hashlib, json, os, zipfile
-          report = json.loads(Path('evidence/native-texture65-report.json').read_text())
-          assert report['status'] == 'PASS' and report['native_java_bridge'] is True, report
-          assert report['application_id'] == 'com.tagundo.elichika', report
-          assert report['apk_sha256'] == os.environ['EXPECTED_CANDIDATE_SHA'], report
-          apks = list(Path('candidate').glob('*.apk'))
-          assert len(apks) == 1
-          with apks[0].open('rb') as stream:
-              assert hashlib.file_digest(stream, 'sha256').hexdigest() == report['apk_sha256']
-          with zipfile.ZipFile(apks[0]) as archive:
-              assert hashlib.sha256(archive.read('lib/arm64-v8a/libelichika_texture65.so')).hexdigest() == report['executable_sha256']
-          assert report['unity_format'] == 65 and report['crn_format'] == 12, report
-          assert report['width'] == report['height'] == 16 and report['rgba_bytes'] == 1024, report
-          assert report['fixture_sha256'] == 'd22610a543c19f361d896ce8225e800a0507154867760615673265b2cfb1b577', report
-          assert report['rgba_sha256'] == '76a9cba0c36c189f976ac41793d14055407929beb4f142d17a2f8867dd6e479e', report
-          assert report['display_rgba_sha256'] == '57b0febf48dfd82df66c88426f7677107ad0d48cf588233f044b59d6d817ebf9', report
-          assert all(report[key] is True for key in ('production_single_flip', 'transparent_rgb_retained', 'invalid_dimensions_refused')), report
-          mip_goldens = (
-              (16, '67d75a329b0a72e9544ddc71e0e83f6a4cc74582a694209b1a9981d8d7bf70cf', '86057308524be9a5e43a22adcb7ac4380572c5cb95a6ab22e00b6ecaa78af44c'),
-              (8, '4408294f1905631d095f012c88d90abb0504046e7e3274026d6e324e5ffd9496', '8405f5e5f26e562990376fb5fe60e46aadd9878294633309813d27d73ebeaebf'),
-              (4, '7c176380ab026186839a000dc6a9ff5975a67378bdcd5deb613619ef0b1e80c4', '524eba9b0228fd65ce9143e7e237ac28b29417fa9a6c74cd32b2a4da636baea6'),
-              (2, '7108bd2cae8b5c04b49f297e74ad12bbd298512018ba945cdd1bab9ecf220d7a', '45dd93b604b1017fe8849a75df63a5354c734c3a2f10947226f9ded5ae5188f9'),
-              (1, '2c1d418829ea5941ce3ceca05e9adeba65e1ad1ad52e67972955f726d550fc31', '2c1d418829ea5941ce3ceca05e9adeba65e1ad1ad52e67972955f726d550fc31'),
-          )
-          authored = report['authored_mips']
-          assert authored['fixture_sha256'] == '0ef12426c6703f658a12c7fc04f1fdbae73ca5d44164d965080be42a34db2552', report
-          assert len(authored['levels']) == 5, report
-          for level, (dimension, unflipped, displayed) in enumerate(mip_goldens):
-              actual = authored['levels'][level]
-              assert actual['level'] == level and actual['width'] == actual['height'] == dimension, report
-              assert actual['rgba_bytes'] == dimension * dimension * 4, report
-              assert actual['rgba_sha256'] == unflipped and actual['display_rgba_sha256'] == displayed, report
-              assert actual['production_single_flip'] is True, report
-          assert authored['invalid_level_refused'] is True and authored['invalid_python_level_refused'] is True, report
-          PY
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls-report.json > evidence/model-viewer-outline-controls-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls.png > evidence/model-viewer-outline-controls.png
-          python3 - <<'PY'
-          from pathlib import Path
-          import json
-          report = json.loads(Path('evidence/model-viewer-outline-controls-report.json').read_text())
-          assert report['status'] == 'PASS' and report['sourcePreserved'] and report['unrelatedAuthoringPreserved'], report
-          assert Path('evidence/model-viewer-outline-controls.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
-          PY
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-game-physics-report.json > evidence/model-viewer-game-physics-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-game-physics.png > evidence/model-viewer-game-physics.png
-          python3 - <<'PY'
-          from pathlib import Path
-          import json
-          report = json.loads(Path('evidence/model-viewer-game-physics-report.json').read_text())
-          assert report['status'] == 'PASS' and report['sourcePreserved'] is True and report['fixture'] == 'viewer_game_physics.unity', report
-          assert all(report['checks'].get(name) is True for name in (
-              'nativeDefault', 'singleJobAdvanced', 'groupJobAdvanced', 'pausedDebugPreserved',
-              'seekPreservedParameters', 'modeSwitchPreservedParameters', 'frameRateRestored30')), report
-          assert report['initial']['physics']['swingBone'] is True and report['initial']['physics']['swingCollider'] is True, report
-          assert report['initial']['physics']['frameRate'] == 0 and report['initial']['controls']['frameRate'] == '0', report
-          assert Path('evidence/model-viewer-game-physics.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
-          PY
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail-report.json > evidence/model-viewer-detail-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail.png > evidence/model-viewer-detail.png
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-absolute-outline.unity > evidence/model-viewer-absolute-outline.unity
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-absolute-outline-recipe.json > evidence/model-viewer-absolute-outline-recipe.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended-report.json > evidence/model-viewer-extended-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended.png > evidence/model-viewer-extended.png
-          python3 - <<'PYQA'
-          from pathlib import Path
-          import json
-          expected = {
-              'detail': ('mouthCentroidDepth', 'absoluteOutline', 'sparseOutline', 'outlineUndoRedo', 'sourceCataloguePreserved', 'outlineSave', 'meshZoom', 'connectedSelection', 'selectionUndoRedo', 'viewOnlyPreservedGeometry'),
-              'extended': ('physicsFreshOn', 'gazeOriginalPoses', 'gazePausedAndReset', 'poseComponentFilters', 'breastAutomaticLimits', 'breastDisableRestoresBaseline', 'precisePhysicsEditing', 'motionSourceSeparation', 'motionReloadPreservesEdits', 'importedMotionPlays', 'modelChangeRetainsLibrary', 'explicitClear'),
-          }
-          for name, keys in expected.items():
-              report = json.loads(Path('evidence/model-viewer-' + name + '-report.json').read_text())
-              assert report['status'] == 'PASS' and report['sourcePreserved'] is True, report
-              assert set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
-              assert Path('evidence/model-viewer-' + name + '.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
-          detail = json.loads(Path('evidence/model-viewer-detail-report.json').read_text())
-          assert detail['absolute'] == [{'id': '0:0:1', 'factor': 1, 'absolute': 37}], detail
-          assert detail['absoluteRecipe']['state']['outlines'] == detail['absolute'], detail
-          assert detail['uvColor']['chosen'] == '#14b87a' and detail['uvColor']['before'] == detail['uvColor']['restored'] == detail['uvColor']['persisted'], detail
-          assert detail['uvColor']['authoringPreserved'] is True and detail['uvColor']['viewsPreserved'] is True, detail
-          gpu = detail['mouthGpu']
-          assert gpu['status'] == 'PASS' and gpu['backendAdaptation'] is True and gpu['originalGameShaderParityEstablished'] is False, gpu
-          assert gpu['fallbackUnchanged'] is True and gpu['viewport'] == [64, 64] and gpu['targetPixelTopLeft'] == [32, 32], gpu
-          modes = {row['name']: row for row in gpu['results']}
-          assert set(modes) == {'webgl2-mouth', 'webgl2-original', 'webgl1-mouth', 'webgl1-original'}, gpu
-          for name, row in modes.items():
-              assert row['actualWebGL2'] is name.startswith('webgl2') and row['samples'] == 4 and row['depthBits'] == 24, row
-              assert row['vertices'] == 6 and row['triangles'] == 2 and len(row['observations']) == 6, row
-              assert row['centroidCompiled'] is (name == 'webgl2-mouth'), row
-              for item in row['observations']:
-                  assert item['glError'] == 0, item
-                  if name == 'webgl2-mouth':
-                      assert item['compiledMain'] and all(program['version'].startswith('#version 300 es') and program['linked'] is True for program in item['compiledMain']), item
-                      assert item['rgba'] == ([0, 0, 255, 255] if item['occluder'] == 'front' else [255, 0, 0, 255]), item
-          assert modes['webgl1-mouth']['observations'] == modes['webgl1-original']['observations'], gpu
-          outline = {row['name']: row for row in gpu['outlineResults']}
-          assert set(outline) == set(modes) and gpu['outlineFallbackUnchanged'] is True, gpu
-          for name, row in outline.items():
-              adapted = name == 'webgl2-mouth'
-              assert row['actualWebGL2'] is name.startswith('webgl2') and row['samples'] == 4 and row['depthBits'] == 24, row
-              assert row['vertices'] == 6 and row['triangles'] == 2 and row['side'] == 'BackSide' and len(row['observations']) == 6, row
-              assert all(row[key] is True for key in ('depthTest', 'depthWrite', 'stencilAlways', 'mainHidden')), row
-              assert row['nativeVertexColor'] == [0, 1, 1, 1] and row['centroidCompiled'] is adapted and (adapted or row['originalProgramUnchanged'] is True), row
-              reference = row['frontReferenceRGBA']
-              assert len(reference) == 4 and reference[0] > 0 and reference[1:] == [0, 0, 255], row
-              for item in row['observations']:
-                  assert item['glError'] == 0 and item['compiledOutline'], item
-                  assert all(program['linked'] is True and program['outlinePass'] is True and program['centroidDepth'] is adapted and (not adapted or program['version'].startswith('#version 300 es')) for program in item['compiledOutline']), item
-                  if adapted:
-                      assert item['rgba'] == ([0, 0, 255, 255] if item['occluder'] == 'front' else reference), item
-          assert outline['webgl1-mouth']['observations'] == outline['webgl1-original']['observations'] and outline['webgl1-mouth']['frontReferenceRGBA'] == outline['webgl1-original']['frontReferenceRGBA'], gpu
-          assert json.loads(Path('evidence/model-viewer-absolute-outline-recipe.json').read_text()) == detail['absoluteRecipe'], detail
-          assert Path('evidence/model-viewer-absolute-outline.unity').stat().st_size > 0
-          assert report['motionSourcePreserved'] is True and report['otherBodySourcePreserved'] is True
-          ui_keys = ('accessoryFreshOpen', 'modelOnlyHeader', 'motionOnlyPoseList', 'modelHeaderUnchangedOnMotionImport', 'modelHeaderTracksBodyChange', 'modelHeaderRestored', 'motionListCleared', 'multipleModelCounts')
-          assert set(report['uiChecks']) == set(ui_keys) and all(report['uiChecks'][key] is True for key in ui_keys), report
-          assert report['freshDefaults']['accessoryOpen'] is True, report
-          for snapshot in ('initial', 'beforeLibrary', 'imported', 'played', 'other', 'rebound', 'cleared', 'multiple', 'final'):
-              value = report[snapshot]
-              assert value['files']['modelPaths'] == value['state']['paths'] and value['files']['motionPaths'] == value['state']['motionLibraryPaths'], value
-              assert value['files']['modelCount'] == len(value['state']['paths']) and value['files']['motionCount'] == len(value['state']['motionLibraryPaths']), value
-              assert value['files']['modelListOwned'] is True and value['files']['motionListOwned'] is True, value
-          PYQA
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection-report.json > evidence/model-viewer-part-selection-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection.png > evidence/model-viewer-part-selection.png
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-result.unity > evidence/model-viewer-part-result.unity
-          python3 - <<'PYPART'
-          from pathlib import Path
-          import hashlib, json
-          report = json.loads(Path('evidence/model-viewer-part-selection-report.json').read_text())
-          keys = ('fullHierarchy', 'multipleRoots', 'exactChildExclusion', 'boneSelectionUndoRedo', 'trustedModelBonePick', 'trustedModelFacePick', 'trustedUVPaintErase', 'faceSelectionUndoRedo', 'sourceBoundSubmission', 'actualGraftReopened', 'actualGraftUndoRedo', 'donorAndTargetRendered')
-          assert report['status'] == 'PASS' and set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
-          assert report['sourcePreserved'] is True and report['donorPreserved'] is True, report
-          assert report['selected']['selectedFaces'] == report['request']['triangleIndices'] == [0, 5, 19], report
-          assert report['serialized']['status'] == 'PASS' and report['serialized']['outputVertices'] == 69 and report['serialized']['outputTriangles'] == 23, report
-          assert report['serialized']['targetVerticesPreserved'] == 60 and report['serialized']['unrelatedTargetObjectsExact'] == 49, report
-          assert all(report['serialized'][key] is True for key in ('donorUVColorAndSkinExact', 'originalBindPosesExact', 'allLocalPPtrsResolve', 'donorTexturesExact')), report
-          assert len(report['nativeInputs']) == 6 and len({row['id'] for row in report['nativeInputs']}) == 6, report
-          assert all(row['event']['trusted'] is True for row in [report['bonePointer'], report['scenePointer']] + report['texturePointers']), report
-          assert Path('evidence/model-viewer-part-selection.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
-          assert hashlib.sha256(Path('evidence/model-viewer-part-result.unity').read_bytes()).hexdigest() == report['serialized']['outputSha256'], report
-          PYPART
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-report.json > evidence/model-viewer-thumbnail-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail.png > evidence/model-viewer-thumbnail.png
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-controls.png > evidence/model-viewer-thumbnail-controls.png
-          python3 - <<'PYTHUMB'
-          from pathlib import Path
-          import hashlib, json, struct
-          report = json.loads(Path('evidence/model-viewer-thumbnail-report.json').read_text())
-          keys = ('modeControl', 'restoredEdits', 'freshSave', 'sdkCameraTemplate', 'highQuality3D', 'sourceRestPose', 'previewReceipt', 'packageThumbnail', 'sourceStatePreserved', 'noInstallRequested')
-          assert report['status'] == 'PASS' and report['sourcePreserved'] is True, report
-          assert set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
-          inspected = report['serialized']
-          assert inspected['status'] == 'PASS' and all(inspected[key] is True for key in ('actual_zip_preview_png_byte_identical', 'source_files_unchanged', 'source_recipe_hashes_match', 'saved_model_bytes_match', 'profile_assets_independently_hashed', 'normalized_state_sources_member_template_quality_bound', 'safe_installer_structure')), report
-          png = Path('evidence/model-viewer-thumbnail.png').read_bytes()
-          assert png.startswith(b'\x89PNG\r\n\x1a\n') and len(png) == report['receipt']['bytes'], report
-          assert struct.unpack('>II', png[16:24]) == (report['receipt']['size'],) * 2, report
-          assert hashlib.sha256(png).hexdigest() == report['receipt']['sha256'] == inspected['png_sha256'], report
-          assert Path('evidence/model-viewer-thumbnail-controls.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
-          PYTHUMB
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater-report.json > evidence/model-viewer-thumbnail-updater-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater.png > evidence/model-viewer-thumbnail-updater.png
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-6.zip > evidence/model-viewer-thumbnail-updated-6.zip
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-201.zip > evidence/model-viewer-thumbnail-updated-201.zip
-          python3 - <<'PYUPDATER'
-          from pathlib import Path
-          import ast, hashlib, json, zipfile
-          report = json.loads(Path('evidence/model-viewer-thumbnail-updater-report.json').read_text())
-          keys = ('selectedFilesMode', 'multipleFilesOnce', 'sourcePathsPreserved', 'actualToolRun', 'twoAutomaticRenders', 'manifestRecipients', 'qualityCameraTemplate', 'previewReceipts', 'twoCompletedOutputs', 'viewerPreserved')
-          assert report['status'] == 'PASS' and report['sourcePreserved'] is True and report['viewerSourcePreserved'] is True, report
-          assert set(report['checks']) == set(keys) and all(report['checks'][key] is True for key in keys), report
-          assert report['selection']['kind'] == 'browser-checkbox-picker' and report['selection']['commits'] == 1 and len(report['selection']['observations']) == 2, report
-          assert report['serialized']['status'] == 'PASS' and len(report['serialized']['outputs']) == len(report['renders']) == len(report['receipts']) == 2, report
-          def manifest(raw):
-              values = {}; literal = None; lines = raw.splitlines(keepends=True)
-              for node in ast.parse(raw.decode('utf-8')).body:
-                  assert isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
-                  key = node.targets[0].id; assert key not in values; values[key] = ast.literal_eval(node.value)
-                  if key == 'thumbnail_file':
-                      start = sum(map(len, lines[:node.value.lineno - 1])) + node.value.col_offset
-                      end = sum(map(len, lines[:node.value.end_lineno - 1])) + node.value.end_col_offset
-                      literal = raw[:start] + b'__THUMBNAIL_LITERAL__' + raw[end:]
-              assert literal is not None
-              return values, literal
-          for index, member in enumerate((6, 201)):
-              observed = report['serialized']['outputs'][index]; receipt = report['receipts'][index]
-              assert observed['character_id'] == receipt['character_id'] == member, report
-              assert all(observed[key] is True for key in ('original_zip_unchanged', 'all_original_payloads_preserved', 'manifest_only_thumbnail_literal_changed', 'zip_comment_exact', 'actual_zip_preview_png_byte_identical', 'source_member_template_quality_bound')), observed
-              path = Path('evidence/model-viewer-thumbnail-updated-' + str(member) + '.zip')
-              assert hashlib.sha256(path.read_bytes()).hexdigest() == observed['output_sha256'] == receipt['sha256']
-              source = Path('android/app/src/androidTest/assets/viewer_thumbnail_member_' + str(member) + '.zip')
-              with zipfile.ZipFile(source) as old, zipfile.ZipFile(path) as new:
-                  assert new.testzip() is None and old.comment == new.comment and old.comment
-                  old_values, old_mask = manifest(old.read('modinstall.txt')); new_values, new_mask = manifest(new.read('modinstall.txt'))
-                  assert old_mask == new_mask and old_values['chara_id'] == new_values['chara_id'] == member
-                  assert new.namelist()[:len(old.namelist())] == old.namelist()
-                  assert [name for name in new.namelist() if name not in old.namelist()] == [receipt['thumbnail_member']]
-                  assert all(new.read(name) == old.read(name) for name in old.namelist() if name != 'modinstall.txt')
-                  assert hashlib.sha256(new.read(receipt['thumbnail_member'])).hexdigest() == receipt['thumbnail_sha256'] == report['renders'][index]['receipt']['sha256']
-          assert Path('evidence/model-viewer-thumbnail-updater.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
-          PYUPDATER
-
-      - name: Measure actual Console batching, persistence and hidden-window rendering separately
-        if: ${{ !inputs.focused_header_diagnostic }}
-        timeout-minutes: 5
-        env:
-          EXPECTED_CANDIDATE_SHA: ${{ inputs.candidate_sha256 }}
-        run: |
-          set -euo pipefail
-          trap 'adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika' EXIT
-          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-          console_test_exit=0
-          adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e class com.tagundo.elichika.ConsolePerformanceTest \
-            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee evidence/native-console-performance.txt || console_test_exit=$?
-          python3 - <<'PY'
-          from pathlib import Path
-          import json,subprocess
-          out=Path('evidence');captures={}
-          def adb(*args):
-              return subprocess.run(['adb','-s','127.0.0.1:5555',*args],capture_output=True,timeout=30)
-          # These live-process graphics files were captured by the test before
-          # Activity.finish. Querying gfxinfo after instrumentation exits loses
-          # the process and produces "No process found" instead of frame data.
-          (out/'console-logcat.txt').write_bytes(adb('logcat','-d','-t','6000').stdout)
-          (out/'console-final-screen.png').write_bytes(adb('exec-out','screencap','-p').stdout)
-          for name in ('console-performance-native.json','console-performance-visible.png',
-                       'console-gfxinfo-before.txt','console-gfxinfo-after.txt',
-                       'console-performance-failure.png','console-gfxinfo-failure.txt'):
-              value=adb('exec-out','cat','/data/user/0/com.tagundo.elichika/files/'+name)
-              captures[name]={'returncode':value.returncode,'bytes':len(value.stdout)}
-              if value.returncode==0:
-                  (out/name).write_bytes(value.stdout)
-              else:
-                  (out/(name+'.capture-error.txt')).write_bytes(value.stdout+value.stderr)
-          (out/'console-capture-status.json').write_text(json.dumps(captures,indent=2)+'\n')
-          PY
-          test "$console_test_exit" = 0
-          python3 tests/android_console_performance_gate.py --evidence evidence --candidate-sha256 "$EXPECTED_CANDIDATE_SHA"
-
-      - name: Verify and measure mod-preserving parallel merges in the signed APK
-        if: ${{ !inputs.focused_header_diagnostic }}
-        timeout-minutes: 10
-        run: |
-          set -euo pipefail
-          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-          adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e payloadMergeBenchmark true \
-            -e class com.tagundo.elichika.PayloadMergeBenchmarkTest \
-            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee evidence/native-payload-merge-benchmark.txt
-          python3 -c 'from pathlib import Path; text=Path("evidence/native-payload-merge-benchmark.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
-          adb -s 127.0.0.1:5555 exec-out sh -c 'find /data/user/0/com.tagundo.elichika/cache -maxdepth 1 -type f -name "payload-merge-benchmark-*.json"' \
-            | tr -d '\r' > evidence/payload-merge-report-files.txt
-          python3 - <<'PY'
-          import json, re, subprocess
-          from pathlib import Path
-          reports = Path('evidence/payload-merge-report-files.txt').read_text().splitlines()
-          assert reports, 'The actual APK benchmark must retain its report'
-          for name in reports:
-              assert re.fullmatch(r'/data/user/0/com\.tagundo\.elichika/cache/payload-merge-benchmark-[0-9a-f-]+\.json', name), name
-              raw = subprocess.check_output(['adb', '-s', '127.0.0.1:5555', 'exec-out', 'cat', name])
-              report = json.loads(raw)
-              assert report['status'] == 'PASS' and report['main_looper_responsive'], report['status']
-              Path('evidence', Path(name).name).write_bytes(raw)
-          PY
-
-      - name: Exercise the same signed APK in a real wide Android window
-        if: ${{ !inputs.focused_header_diagnostic }}
-        timeout-minutes: 5
-        run: |
-          set -euo pipefail
-          adb -s 127.0.0.1:5555 shell wm size | tr -d '\r' > evidence/wide-display-before.txt
-          adb -s 127.0.0.1:5555 shell wm density | tr -d '\r' >> evidence/wide-display-before.txt
-          previous_size=$(sed -n 's/^Override size: //p' evidence/wide-display-before.txt)
-          previous_density=$(sed -n 's/^Override density: //p' evidence/wide-display-before.txt)
-          previous_font_scale=$(adb -s 127.0.0.1:5555 shell settings get system font_scale | tr -d '\r')
-          printf '%s\n' "$previous_font_scale" > evidence/wide-font-before.txt
-          adb -s 127.0.0.1:5555 shell cmd uimode night | tr -d '\r' > evidence/wide-theme-before.txt
-          previous_night_mode=$(sed -n 's/^Night mode: //p' evidence/wide-theme-before.txt)
-          case "$previous_night_mode" in auto|no|yes|custom) ;; *) echo 'Could not read Android night mode'; exit 1 ;; esac
-          restore_display() {
-            qa_exit_code=$?
-            trap - EXIT
-            qa_restore_failed=0
-            adb -s 127.0.0.1:5555 shell cmd uimode night "$previous_night_mode" || qa_restore_failed=1
-            if [[ -z "$previous_font_scale" || "$previous_font_scale" == "null" ]]; then
-              adb -s 127.0.0.1:5555 shell settings delete system font_scale || qa_restore_failed=1
-            else
-              adb -s 127.0.0.1:5555 shell settings put system font_scale "$previous_font_scale" || qa_restore_failed=1
-            fi
-            adb -s 127.0.0.1:5555 shell wm density "${previous_density:-reset}" || qa_restore_failed=1
-            adb -s 127.0.0.1:5555 shell wm size "${previous_size:-reset}" || qa_restore_failed=1
-            if (( qa_restore_failed )); then exit 1; fi
-            exit "$qa_exit_code"
-          }
-          trap restore_display EXIT
-          adb -s 127.0.0.1:5555 shell wm size 1600x1000
-          adb -s 127.0.0.1:5555 shell wm density 160
-          adb -s 127.0.0.1:5555 shell wm size > evidence/wide-display-active.txt
-          adb -s 127.0.0.1:5555 shell wm density >> evidence/wide-display-active.txt
-          # Fresh instrumentation launches use real Android font scaling. Never
-          # force internal TabLayout paints to imitate the system configuration.
-          adb -s 127.0.0.1:5555 shell cmd uimode night no
-          for font_scale in 1.0 1.2 2.0; do
-            adb -s 127.0.0.1:5555 shell settings put system font_scale "$font_scale"
-            adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-            adb -s 127.0.0.1:5555 shell am instrument -w \
-              -e requireWideUi true -e expectedFontScale "$font_scale" -e expectedNightMode no \
-              -e class com.tagundo.elichika.MeshWebViewTest \
-              com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-              | tee "evidence/native-wide-ui-font-${font_scale}.txt"
-            python3 -c 'import sys; from pathlib import Path; text=Path(sys.argv[1]).read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text' "evidence/native-wide-ui-font-${font_scale}.txt"
-            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > "evidence/header-layout-wide-font-${font_scale}.json"
-            python3 -c 'import json,sys; from pathlib import Path; report=json.loads(Path(sys.argv[1]).read_text()); assert abs(report["systemFontScale"]-float(sys.argv[2]))<0.02, report' "evidence/header-layout-wide-font-${font_scale}.json" "$font_scale"
-            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > "evidence/header-layout-wide-font-${font_scale}.png"
-            for header_state in stopped running preparing; do
-              adb -s 127.0.0.1:5555 exec-out cat "/data/user/0/com.tagundo.elichika/cache/header-layout-state-${header_state}.png" \
-                > "evidence/header-layout-state-${header_state}-font-${font_scale}.png"
-            done
-            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools-report.json > "evidence/mesh-wide-tools-font-${font_scale}.json"
-            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/mesh-wide-tools.png > "evidence/mesh-wide-tools-font-${font_scale}.png"
-            if [[ "$font_scale" == "1.0" ]]; then
-              cp "evidence/native-wide-ui-font-${font_scale}.txt" evidence/native-wide-ui.txt
-              cp "evidence/mesh-wide-tools-font-${font_scale}.json" evidence/mesh-wide-tools-report.json
-              cp "evidence/mesh-wide-tools-font-${font_scale}.png" evidence/mesh-wide-tools.png
-            fi
-          done
-
-          # Keep all 117 light geometry cases, then exercise the same existing
-          # method once with an actual dark Android configuration at font 1.0.
-          adb -s 127.0.0.1:5555 shell settings put system font_scale 1.0
-          adb -s 127.0.0.1:5555 shell cmd uimode night yes
-          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-          adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e requireWideUi true -e expectedFontScale 1.0 -e expectedNightMode yes \
-            -e class com.tagundo.elichika.MeshWebViewTest \
-            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee evidence/native-wide-ui-night-font-1.0.txt
-          python3 -c 'from pathlib import Path; text=Path("evidence/native-wide-ui-night-font-1.0.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > evidence/header-layout-wide-night-font-1.0.json
-          python3 -c 'import json; from pathlib import Path; report=json.loads(Path("evidence/header-layout-wide-night-font-1.0.json").read_text()); assert report["theme"]["night"] is True and abs(report["systemFontScale"]-1.0)<0.02, report'
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > evidence/header-layout-wide-night-font-1.0.png
-          for header_state in stopped running preparing; do
-            adb -s 127.0.0.1:5555 exec-out cat "/data/user/0/com.tagundo.elichika/cache/header-layout-state-${header_state}.png" \
-              > "evidence/header-layout-state-${header_state}-night-font-1.0.png"
-          done
-
-      - name: Exercise normal viewer scrolling in a real tall portrait Android window
-        if: ${{ !inputs.focused_header_diagnostic }}
-        timeout-minutes: 5
-        run: |
-          set -euo pipefail
-          adb -s 127.0.0.1:5555 shell wm size | tr -d '\r' > evidence/portrait-display-before.txt
-          adb -s 127.0.0.1:5555 shell wm density | tr -d '\r' >> evidence/portrait-display-before.txt
-          previous_size=$(sed -n 's/^Override size: //p' evidence/portrait-display-before.txt)
-          previous_density=$(sed -n 's/^Override density: //p' evidence/portrait-display-before.txt)
-          restore_display() {
-            adb -s 127.0.0.1:5555 shell wm density "${previous_density:-reset}" || true
-            adb -s 127.0.0.1:5555 shell wm size "${previous_size:-reset}" || true
-          }
-          trap restore_display EXIT
-          adb -s 127.0.0.1:5555 shell wm size 900x2400
-          adb -s 127.0.0.1:5555 shell wm density 320
-          adb -s 127.0.0.1:5555 shell wm size > evidence/portrait-display-active.txt
-          adb -s 127.0.0.1:5555 shell wm density >> evidence/portrait-display-active.txt
-          adb -s 127.0.0.1:5555 shell am force-stop com.tagundo.elichika
-          adb -s 127.0.0.1:5555 shell am instrument -w \
-            -e requirePortraitUi true \
-            -e class com.tagundo.elichika.MeshWebViewTest \
-            com.tagundo.elichika.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee evidence/native-portrait-ui.txt
-          python3 -c 'from pathlib import Path; text=Path("evidence/native-portrait-ui.txt").read_text(); assert "OK (1 test)" in text and "FAILURES" not in text, text'
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll-report.json > evidence/viewer-portrait-scroll-report.json
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll.png > evidence/viewer-portrait-scroll.png
-
-      - name: Exercise offline settings and user panels after the unchanged viewer suite
-        if: ${{ !inputs.focused_header_diagnostic }}
-        timeout-minutes: 8
-        run: >-
-          python3 tests/android_offline_management_gate.py
-          --apk "candidate/elichika-${{ inputs.version_name }}.apk"
-          --candidate-sha256 "${{ inputs.candidate_sha256 }}"
-          --serial 127.0.0.1:5555 --evidence evidence
-
-      - name: Collect Android diagnostics
+      - name: Record sanitized server and client routing evidence
         if: always()
         run: |
-          mkdir -p evidence
-          docker logs android-release-smoke > evidence/container.log 2>&1 || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/offline-management-native.json > evidence/offline-management-native.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/offline-management-settings.png > evidence/offline-management-settings.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/offline-management-user.png > evidence/offline-management-user.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 logcat -d > evidence/logcat.txt 2>&1 || true
-          if [ ! -s evidence/native-texture65-report.json ]; then
-            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-texture65-report.json > evidence/native-texture65-report.json 2>/dev/null || true
+          set -euo pipefail
+          evidence="$GITHUB_WORKSPACE/evidence"
+          mkdir -p "$evidence"
+          if [[ -f $RUNNER_TEMP/elichika-game-qa.log ]]; then
+            grep -E 'server address|/login/(startup|login)|/bootstrap/|/asset/getPackUrl|/static/' \
+              "$RUNNER_TEMP/elichika-game-qa.log" | tail -n 250 > "$evidence/server-routes.txt" || true
           fi
-          if [ ! -s evidence/native-cdn-catalog-report.json ]; then
-            adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-cdn-catalog-report.json > evidence/native-cdn-catalog-report.json 2>/dev/null || true
+          if [[ -f $evidence/android-logcat.txt ]]; then
+            grep -E 'Unity.*(Initialize engine version|GfxDevice|Renderer|OpenGL|Vulkan)|Fatal signal|EGL_BAD|AndroidRuntime.*FATAL EXCEPTION' \
+              "$evidence/android-logcat.txt" | tail -n 250 > "$evidence/unity-graphics.txt" || true
+            rm "$evidence/android-logcat.txt"
           fi
-          adb -s 127.0.0.1:5555 shell dumpsys webviewupdate > evidence/webview-provider.txt 2>&1 || true
-          adb -s 127.0.0.1:5555 exec-out cat /sdcard/Download/sukusta/logs/elichika.log > evidence/server-console.txt 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out screencap -p > evidence/final-screen.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/payload-upgrade-status.png > evidence/payload-upgrade-status.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-qa.png > evidence/model-viewer.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-auto-face.png > evidence/model-viewer-auto-face.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-auto-face-disabled.png > evidence/model-viewer-auto-face-disabled.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig.png > evidence/model-viewer-rig.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls-report.json > evidence/model-viewer-outline-controls-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-outline-controls.png > evidence/model-viewer-outline-controls.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-game-physics-report.json > evidence/model-viewer-game-physics-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-game-physics.png > evidence/model-viewer-game-physics.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail-report.json > evidence/model-viewer-detail-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-detail.png > evidence/model-viewer-detail.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended-report.json > evidence/model-viewer-extended-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-extended.png > evidence/model-viewer-extended.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection-report.json > evidence/model-viewer-part-selection-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-selection.png > evidence/model-viewer-part-selection.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-result.unity > evidence/model-viewer-part-result.unity 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-part-last-input.json > evidence/model-viewer-part-last-input.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-report.json > evidence/model-viewer-thumbnail-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail.png > evidence/model-viewer-thumbnail.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-controls.png > evidence/model-viewer-thumbnail-controls.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater-report.json > evidence/model-viewer-thumbnail-updater-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater-paths.json > evidence/model-viewer-thumbnail-updater-paths.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updater.png > evidence/model-viewer-thumbnail-updater.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-6.zip > evidence/model-viewer-thumbnail-updated-6.zip 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-thumbnail-updated-201.zip > evidence/model-viewer-thumbnail-updated-201.zip 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader.png > evidence/model-viewer-shader.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-report.json > evidence/model-viewer-rig-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-rig-resume-geometry.json > evidence/model-viewer-rig-resume-geometry.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-section-keyboard.json > evidence/model-viewer-section-keyboard.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/model-viewer-shader-report.json > evidence/model-viewer-shader-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-persistence-report.json > evidence/viewer-persistence-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-persistence.png > evidence/viewer-persistence.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/costume-transplant-picker.png > evidence/costume-transplant-picker.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-add-game-report.json > evidence/viewer-add-game-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow-report.json > evidence/header-layout-narrow-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-narrow.png > evidence/header-layout-narrow.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-report.json > evidence/header-layout-wide-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide.png > evidence/header-layout-wide.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-layout-wide-failure.png > evidence/header-layout-wide-failure.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/payload-progress-94.png > evidence/payload-progress-94.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/server-loading-header.png > evidence/server-loading-header.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-comparison.json > evidence/header-policy-comparison.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-center-report.json > evidence/header-policy-center-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-center-failure.png > evidence/header-policy-center-failure.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-start-report.json > evidence/header-policy-start-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/header-policy-start.png > evidence/header-policy-start.png 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll-report.json > evidence/viewer-portrait-scroll-report.json 2>/dev/null || true
-          adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/cache/viewer-portrait-scroll.png > evidence/viewer-portrait-scroll.png 2>/dev/null || true
-          sudo dmesg | tail -100 > evidence/kernel-tail.txt || true
+          rm -f "$evidence/android-properties.txt" "$evidence/android-activities.txt"
+          if [[ -f $RUNNER_TEMP/elichika-game-qa.pid ]]; then
+            kill "$(cat "$RUNNER_TEMP/elichika-game-qa.pid")" 2>/dev/null || true
+          fi
 
-      - name: Upload execution evidence
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: android-arm64-smoke-evidence
-          path: evidence/
-          if-no-files-found: warn
-
-      - name: Stop disposable Android instance
-        if: always()
-        run: docker rm -f android-release-smoke || true
+          name: stock-gl-b25-catalog-qa
+          path: evidence
+          if-no-files-found: error
+          retention-days: 3
