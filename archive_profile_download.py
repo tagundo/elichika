@@ -8,6 +8,7 @@ The UI callback uses its own download progress, not DB-upgrade stage weights.
 from __future__ import annotations
 
 import concurrent.futures
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 import errno
 import hashlib
@@ -16,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 import stat
 import tempfile
@@ -382,10 +384,19 @@ def indexed_packs(packs, names, progress):
     return files
 
 
-def existing_matches(path, name, size, sha256, progress, *, root_fd=None):
+def regular_pack(info):
+    return stat.S_ISREG(info.st_mode) and not getattr(info, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+
+
+def existing_matches(path, name, size, sha256, progress, *, root_fd=None, primary=False):
     """Return True for verified bytes, False for corruption, None if absent."""
     opened = path
-    if root_fd is None:
+    if primary and root_fd is None:
+        try:
+            require(regular_pack(path.lstat()), f"{name}: destination is not a regular file.")
+        except FileNotFoundError:
+            return None
+    elif root_fd is None:
         # A cache read may follow the same owner symlink as Go. Open only its
         # resolved regular file, then prove the named route still goes there.
         try:
@@ -399,14 +410,15 @@ def existing_matches(path, name, size, sha256, progress, *, root_fd=None):
                 return None
             raise DownloadError(f"{name}: the existing served file cannot be inspected safely.") from None
     try:
-        fd = os.open(opened, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
+        fd = os.open(opened, flags, dir_fd=root_fd)
     except FileNotFoundError:
         return None
     except OSError:
         raise DownloadError(f"{name}: existing file cannot be opened safely; check permissions or symbolic links.") from None
     try:
         info = os.fstat(fd)
-        require(stat.S_ISREG(info.st_mode), f"{name}: destination is not a regular file.")
+        require(regular_pack(info), f"{name}: destination is not a regular file.")
         if info.st_size != size:
             return False
         sha = hashlib.sha256()
@@ -417,10 +429,10 @@ def existing_matches(path, name, size, sha256, progress, *, root_fd=None):
                 progress.update(current=name)
         after = os.fstat(fd)
         try:
-            current = os.stat(path, dir_fd=root_fd, follow_symlinks=root_fd is None)
+            current = os.stat(path, dir_fd=root_fd, follow_symlinks=root_fd is None and not primary)
         except OSError:
             current = None
-        require(current is not None and os.path.samestat(info, current) and
+        require(current is not None and regular_pack(current) and os.path.samestat(info, current) and
                 (info.st_size, info.st_mtime_ns, info.st_ctime_ns) == (after.st_size, after.st_mtime_ns, after.st_ctime_ns) ==
                 (current.st_size, current.st_mtime_ns, current.st_ctime_ns),
                 f"{name}: existing file changed while checking it; stop other asset writers.")
@@ -452,6 +464,44 @@ def served_regular(path, *, root_fd=None):
         return False
 
 
+@contextmanager
+def pack_destination(packs):
+    if os.name != "nt":
+        descriptor = os.open(packs, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            yield packs, descriptor
+        finally:
+            os.close(descriptor)
+        return
+
+    # Windows cannot rename relative to a directory descriptor. Hold the real
+    # destination and every ancestor open without FILE_SHARE_DELETE so the
+    # absolute paths used by the download workers cannot be moved underneath them.
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    open_dir = kernel.CreateFileW
+    open_dir.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                         wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE)
+    open_dir.restype = wintypes.HANDLE
+    close_dir = kernel.CloseHandle
+    close_dir.argtypes = (wintypes.HANDLE,)
+    close_dir.restype = wintypes.BOOL
+    reparse = stat.FILE_ATTRIBUTE_REPARSE_POINT
+    require(not packs.lstat().st_file_attributes & reparse, "The Archive cache folder cannot be a symbolic link or junction.")
+    packs = packs.resolve(strict=True)
+    with ExitStack() as locked:
+        for folder in (*reversed(packs.parents), packs):
+            flags = 0x02000000 | 0x00200000  # BACKUP_SEMANTICS (directory), OPEN_REPARSE_POINT
+            handle = open_dir(str(folder), 0x80, 0x03, None, 3, flags, None)  # read attributes, share read/write, open existing
+            require(handle != ctypes.c_void_p(-1).value, "The Archive cache folder could not be locked for safe writes.")
+            locked.callback(close_dir, handle)
+            info = folder.lstat()
+            require(stat.S_ISDIR(info.st_mode) and not info.st_file_attributes & reparse,
+                    "The Archive cache folder changed or contains a junction.")
+        yield packs, None
+
+
 def _download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None,
               static_packs=None, required_names=None):
     """Download selected verified originals. Valid completed files resume across calls.
@@ -472,8 +522,7 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
     if static_packs == packs:
         static_packs = None
     packs.mkdir(parents=True, exist_ok=True)
-    root_fd = os.open(packs, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
+    with pack_destination(packs) as (packs, root_fd):
         with tempfile.TemporaryDirectory(prefix=".elichika-download-", dir=packs) as temporary:
             work = Path(temporary)
             catalog_path = work / "catalog.json"
@@ -507,7 +556,8 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
                     alternate = indexed.get(name)
                     # The catalog has no digest for these names. Keep already
                     # served local assets separate from verified public files.
-                    if not (served_regular(name, root_fd=root_fd) or
+                    canonical = name if root_fd is not None else packs / name
+                    if not (served_regular(canonical, root_fd=root_fd) or
                             (alternate is not None and served_regular(alternate)) or
                             (static_packs is not None and served_regular(static_packs / name))):
                         missing.append(name)
@@ -516,7 +566,8 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
                 def one(row):
                     name, size, sha256, md5, url = row
                     report.check()
-                    reused = existing_matches(name, name, size, sha256, report, root_fd=root_fd)
+                    canonical = name if root_fd is not None else packs / name
+                    reused = existing_matches(canonical, name, size, sha256, report, root_fd=root_fd, primary=True)
                     if reused is None:
                         alternate = indexed.get(name)
                         if alternate is not None:
@@ -525,11 +576,11 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
                             reused = existing_matches(static_packs / name, name, size, sha256, report)
                         if reused:
                             # A new canonical file shadows these read-only sources.
-                            canonical = existing_matches(name, name, size, sha256, report, root_fd=root_fd)
-                            if canonical is not None:
-                                reused = canonical
+                            primary_match = existing_matches(canonical, name, size, sha256, report, root_fd=root_fd, primary=True)
+                            if primary_match is not None:
+                                reused = primary_match
                     if not reused:
-                        require(os.statvfs(work).f_bavail * os.statvfs(work).f_frsize >= size + 8 * 1024 * 1024,
+                        require(shutil.disk_usage(work).free >= size + 8 * 1024 * 1024,
                                 f"{name}: insufficient free disk space for the next verified asset.")
                         fd, filename = tempfile.mkstemp(prefix="asset-", dir=work)
                         try:
@@ -537,12 +588,13 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
                                 fetch(http, url, output, size, report, size=size, sha256=sha256, md5=md5, label=name)
                             report.check()
                             try:
-                                target = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
-                                require(stat.S_ISREG(target.st_mode), f"{name}: destination changed to a nonregular file.")
+                                target = os.stat(canonical, dir_fd=root_fd, follow_symlinks=False)
+                                require(regular_pack(target), f"{name}: destination changed to a nonregular file.")
                             except FileNotFoundError:
                                 pass
-                            os.replace(filename, name, dst_dir_fd=root_fd)
-                            os.fsync(root_fd)
+                            os.replace(filename, canonical, dst_dir_fd=root_fd)
+                            if root_fd is not None:
+                                os.fsync(root_fd)
                         finally:
                             Path(filename).unlink(missing_ok=True)
                     report.update(add={"completed_files": 1, "completed_bytes": size, "reused_files" if reused else "downloaded_files": 1}, current=name)
@@ -570,8 +622,6 @@ def _download(source, packs, *, region="gl", platform="android", language="all",
                 return {"profiles": list(selected), "local_unpublished_files": len(unpublished), **report.value}
             finally:
                 db.close()
-    finally:
-        os.close(root_fd)
 
 
 def download(source, packs, *, region="gl", platform="android", language="all", workers=2, progress=None, cancelled=None, http=None,
