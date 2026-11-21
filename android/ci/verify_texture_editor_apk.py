@@ -26,6 +26,9 @@ STATIC_FILES = tuple("webtools/web/" + name for name in (
     "static/viewer-texture-tools.css", "static/texture-panel-expand.js",
     "static/texture-panel-expand.css", "static/vendor/fflate-0.8.2/fflate.min.js",
     "static/mv-studio.js", "static/mv-studio-scene.js", "static/mv-studio.css",
+    "static/mv-studio-lighting.js", "static/mv-studio-penlight.js",
+    "static/mv-studio-props.js", "static/mv-studio-split.js",
+    "static/mv-studio-stage-material.js", "static/mv-studio-stage-coloring.js", "static/mv-studio-physics.js",
     "static/vendor/fflate-0.8.2/LICENSE")) + (
     "adminui/web/index.html", "adminui/web/ui/app.js", "adminui/web/ui/style.css",
     "adminui/web/ui/game-quality.js", "adminui/web/ui/game-quality.css", "adminui/web/ui/panel-settings.js") + (
@@ -44,6 +47,8 @@ MODULES = (
     "webtools/server", "webtools/i18n", "webtools/core/viewer_texture_tools",
     "mv_studio_live", "mv_studio_native_assets", "webtools/core/mv_studio",
     "webtools/core/mv_studio_game", "webtools/core/mv_studio_timeline", "webtools/core/mv_studio_quality",
+    "webtools/core/mv_studio_props", "webtools/core/mv_studio_split",
+    "webtools/core/mv_studio_stage_materials", "webtools/core/mv_studio_stage_coloring",
     "webtools/core/texture_image_io", "webtools/core/texture_project_io",
     "webtools/core/model_edits", "webtools/core/model_viewer",
     "webtools/core/viewer_mesh_tools", "webtools/core/viewer_transplants",

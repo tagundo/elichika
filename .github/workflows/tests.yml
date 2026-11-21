@@ -254,6 +254,12 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/navigation" node tests/viewer_navigation_browser.js
           node tests/mv_studio_scene_lifecycle_test.js
           node tests/mv_studio_outfit_reuse_test.js
+          node tests/mv_studio_lighting_test.js
+          node tests/mv_studio_physics_test.js
+          node tests/mv_studio_penlight_test.js
+          node tests/mv_studio_props_test.js
+          node tests/mv_studio_split_test.js
+          node tests/mv_studio_stage_coloring_test.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio" node tests/mv_studio_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio-stream" node tests/mv_studio_game_stream_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js
