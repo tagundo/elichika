@@ -338,6 +338,13 @@
       document.getElementById('viewer-auto-face').checked = true;
       var oldModelId = ModelViewer.getState().modelId;
       click('viewer-game-assets');
+      var assetPlatform = document.getElementById('viewer-game-platform');
+      assert(assetPlatform && assetPlatform.type === 'checkbox' && !assetPlatform.checked && assetPlatform.value === 'android',
+        'The native Mac game picker starts on iOS with its Android switch off');
+      report.platformPicker = { assetDefault: 'ios', assetOpposite: assetPlatform.value, assetOppositeChecked: assetPlatform.checked };
+      // The official PCM benchmark pins the original Android costume bytes
+      // and every geometry count. Request that exact input explicitly.
+      change('viewer-game-platform', true);
       await wait('network-costume-catalog', function () { var el = document.getElementById('viewer-game-character'); return el && el.options.length > 1; });
       await region('viewer-game-region', 'viewer-game-character', 'gl');
       await wait('network-costume-character', function () { return Array.from(document.getElementById('viewer-game-character').options).some(function (o) { return o.value === '2'; }); });
@@ -347,9 +354,18 @@
       document.getElementById('viewer-game-reimport').checked = true; document.getElementById('viewer-game-download').checked = true;
       click('viewer-game-import');
       await wait('network-official-Eli-import', function () { var s = ModelViewer.getState(); return !document.getElementById('viewer-game-assets-dialog').open && s.loaded && !s.loading && s.modelId !== oldModelId; }, 240000);
-      report.initialCostume = { paths: clone(ModelViewer.getState().loadedPaths), physics: clone(ModelViewer.getState().rig.physics) };
+      var costume = ModelViewer.getState();
+      assert(costume.modelPlatform === 'android', 'The benchmark uses the verified Android body');
+      report.platformPicker.loadedBody = costume.modelPlatform;
+      report.initialCostume = { paths: clone(costume.loadedPaths), physics: clone(costume.rig.physics) };
       document.getElementById('viewer-adjustments').open = true;
       click('viewer-game-motions');
+      var motionPlatform = document.getElementById('viewer-motion-platform');
+      assert(motionPlatform && motionPlatform.type === 'checkbox' && !motionPlatform.checked && motionPlatform.value === 'ios',
+        'The game motion picker prefers the verified Android body and starts with its iOS switch off');
+      report.platformPicker.motionDefault = costume.modelPlatform;
+      report.platformPicker.motionOpposite = motionPlatform.value;
+      report.platformPicker.motionOppositeChecked = motionPlatform.checked;
       await wait('network-motion-catalog', function () { var el = document.getElementById('viewer-motion-character'); return el && el.options.length > 1; });
       await region('viewer-motion-region', 'viewer-motion-character', 'gl');
       await wait('network-motion-character', function () { return Array.from(document.getElementById('viewer-motion-character').options).some(function (o) { return o.value === '2'; }); });

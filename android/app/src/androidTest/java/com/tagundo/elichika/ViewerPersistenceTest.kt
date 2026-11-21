@@ -712,20 +712,20 @@ class ViewerPersistenceTest {
                 "var label=b.getAttribute('title').split(' · ').pop();b.click();return JSON.stringify({label:label});")
             waitForDom(webView, "the $fieldName popup and real stock character catalog") {
                 "var d=document.getElementById('viewer-game-assets-dialog'),c=document.getElementById('viewer-game-character'),p=document.getElementById('viewer-game-platform');" +
-                    "return JSON.stringify({ok:d.open&&!!p&&Array.prototype.some.call(c.options,function(o){return !!o.value;})," +
+                    "return JSON.stringify({ok:d.open&&p&&p.type==='checkbox'&&Array.prototype.some.call(c.options,function(o){return !!o.value;})," +
                     "error:document.getElementById('viewer-game-assets-status').classList.contains('viewer-warning')?document.getElementById('viewer-game-assets-status').textContent:''});"
             }
             run(webView, "var c=document.getElementById('viewer-game-character');c.value=Array.prototype.filter.call(c.options,function(o){return !!o.value;})[0].value;c.dispatchEvent(new Event('change',{bubbles:true}));")
             val catalog = waitForDom(webView, "the $fieldName popup's actual nonempty costume catalog") {
                 "var d=document.getElementById('viewer-game-assets-dialog'),c=document.getElementById('viewer-game-costume'),p=document.getElementById('viewer-game-platform'),r=d.getBoundingClientRect();" +
                     "var choices=Array.prototype.filter.call(c.options,function(o){return !!o.value;});return JSON.stringify({ok:d.open&&choices.length>0&&!document.getElementById('viewer-game-import').disabled," +
-                    "title:document.getElementById('viewer-game-assets-title').textContent,platform:p.value,platforms:Array.prototype.map.call(p.options,function(o){return o.value;})," +
+                    "title:document.getElementById('viewer-game-assets-title').textContent,alternatePlatform:p.value,alternateChecked:p.checked," +
                     "characters:document.getElementById('viewer-game-character').options.length-1,costumes:choices.length,dialogWidth:r.width,dialogHeight:r.height," +
                     "error:document.getElementById('viewer-game-assets-status').classList.contains('viewer-warning')?document.getElementById('viewer-game-assets-status').textContent:''});"
             }
             assertTrue("The popup must identify its requested model field", catalog.getString("title").endsWith(trigger.getString("label")))
-            assertEquals("Cancel must not retain an unsubmitted platform from the other field", "android", catalog.getString("platform"))
-            assertEquals(listOf("android", "ios"), (0 until catalog.getJSONArray("platforms").length()).map { catalog.getJSONArray("platforms").getString(it) })
+            assertFalse("Cancel must not retain the unsubmitted iOS opt-in from the other field", catalog.getBoolean("alternateChecked"))
+            assertEquals("Android's alternate bundle choice must be iOS", "ios", catalog.getString("alternatePlatform"))
             assertTrue(catalog.getInt("characters") > 0 && catalog.getInt("costumes") > 0)
             assertTrue("The shared modal must be visible outside the hidden 3D section", catalog.getDouble("dialogWidth") > 200 && catalog.getDouble("dialogHeight") > 200)
             run(webView, "window.__nativeTransplantPaintFrames=0;requestAnimationFrame(function(){window.__nativeTransplantPaintFrames=1;" +
@@ -736,7 +736,7 @@ class ViewerPersistenceTest {
                     "return JSON.stringify({ok:window.__nativeTransplantPaintFrames===2&&d.open&&style.display!=='none'&&style.visibility!=='hidden'&&" +
                     "!p.disabled&&r.width>0&&r.height>0&&r.left>=0&&r.top>=0&&r.right<=innerWidth+1&&r.bottom<=innerHeight+1&&" +
                     "!!hit&&d.contains(hit)&&(hit===p||p.contains(hit)),frames:window.__nativeTransplantPaintFrames,dialogOpen:d.open," +
-                    "platform:p.value,hitTag:hit&&hit.tagName,hitId:hit&&hit.id,hitInsideDialog:!!hit&&d.contains(hit)," +
+                    "alternatePlatform:p.value,alternateChecked:p.checked,hitTag:hit&&hit.tagName,hitId:hit&&hit.id,hitInsideDialog:!!hit&&d.contains(hit)," +
                     "left:r.left,top:r.top,width:r.width,height:r.height});"
             }
             catalog.put("nativePlatformHit", platformHit)
@@ -750,7 +750,10 @@ class ViewerPersistenceTest {
                         assertTrue(image.compress(Bitmap.CompressFormat.PNG, 100, it))
                     }
                 } finally { image.recycle() }
-                run(webView, "var p=document.getElementById('viewer-game-platform');p.value='ios';p.dispatchEvent(new Event('change',{bubbles:true}));")
+                run(webView, "document.getElementById('viewer-game-platform').click();")
+                waitForDom(webView, "the unsubmitted iOS opt-in before donor cancel") {
+                    "var p=document.getElementById('viewer-game-platform');return JSON.stringify({ok:p.checked&&p.value==='ios'});"
+                }
             }
             run(webView, if (fieldName == "donor") "document.querySelector('#viewer-game-assets-dialog .modal-head button').click();"
                 else "document.querySelector('#viewer-game-assets-dialog .viewer-game-assets-actions button:not(#viewer-game-import)').click();")
@@ -773,10 +776,35 @@ class ViewerPersistenceTest {
             dialogs.put(JSONObject().put("field", fieldName).put("catalog", catalog).put("cancelPreservedDraftsAndScene", true))
         }
         assertFalse("Donor and target titles must distinguish their destinations", dialogs.getJSONObject(0).getJSONObject("catalog").getString("title") == dialogs.getJSONObject(1).getJSONObject("catalog").getString("title"))
+        run(webView, "document.querySelector('#tool-list button[data-id=\"iosapk_import\"]').click();" +
+            "var mode=document.getElementById('f_base_mode');mode.value='manual';mode.dispatchEvent(new Event('change',{bubbles:true}));")
+        val lockedPlatforms = JSONArray()
+        for ((direction, platformName) in listOf("android_to_ios" to "iOS", "ios_to_android" to "Android")) {
+            run(webView, "var direction=document.getElementById('f_direction');direction.value='$direction';" +
+                "direction.dispatchEvent(new Event('change',{bubbles:true}));" +
+                "var trigger=document.querySelector('[data-game-asset-field=\"target\"]');trigger.scrollIntoView({block:'center'});trigger.click();")
+            lockedPlatforms.put(waitForDom(webView, "the locked $platformName original in the conversion picker") {
+                "var d=document.getElementById('viewer-game-assets-dialog'),p=d.querySelector('.viewer-game-assets-platform')," +
+                    "c=d.querySelector('#viewer-game-character'),alt=d.querySelector('#viewer-game-platform'),dl=d.querySelector('#viewer-game-download');" +
+                    "return JSON.stringify({ok:d.open&&p&&p.tagName==='SPAN'&&p.textContent.endsWith(' · $platformName')&&" +
+                    "p.getBoundingClientRect().height>0&&!alt&&dl&&!dl.checked&&c&&c.options.length>1," +
+                    "platform:p&&p.textContent,hasAlternate:!!alt,downloadOptIn:!!(dl&&dl.checked)});"
+            })
+            run(webView, "document.querySelector('#viewer-game-assets-dialog .modal-head button').click();")
+            waitForDom(webView, "the closed $platformName conversion picker") {
+                "return JSON.stringify({ok:!document.getElementById('viewer-game-assets-dialog').open});"
+            }
+        }
+        val afterConverter = evaluate(webView, "var s=ModelViewer.getState(),r=window.__nativeTransplantReference;" +
+            "return JSON.stringify({modelSame:s.modelId===r.model,tokenSame:ModelViewer.getEditingMetadata().token===r.token," +
+            "authoringSame:JSON.stringify(ModelViewer.getAuthoringState())===r.authoring," +
+            "importRequests:performance.getEntriesByType('resource').filter(function(e){return new URL(e.name).pathname==='/api/viewer/game/import';}).length});")
+        assertTrue(afterConverter.getBoolean("modelSame") && afterConverter.getBoolean("tokenSame") && afterConverter.getBoolean("authoringSame"))
+        assertEquals("Opening a direction-locked picker must not import a body", before.getInt("importRequests"), afterConverter.getInt("importRequests"))
         assertGameStopped()
         waitForWebViewVisualState(webView)
         return JSONObject().put("status", "PASS").put("scope", "Actual native buttons and local stock catalog; cancel only, no body download or transplant execution")
-            .put("dialogs", dialogs).put("sameWebView", true).put("pendingNodeAndAccessoryPreserved", true)
+            .put("dialogs", dialogs).put("lockedConverterPlatforms", lockedPlatforms).put("sameWebView", true).put("pendingNodeAndAccessoryPreserved", true)
             .put("modelTokenAndCameraPreserved", true).put("manualDraftsAndOptionsPreserved", true)
             .put("nativeToolsSelectionPreserved", true).put("unsubmittedPlatformNotRetained", true).put("bodyImportRequests", 0)
     }

@@ -1245,6 +1245,10 @@ def check_native_pcm_game_report(app, output, report, required):
             "The required actual official PCM game workload must pass; inspect its precise failure stage")
     require(observed.get("platform", {}).get("native") is True and observed["platform"].get("platform") == "macos"
             and observed.get("originalAPIsPreserved") is True, "Official PCM playback must use the real Mac bridge and unchanged transport APIs")
+    require(observed.get("platformPicker") == {
+        "assetDefault": "ios", "assetOpposite": "android", "assetOppositeChecked": False,
+        "loadedBody": "android", "motionDefault": "android", "motionOpposite": "ios", "motionOppositeChecked": False,
+    }, "The native Mac picker must default to iOS while the exact Android benchmark body selects Android motions")
     resources = app / "Contents/Resources"
     require(observed.get("helper_sha256") == sha256(resources / "qa/native_pcm_qa.js"), "Official workload must use the signed helper source")
     sources = observed.get("product_source_sha256", {})
