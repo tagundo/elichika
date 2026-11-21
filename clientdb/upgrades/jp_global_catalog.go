@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -32,9 +33,10 @@ type GlobalDownloadCatalogPolicy struct {
 	evidence         globalCatalogEvidence
 	sources          map[string]string
 	masterReferences map[string]bool
+	selection        map[string]globalCatalogDelta
 }
 
-func GlobalDownloadCatalogs(assetRoot string) (*GlobalDownloadCatalogPolicy, error) {
+func GlobalDownloadCatalogs(assetRoot string, packRoots ...string) (*GlobalDownloadCatalogPolicy, error) {
 	reader, err := gzip.NewReader(bytes.NewReader(globalCatalogProof))
 	if err != nil {
 		return nil, err
@@ -44,7 +46,21 @@ func GlobalDownloadCatalogs(assetRoot string) (*GlobalDownloadCatalogPolicy, err
 	if err := json.NewDecoder(reader).Decode(&evidence); err != nil {
 		return nil, err
 	}
-	return newGlobalDownloadCatalogs(assetRoot, evidence)
+	policy, err := newGlobalDownloadCatalogs(assetRoot, evidence)
+	if err != nil {
+		return nil, err
+	}
+	if policy == nil {
+		policy = &GlobalDownloadCatalogPolicy{}
+	}
+	policy.selection, err = eligibleGlobalCatalogSelection(filepath.Join(assetRoot, "db", "gl", "masterdata.db"), packRoots)
+	if err != nil {
+		return nil, err
+	}
+	if len(policy.selection) == 0 && len(policy.sources) == 0 {
+		return nil, nil
+	}
+	return policy, nil
 }
 
 func newGlobalDownloadCatalogs(assetRoot string, evidence globalCatalogEvidence) (*GlobalDownloadCatalogPolicy, error) {
@@ -116,6 +132,12 @@ func quietCatalogFile(path string) (bool, error) {
 
 func (p *GlobalDownloadCatalogPolicy) Prepare(sourcePath, destinationPath string) (int64, error) {
 	name := filepath.Base(sourcePath)
+	if selection, known := p.selection[name]; known {
+		count, err := prepareSelectedGlobalCatalog(sourcePath, destinationPath, selection)
+		if count != 0 || err != nil {
+			return count, err
+		}
+	}
 	parts := strings.Split(name, "_")
 	if len(parts) != 3 || len(p.evidence.Catalogs[name]) == 0 || p.sources[parts[1]] == "" {
 		return 0, nil
@@ -164,17 +186,85 @@ func (p *GlobalDownloadCatalogPolicy) Prepare(sourcePath, destinationPath string
 // catalog, including metapacks that the installed catalog lists independently.
 func PreparedGlobalDownloadFiles(sourcePath, servedPath string) (map[string]struct{}, error) {
 	names := make(map[string]struct{})
-	for _, catalog := range []struct{ path, query string }{
-		{servedPath, `SELECT DISTINCT COALESCE(metapack_name, pack_name) FROM m_asset_package_mapping`},
-		{sourcePath, `SELECT metapack_name FROM metapack WHERE metapack_name NOT IN (
-			SELECT DISTINCT metapack_name FROM m_asset_package_mapping WHERE metapack_name IS NOT NULL
-		)`},
-	} {
-		if err := readGlobalDownloadFiles(catalog.path, catalog.query, names); err != nil {
+	if err := readGlobalDownloadFiles(servedPath, `SELECT DISTINCT COALESCE(metapack_name, pack_name) FROM m_asset_package_mapping`, names); err != nil {
+		return nil, err
+	}
+	independent := make(map[string]struct{})
+	if err := readGlobalDownloadFiles(sourcePath, `SELECT metapack_name FROM metapack WHERE metapack_name NOT IN (
+		SELECT DISTINCT metapack_name FROM m_asset_package_mapping WHERE metapack_name IS NOT NULL
+	)`, independent); err != nil {
+		return nil, err
+	}
+	if len(independent) != 0 {
+		registered := make(map[string]struct{})
+		if err := readGlobalDownloadFiles(servedPath, "SELECT metapack_name FROM metapack", registered); err != nil {
 			return nil, err
+		}
+		for name := range independent {
+			if _, kept := registered[name]; kept {
+				names[name] = struct{}{}
+			}
 		}
 	}
 	return names, nil
+}
+
+func eligibleGlobalCatalogSelection(master string, packRoots []string) (map[string]globalCatalogDelta, error) {
+	selection, err := loadGlobalCatalogSelection()
+	if err != nil {
+		return nil, err
+	}
+	stock, err := matchesGlobalCatalog(master, selection.MasterSHA256, selection.MasterContentSHA256)
+	for _, compatible := range selection.CompatibleMasters {
+		if stock || err != nil {
+			break
+		}
+		stock, err = matchesGlobalCatalog(master, compatible.SHA256, compatible.ContentSHA256)
+	}
+	if err != nil {
+		log.Printf("Using the compatibility GL catalog policy: %v", err)
+	}
+	if !stock {
+		return nil, nil
+	}
+	names := make(map[string]bool)
+	for _, catalog := range selection.Catalogs {
+		for _, name := range catalog.ProtectedFiles {
+			names[name] = true
+		}
+	}
+	found, err := localGlobalCatalogOverrides(packRoots, names)
+	if err != nil {
+		log.Printf("Using the compatibility GL catalog policy: %v", err)
+		return nil, nil
+	}
+	for profile, catalog := range selection.Catalogs {
+		for _, name := range catalog.ProtectedFiles {
+			if found[name] {
+				delete(selection.Catalogs, profile)
+				break
+			}
+		}
+	}
+	return selection.Catalogs, nil
+}
+
+func prepareSelectedGlobalCatalog(sourcePath, destinationPath string, selection globalCatalogDelta) (int64, error) {
+	stock, err := matchesGlobalCatalog(sourcePath, selection.SourceSHA256, selection.SourceContentSHA256)
+	if err != nil {
+		log.Printf("Using the compatibility GL catalog policy for %s: %v", filepath.Base(sourcePath), err)
+	}
+	if !stock {
+		return 0, nil
+	}
+	if err = copyGlobalCatalog(sourcePath, destinationPath); err != nil {
+		return 0, err
+	}
+	count, err := applyGlobalCatalogSelection(destinationPath, selection)
+	if count == 0 || err != nil {
+		os.Remove(destinationPath)
+	}
+	return count, err
 }
 
 func readGlobalDownloadFiles(path, query string, names map[string]struct{}) error {

@@ -320,7 +320,7 @@ func init() {
 		}
 	}
 	updateClientDbWithCatalogs(config.GlMasterdataPath, masterdataRefGls, 0, func() (prepareClientCatalog, error) {
-		policy, err := upgrades.GlobalDownloadCatalogs(config.AssetPath)
+		policy, err := upgrades.GlobalDownloadCatalogs(config.AssetPath, config.CdnPackDirectory(), config.StaticDataPath)
 		if err != nil || policy == nil {
 			return nil, err
 		}
