@@ -88,6 +88,7 @@ with tempfile.TemporaryDirectory(prefix='stock-gl-screen-') as directory:
     path = Path(directory) / 'working.png'
     tapped_title = False
     selected_language = False
+    confirmed_language = False
     data = b''
     text = ''
     deadline = time.monotonic() + 240
@@ -103,7 +104,9 @@ with tempfile.TemporaryDirectory(prefix='stock-gl-screen-') as directory:
             (destination / 'download-dialog-ocr.txt').write_text(text + '\n')
             stock_dialog = 'Light and Full detected'
             break
-        if not selected_language or (title and not tapped_title):
+        english_confirmation = ("select language" in text and "display language to english" in text
+                                and "return to the title screen" in text)
+        if not selected_language or (english_confirmation and not confirmed_language) or (title and not tapped_title):
             try:
                 bounds = native_game_bounds()
             except subprocess.TimeoutExpired:
@@ -112,6 +115,11 @@ with tempfile.TemporaryDirectory(prefix='stock-gl-screen-') as directory:
                 (destination / 'stock-language.png').write_bytes(data)
                 tap_at(bounds, .366, .435, 'English')
                 selected_language = True
+            elif bounds and english_confirmation and not confirmed_language:
+                (destination / 'stock-language-confirmation.png').write_bytes(data)
+                tap_at(bounds, .652, .791, 'the English selection confirmation')
+                confirmed_language = True
+                deadline = max(deadline, time.monotonic() + 180)
             elif bounds and title and not tapped_title:
                 (destination / 'stock-title.png').write_bytes(data)
                 tap_at(bounds, .5, .5, 'the title screen')
