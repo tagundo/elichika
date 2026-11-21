@@ -2,6 +2,7 @@
 set -euo pipefail
 python3 - "$@" <<'PY'
 import csv
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
 import subprocess
@@ -19,7 +20,7 @@ full = re.compile(r'\b(?:full download|download all)\b')
 
 
 def screen(path):
-    data = subprocess.check_output([*adb, 'exec-out', 'screencap', '-p'], timeout=10)
+    data = subprocess.check_output([*adb, 'exec-out', 'screencap', '-p'], timeout=30)
     if not data.startswith(b'\x89PNG\r\n\x1a\n'):
         raise RuntimeError('The Android screenshot is not a complete PNG.')
     path.write_bytes(data)
@@ -44,7 +45,24 @@ def screen(path):
 
 
 def tap(line):
-    text, x, y = line
+    text = line[0]
+    # The native title accepts a tap anywhere in the main Unity surface.
+    # Android provides that surface's position through its accessibility tree.
+    tree = subprocess.check_output([*adb, 'exec-out', 'uiautomator', 'dump', '/dev/tty'],
+                                   text=True, timeout=15)
+    start, end = tree.find('<?xml'), tree.rfind('</hierarchy>')
+    if min(start, end) < 0:
+        raise RuntimeError('Android did not expose the title UI bounds.')
+    tree = ET.fromstring(tree[start:end + len('</hierarchy>')])
+    app = 'com.klab.lovelive.allstars.global'
+    nodes = [node for node in tree.iter('node') if node.get('package') == app]
+    surface = next((node for node in nodes if node.get('class') == 'android.view.SurfaceView'), None)
+    if surface is None:
+        surface = next(iter(nodes), None)
+    if surface is None:
+        raise RuntimeError('Unity title was not in the active game window.')
+    x1, y1, x2, y2 = map(int, re.findall(r'\d+', surface.get('bounds', '')))
+    x, y = (x1+x2)//2, (y1+y2)//2
     subprocess.run([*adb, 'shell', 'input', 'tap', str(x), str(y)], check=True, timeout=10)
     print(f'Tapped verified title prompt at {x},{y}: {text}', flush=True)
 
@@ -52,9 +70,14 @@ def tap(line):
 with tempfile.TemporaryDirectory(prefix='stock-gl-screen-') as directory:
     path = Path(directory) / 'working.png'
     tapped_title = False
+    data = b''
+    text = ''
     deadline = time.monotonic() + 240
     while time.monotonic() < deadline:
-        data, lines = screen(path)
+        try:
+            data, lines = screen(path)
+        except subprocess.TimeoutExpired:
+            continue
         title = next((line for line in lines if stock_title.search(line[0])), None)
         text = '\n'.join(line[0] for line in lines)
         if light.search(text) and full.search(text):

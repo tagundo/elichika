@@ -25,7 +25,7 @@ release=https://github.com/tagundo/elichika/releases/download/v2026.11.14.1/LLAS
 digest=157f92a46fcaefaca52c2c8209b35e059773be62fc74a8c8e20c2ac3f9dea738
 emulator_pid=
 
-device() { timeout 15 adb -s "$serial" "$@"; }
+device() { timeout 25 adb -s "$serial" "$@"; }
 collect() {
     if [[ -n $emulator_pid ]]; then
         device logcat -d -v threadtime > "$evidence/android-logcat.txt" 2>&1 || true
@@ -54,7 +54,7 @@ printf 'no\n' | "$sdk_tools/avdmanager" create avd --name "$avd" --package "$sys
     --path "$ANDROID_AVD_HOME/$avd.avd" --device pixel_4 > "$scratch/avd-create.txt"
 printf '%s\n' "$system_image" > "$evidence/android-system-image.txt"
 "$sdk/emulator/emulator" -avd "$avd" -port 5554 -accel on -no-window -no-snapshot \
-    -gpu swiftshader_indirect -no-boot-anim -camera-back none -camera-front none \
+    -gpu swangle -no-boot-anim -camera-back none -camera-front none \
     > "$evidence/emulator-start.txt" 2>&1 &
 emulator_pid=$!
 
@@ -69,7 +69,7 @@ while :; do
 done
 
 {
-    for key in ro.build.fingerprint ro.product.cpu.abilist ro.product.cpu.abilist64 ro.dalvik.vm.native.bridge; do
+    for key in ro.build.fingerprint ro.product.cpu.abilist ro.product.cpu.abilist64 ro.dalvik.vm.native.bridge ro.opengles.version; do
         printf '%s=' "$key"
         device shell getprop "$key" | tr -d '\r'
     done
