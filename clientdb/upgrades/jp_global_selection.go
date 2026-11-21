@@ -206,7 +206,15 @@ func applyGlobalCatalogSelection(path string, selection globalCatalogDelta) (int
 	if count == 0 {
 		return 0, nil
 	}
-	return count, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	// Compact the disposable copy so B-tree free space and cell placement
+	// cannot give identical catalog contents a different manifest on restart.
+	if _, err = db.Exec("VACUUM"); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func applyGlobalCatalogRows(tx *sql.Tx, table string, delta globalCatalogTableDelta) error {
