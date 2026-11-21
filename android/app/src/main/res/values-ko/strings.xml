@@ -73,8 +73,15 @@
     <string name="confirm_title">확인</string>
     <string name="confirm_continue">계속</string>
     <string name="cancel">취소</string>
-    <string name="confirm_download_archive">선택한 원본 게임 파일과 필요한 공용 파일을 archive.org에서 받습니다. 기존 파일은 SHA256으로 확인해 일치하면 재사용하고, 없거나 내용이 다르면 내려받아 복구합니다. 준비 중 선택된 파일 수와 용량이 표시됩니다. Wi-Fi를 권장합니다.</string>
-    <string name="confirm_download_archive_full">archive.org에서 전체 게임 데이터를 받습니다. Wi-Fi를 권장합니다. 지역을 선택하세요.</string>
+    <string name="confirm_download_archive">선택한 범위의 원본 게임 파일과 공용 파일을 받습니다. 기존 파일은 SHA256이 일치하면 재사용하며, 없거나 내용이 다른 파일은 내려받습니다. 준비 중 선택된 파일 수와 용량이 표시됩니다.</string>
+    <string name="archive_download_scope">보관소 다운로드 범위</string>
+    <string name="archive_scope_gl_android">글로벌 · Android</string>
+    <string name="archive_scope_gl_ios">글로벌 · iOS / PlayCover</string>
+    <string name="archive_scope_gl_both">글로벌 · Android + iOS</string>
+    <string name="archive_scope_jp_android">일본 · Android</string>
+    <string name="archive_scope_jp_ios">일본 · iOS / PlayCover</string>
+    <string name="archive_scope_jp_both">일본 · Android + iOS</string>
+    <string name="archive_scope_all">글로벌 + 일본 · Android + iOS</string>
     <string name="region_gl">GL (글로벌 — EN / KO / ZH)</string>
     <string name="region_jp">JP (일본)</string>
     <string name="region_both">둘 다 (GL + JP)</string>
@@ -173,7 +180,7 @@
     <string name="download_scope_note">선택한 범위에 속한 파일만 확인합니다. 선택한 파일 수와 누락된 다운로드 수는 로그에 표시됩니다. 게임 언어는 앱 언어와 별개입니다.</string>
     <string name="archive_download_progress">%1$d%% · 파일 %2$d / %3$d개</string>
     <string name="archive_download_bytes">%1$s / %2$s</string>
-    <string name="archive_download_invalid_scope">받을 게임 자료의 지역·플랫폼·게임 언어를 선택하세요.</string>
+    <string name="archive_download_invalid_scope">보관소에서 받을 게임 자료의 범위를 선택하세요.</string>
     <string name="archive_download_unavailable">archive.org 공개 자료를 검증 중입니다. 누락분 받기에서 CDN을 선택하세요.</string>
     <string name="archive_download_start">[archive] %1$s / %2$s / %3$s 자료 준비 중…</string>
     <string name="archive_download_done">[archive] 선택한 파일을 모두 검증했습니다. 서버는 중지 상태를 유지합니다.</string>

@@ -77,6 +77,7 @@ final class AppModel: ObservableObject {
         }
     }
     @Published var consolePlatform: ConsolePlatform = .ios
+    @Published var consoleArchiveScope: ConsoleArchiveScope = .glIOS
     @Published var consoleDownloadSource: ConsoleDownloadSource = .cdn {
         didSet {
             if consoleDownloadSource != oldValue { consoleActionError = nil }
@@ -388,13 +389,15 @@ final class AppModel: ObservableObject {
     }
 
     func runConsoleAction(_ action: ConsoleAction, region: ConsoleRegion? = nil,
-                          platform: ConsolePlatform? = nil, gameLanguage: ConsoleGameLanguage? = nil) async throws {
+                          platform: ConsolePlatform? = nil, gameLanguage: ConsoleGameLanguage? = nil,
+                          missingOnly: Bool = false) async throws {
         guard canRunConsoleAction else {
             throw NativeError.service(text("Wait for the current operation to finish.", "현재 작업이 끝날 때까지 기다리세요.", "現在の処理が終わるまでお待ちください。"))
         }
         submittingConsoleAction = true
         defer { submittingConsoleAction = false }
-        let body = action.requestBody(region: region, platform: platform, gameLanguage: gameLanguage)
+        var body: [String: Any] = action.requestBody(region: region, platform: platform, gameLanguage: gameLanguage)
+        if missingOnly && action == .downloadArchiveProfile { body["missing_only"] = true }
         // A lost POST response may still mean the irreversible reset started.
         // Retain that uncertainty until a successful shutdown gates admission.
         if action == .resetServer {
@@ -423,6 +426,7 @@ final class AppModel: ObservableObject {
         consolePlatform = .ios
         consoleDownloadSource = .cdn
         consoleGameLanguage = consoleRegion == .jp ? .ja : .all
+        consoleArchiveScope = .preferred(region: consoleRegion, allPlatforms: presentation.action == .downloadArchive)
         consoleResetFinal = false
         consoleActionError = nil
         consolePresentation = presentation
@@ -440,8 +444,13 @@ final class AppModel: ObservableObject {
         guard let action = consolePresentation?.action, canRunConsoleAction else { return false }
         if action == .resetServer && !consoleResetFinal { consoleResetFinal = true; return false }
         do {
-            try await runConsoleAction(action.resolvedDownloadAction(source: consoleDownloadSource),
-                region: consoleRegion, platform: consolePlatform, gameLanguage: consoleGameLanguage)
+            let resolved = action.resolvedDownloadAction(source: consoleDownloadSource)
+            let scope = resolved == .downloadArchiveProfile
+                ? consoleArchiveScope.selection
+                : (region: consoleRegion, platform: consolePlatform, language: consoleGameLanguage)
+            try await runConsoleAction(resolved, region: scope.region, platform: scope.platform,
+                                       gameLanguage: scope.language,
+                                       missingOnly: action == .downloadPacks && resolved == .downloadArchiveProfile)
             dismissConsolePresentation()
             return true
         } catch {

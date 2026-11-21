@@ -558,34 +558,41 @@ class Runtime:
         return {"cache_enabled": enabled, "job": job}
 
     def run_console(self, value):
-        if set(value) - {"action", "region", "platform", "language", "confirmation", "reset_confirmation"}:
+        if set(value) - {"action", "region", "platform", "language", "confirmation", "reset_confirmation", "missing_only"}:
             raise RuntimeErrorResponse("Unexpected Console request fields.")
         action = value.get("action")
-        scoped_downloads = ("download_archive_profile", "download_packs")
-        if not isinstance(action, str) or action not in (*CONSOLE_COMMANDS, "download_archive", *scoped_downloads):
+        archive_actions = ("download_archive", "download_archive_profile")
+        download_actions = (*archive_actions, "download_packs")
+        if not isinstance(action, str) or action not in (*CONSOLE_COMMANDS, *download_actions):
             raise RuntimeErrorResponse("Unknown Console action.")
         if value.get("confirmation") != "STOP_SERVER":
             raise RuntimeErrorResponse("Confirm that this action stops the game server.")
+        missing_only = "missing_only" in value
+        if missing_only and (action != "download_archive_profile" or value["missing_only"] is not True):
+            raise RuntimeErrorResponse("The missing-only flag requires a selected Archive download and must be true.")
         region, platform, language = value.get("region"), value.get("platform"), value.get("language")
-        if action == "download_archive" or action in scoped_downloads:
+        if action in download_actions:
             if not isinstance(region, str) or region not in ("gl", "jp", "both"):
                 raise RuntimeErrorResponse("Choose GL, JP, or both regions.")
-        if action == "download_archive":
-            if "platform" in value or "language" in value:
-                raise RuntimeErrorResponse("The full archive download only accepts a region.")
-            arguments = ("download_archive", region)
-        elif action in scoped_downloads:
+            if action == "download_archive":
+                if "platform" in value or "language" in value:
+                    raise RuntimeErrorResponse("The full archive download only accepts a region.")
+                # Compatibility for old native clients, using the same verified
+                # individual-file downloader as the current Archive picker.
+                platform, language = "both", "all"
             if not isinstance(platform, str) or platform not in ("android", "ios", "both"):
                 raise RuntimeErrorResponse("Choose Android, iOS, or both game platforms.")
             allowed_languages = {"gl": ("all", "en", "ko", "zh"), "jp": ("all", "ja"), "both": ("all",)}
             if not isinstance(language, str) or language not in allowed_languages[region]:
                 raise RuntimeErrorResponse("Choose a game language valid for the selected region; both regions require all languages.")
-            if action == "download_archive_profile":
+            if action in archive_actions:
                 try:
                     load_source_config(self.resources / "python-app/archive-hosted-catalog.json")
                 except DownloadError as error:
                     raise RuntimeErrorResponse(str(error)) from None
-                arguments = (action, region, platform, language)
+                arguments = ("download_archive_profile", region, platform, language)
+                if missing_only:
+                    arguments += ("missing-only",)
             else:
                 arguments = (action, "4", "--region", region, "--platform", platform, "--language", language)
         else:
@@ -653,10 +660,21 @@ class Runtime:
                     return
                 from costume_management import assert_safe_to_start
                 assert_safe_to_start(self.data)
-                if action == "download_archive_profile":
+                if arguments[0] == "download_archive_profile":
+                    region, platform, language = arguments[1:4]
+                    missing_only = len(arguments) == 5
                     with self._lock:
-                        self._console_job.update(status="running", message="Preparing selected archive files…")
+                        message = ("Checking the server's game catalog…" if missing_only
+                                   else "Preparing selected archive files…")
+                        self._console_job.update(status="running", message=message)
                     self.logs.write("[console] Archive scope: " + " / ".join(arguments[1:]))
+                    selection = {}
+                    if missing_only:
+                        from archive_profile_download_bridge import required_from_server
+
+                        selection["required_names"] = required_from_server(
+                            self.binary, self.data, region, platform, language, cancelled=cancelled.is_set)
+
                     def report_archive(packet):
                         record = console_progress_record(packet)
                         with self._lock:
@@ -667,10 +685,12 @@ class Runtime:
                                 f"{byte_label(packet['completed_bytes'])} / {byte_label(packet['total_bytes'])}")
                     result = run_from_config(self.resources / "python-app/archive-hosted-catalog.json",
                                              resolve_packs(self.data, self.sukusta),
-                                             arguments[1], arguments[2], arguments[3],
-                                             progress=report_archive, cancelled=cancelled.is_set)
+                                             region, platform, language, static_packs=self.data / "static",
+                                             progress=report_archive, cancelled=cancelled.is_set, **selection)
                     self.logs.write(f"[console] Archive complete: {result['total_files']} verified files; "
                                     f"{result['downloaded_files']} downloaded, {result['reused_files']} reused.")
+                    if result.get("local_unpublished_files"):
+                        self.logs.write(f"[console] Retained {result['local_unpublished_files']} local files outside Archive.")
                     code = 0
                     return
                 if not self.binary.is_file() or not os.access(self.binary, os.X_OK):

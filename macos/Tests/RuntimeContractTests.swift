@@ -400,13 +400,39 @@ final class RuntimeContractTests: XCTestCase {
         XCTAssertEqual(ConsoleDownloadSource.allCases, [.cdn, .archive])
         XCTAssertEqual(ConsoleAction.downloadPacks.resolvedDownloadAction(source: .cdn), .downloadPacks)
         XCTAssertEqual(ConsoleAction.downloadPacks.resolvedDownloadAction(source: .archive), .downloadArchiveProfile)
-        XCTAssertEqual(ConsoleAction.downloadArchive.resolvedDownloadAction(source: .cdn), .downloadArchive)
-        XCTAssertEqual(ConsoleAction.downloadArchive.resolvedDownloadAction(source: .archive), .downloadArchive)
+        XCTAssertEqual(ConsoleAction.downloadArchive.resolvedDownloadAction(source: .cdn), .downloadArchiveProfile)
+        XCTAssertEqual(ConsoleAction.downloadArchive.resolvedDownloadAction(source: .archive), .downloadArchiveProfile)
         XCTAssertEqual(ConsoleAction.rebuildAssets.resolvedDownloadAction(source: .archive), .rebuildAssets)
         let request = ConsoleAction.downloadPacks.resolvedDownloadAction(source: .archive)
             .requestBody(region: .gl, platform: .android, gameLanguage: .ko)
         XCTAssertEqual(request, ["action":"download_archive_profile", "confirmation":"STOP_SERVER", "region":"gl", "platform":"android", "language":"ko"])
         XCTAssertNil(request["source"])
+    }
+
+    func testArchivePresetScopesUseVerifiedProfileAction() {
+        let presets: [(ConsoleArchiveScope, String, String, String)] = [
+            (.all, "both", "both", "all"),
+            (.glAll, "gl", "both", "all"),
+            (.jpAll, "jp", "both", "ja"),
+            (.glAndroid, "gl", "android", "all"),
+            (.glIOS, "gl", "ios", "all"),
+            (.jpAndroid, "jp", "android", "ja"),
+            (.jpIOS, "jp", "ios", "ja"),
+        ]
+        XCTAssertEqual(ConsoleArchiveScope.allCases, presets.map { $0.0 })
+        for (preset, region, platform, language) in presets {
+            let selected = preset.selection
+            for action in [ConsoleAction.downloadArchive, .downloadPacks] {
+                let request = action.resolvedDownloadAction(source: .archive)
+                    .requestBody(region: selected.region, platform: selected.platform, gameLanguage: selected.language)
+                XCTAssertEqual(request, ["action": "download_archive_profile", "confirmation": "STOP_SERVER",
+                    "region": region, "platform": platform, "language": language])
+            }
+        }
+        XCTAssertEqual(ConsoleArchiveScope.preferred(region: .gl, allPlatforms: true), .glAll)
+        XCTAssertEqual(ConsoleArchiveScope.preferred(region: .jp, allPlatforms: true), .jpAll)
+        XCTAssertEqual(ConsoleArchiveScope.preferred(region: .gl, allPlatforms: false), .glIOS)
+        XCTAssertEqual(ConsoleArchiveScope.preferred(region: .jp, allPlatforms: false), .jpIOS)
     }
 
     func testConsoleActionsUseFixedNamesAndExplicitResetConfirmation() throws {

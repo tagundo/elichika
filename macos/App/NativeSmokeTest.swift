@@ -1632,8 +1632,10 @@ final class NativeSmokeTest {
         }
         try png.write(to: directory.appendingPathComponent("console-menus.png"), options: .atomic)
         model.presentConsole(.action(.downloadArchive))
-        try require(model.consoleRegion == ConsoleRegion.defaultRegion(language: model.language),
-                    "The archive picker must default to JP only in Japanese and GL otherwise.")
+        let archiveDefault = ConsoleArchiveScope.preferred(
+            region: ConsoleRegion.defaultRegion(language: model.language), allPlatforms: true)
+        try require(model.consoleArchiveScope == archiveDefault && ConsoleArchiveScope.allCases.count == 7,
+                    "The archive picker must provide seven scopes and default to all platforms in the initial region.")
         try require(model.consolePresentation != nil, "The actual archive action must present its native confirmation.")
         try await Task.sleep(nanoseconds: 150_000_000)
         model.dismissConsolePresentation()

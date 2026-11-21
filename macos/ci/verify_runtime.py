@@ -276,8 +276,26 @@ def check(app, report, *, network=False):
     if network:
         # Use the bundled CA roots and stdlib HTTPS client, not host certificates
         # or a package-manager certificate installation helper.
-        source = "import json,urllib.request; r=urllib.request.urlopen('https://archive.org/metadata/llsifas-elichika-static-data',timeout=45); assert r.status==200; d=json.load(r); assert d.get('metadata',{}).get('identifier')=='llsifas-elichika-static-data'; print('ARCHIVE_HTTPS_PASS')"
-        https = subprocess.run([str(python), "-I", "-B", "-c", source],
+        source = """
+import pathlib, sys, tempfile, urllib.request
+app = pathlib.Path(sys.argv[1])
+sys.path.insert(0, str(app))
+from archive_profile_download import MAX_CATALOG, Progress, PublicHTTP, fetch, load_catalog
+from archive_profile_download_bridge import load_source_config
+pin = load_source_config(app / 'archive-hosted-catalog.json', allow_incomplete=True)
+if pin is None:
+    with urllib.request.urlopen('https://archive.org/', timeout=45) as response:
+        assert response.status == 200
+else:
+    with tempfile.TemporaryDirectory() as folder:
+        catalog = pathlib.Path(folder) / 'catalog.json'
+        with catalog.open('w+b') as output:
+            fetch(PublicHTTP(), pin.catalog_url, output, MAX_CATALOG,
+                  Progress(None, lambda: False), sha256=pin.catalog_sha256, attempts=1)
+        load_catalog(catalog, pin)
+print('ARCHIVE_HTTPS_PASS')
+"""
+        https = subprocess.run([str(python), "-I", "-B", "-c", source, str(resources / "python-app")],
                                env=private_environment(resources), capture_output=True, text=True, timeout=60)
         (report.parent / "runtime-https.txt").write_text(https.stdout + https.stderr)
         require(https.returncode == 0 and "ARCHIVE_HTTPS_PASS" in https.stdout,

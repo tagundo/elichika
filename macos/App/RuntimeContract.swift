@@ -239,6 +239,43 @@ enum ConsoleDownloadSource: String, CaseIterable, Identifiable {
     var title: String { self == .cdn ? "CDN" : "archive.org" }
 }
 
+enum ConsoleArchiveScope: String, CaseIterable, Identifiable {
+    case all, glAll, jpAll, glAndroid, glIOS, jpAndroid, jpIOS
+    var id: String { rawValue }
+
+    var selection: (region: ConsoleRegion, platform: ConsolePlatform, language: ConsoleGameLanguage) {
+        switch self {
+        case .all: return (.both, .both, .all)
+        case .glAll: return (.gl, .both, .all)
+        case .jpAll: return (.jp, .both, .ja)
+        case .glAndroid: return (.gl, .android, .all)
+        case .glIOS: return (.gl, .ios, .all)
+        case .jpAndroid: return (.jp, .android, .ja)
+        case .jpIOS: return (.jp, .ios, .ja)
+        }
+    }
+
+    static func preferred(region: ConsoleRegion, allPlatforms: Bool) -> Self {
+        switch region {
+        case .gl: return allPlatforms ? .glAll : .glIOS
+        case .jp: return allPlatforms ? .jpAll : .jpIOS
+        case .both: return .all
+        }
+    }
+
+    func title(_ language: String) -> String {
+        switch self {
+        case .all: return NativeText.value("All (GL + JP)", "전체 (GL + JP)", "すべて（GL + JP）", language: language)
+        case .glAll: return NativeText.value("GL all", "GL 전체", "GL 全体", language: language)
+        case .jpAll: return NativeText.value("JP all", "JP 전체", "JP 全体", language: language)
+        case .glAndroid: return "GL APK"
+        case .glIOS: return "GL iOS"
+        case .jpAndroid: return "JP APK"
+        case .jpIOS: return "JP iOS"
+        }
+    }
+}
+
 enum ConsoleAction: String, Decodable, Identifiable {
     case downloadArchive = "download_archive"
     case downloadArchiveProfile = "download_archive_profile"
@@ -264,7 +301,10 @@ enum ConsoleAction: String, Decodable, Identifiable {
     }
 
     func resolvedDownloadAction(source: ConsoleDownloadSource) -> ConsoleAction {
-        self == .downloadPacks && source == .archive ? .downloadArchiveProfile : self
+        if self == .downloadArchive || (self == .downloadPacks && source == .archive) {
+            return .downloadArchiveProfile
+        }
+        return self
     }
 
     func requestBody(region: ConsoleRegion? = nil, platform: ConsolePlatform? = nil,

@@ -134,192 +134,89 @@ update_menu() {
     done
 }
 
-# install/upgrade aria2 so it can actually RUN (a fresh Termux install can be linked against newer
-# libs than installed, e.g. libxml2.so.16, so the binary exists but fails - test with --version).
-# Returns success if aria2c is usable.
-ensure_aria2() {
-    if command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1; then
-        return 0
+# Foreground downloads keep Termux awake and return to the menu after Ctrl+C.
+run_game_download() {
+    local binary status
+    binary="$(server_bin)"
+    if [ ! -f "$binary" ]; then
+        echo "Server binary not found ($binary). Build it with '2. Update Server'."
+        read -r -p "Press Enter to continue... " _dummy_download
+        return
     fi
-    echo "Setting up aria2 for faster downloads..."
-    if command -v pkg >/dev/null 2>&1; then
-        pkg install -y aria2
-        if ! { command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1; }; then
-            echo "Upgrading packages to fix libraries (one-time, may take a few minutes)..."
-            pkg upgrade -y
-            pkg install -y aria2
-        fi
-    elif command -v apt-get >/dev/null 2>&1; then
-        apt-get install -y aria2
-    fi
-    command -v aria2c >/dev/null 2>&1 && aria2c --version >/dev/null 2>&1
-}
 
-# The archive.org item with the bulk static assets, split as multiple COMPLETE
-# uncompressed tar parts per region (packs_GL.tar.000.., packs_JP.tar.000..).
-# Each part is an independent archive (split on file boundaries), so parts are
-# downloaded + extracted one at a time — temp disk use stays ~1 part (~2GB).
-# All entries are "packs/<basename>": --strip-components=1 lands flat basenames.
-ARCHIVE_ITEM_URL="https://archive.org/download/llsifas-elichika-static-data"
-
-# Parallel-connection step-down list, seeded from config.json's archive_connections
-# (default 8, clamped 1-32) so it matches the in-app Go downloader: "N N/2 ... 1".
-archive_conns_list() {
-    acl_n=$(grep -oE '"archive_connections"[[:space:]]*:[[:space:]]*[0-9]+' config.json 2>/dev/null \
-            | grep -oE '[0-9]+' | tail -1)
-    case "$acl_n" in ''|*[!0-9]*) acl_n=8 ;; esac
-    [ "$acl_n" -lt 1 ] && acl_n=1
-    [ "$acl_n" -gt 32 ] && acl_n=32
-    acl_list=""; acl_c=$acl_n
-    while [ "$acl_c" -gt 1 ]; do acl_list="$acl_list $acl_c"; acl_c=$((acl_c / 2)); done
-    echo "$acl_list 1"
-}
-
-# ensure_aria2 can trigger pkg install/upgrade, so with up to 17 parts per run
-# check it once and remember the answer.
-aria2_ready() {
-    if [ -z "${ARIA2_CHECKED:-}" ]; then
-        if ensure_aria2; then ARIA2_STATUS=0; else ARIA2_STATUS=1; fi
-        ARIA2_CHECKED=1
-    fi
-    return "$ARIA2_STATUS"
-}
-
-# Download one tar part and extract it into the cache dir.
-# args: <part file name> <cache_dir> <parent_dir>
-archive_part() {
-    p_part="$1"; p_cache="$2"; p_parent="$3"
-    p_url="$ARCHIVE_ITEM_URL/$p_part"
-    # per-part temp name: a failed part left behind can only ever resume as the
-    # SAME part — never mixed into the next part's download.
-    p_tar="$p_parent/.cdn-dl.$p_part"
-    p_rc=1
-    if aria2_ready; then
-        # archive.org can throttle parallel connections, so step the count down on failure
-        # (resuming with -c) before giving up. Top count from config (archive_connections).
-        for p_conns in $(archive_conns_list); do
-            echo "Downloading $p_part with aria2c ($p_conns connection(s))..."
-            aria2c -c -x"$p_conns" -s"$p_conns" -k1M --file-allocation=none \
-                   -d "$p_parent" -o ".cdn-dl.$p_part" "$p_url"
-            p_rc=$?
-            [ "$p_rc" -eq 0 ] && break
-            echo "Failed (rc=$p_rc), retrying with fewer connections..."
-        done
-    fi
-    if [ "$p_rc" -ne 0 ]; then
-        echo "aria2 unavailable - falling back to curl (single connection, resumable, slow)."
-        # an aria2c partial has unwritten holes, so curl must NOT append to it -
-        # drop it (and its control file) and let curl own the file from byte 0.
-        rm -f "$p_tar" "$p_tar.aria2"
-        curl -fL -C - -o "$p_tar" "$p_url"
-        p_rc=$?
-    fi
-    if [ "$p_rc" -ne 0 ] || [ ! -s "$p_tar" ]; then
-        echo "$p_part download failed (rc=$p_rc). Check your connection and rerun to resume."
-        return 1
-    fi
-    echo "Extracting $p_part into $p_cache ..."
-    mkdir -p "$p_cache"
-    # --strip-components=1 drops the "packs/" wrapper; --skip-old-files keeps files you
-    # already have (fast incremental, no manual move needed).
-    if tar -xf "$p_tar" -C "$p_cache" --strip-components=1 --skip-old-files; then
-        rm -f "$p_tar" "$p_tar.aria2"
-        # part-level resume marker (dot-prefixed: the server's pack index skips it)
-        touch "$p_cache/.archive_done_$p_part"
-        echo "$p_part done."
-    else
-        # a tar that fails to parse is corrupt - remove it so the rerun redownloads fresh
-        rm -f "$p_tar" "$p_tar.aria2"
-        echo "Extract failed. If your tar lacks --skip-old-files (busybox), run: pkg install tar"
-        return 1
-    fi
-}
-
-# Download one region's tar parts (from its parts.txt list) and extract them.
-# args: <region: gl|jp> <cache_dir> <parent_dir>
-archive_one() {
-    a_region="$1"; a_cache="$2"; a_parent="$3"
-    case "$a_region" in
-        jp) a_tag="JP" ;;
-        *)  a_tag="GL" ;;
-    esac
-    echo ""
-    echo "=== $a_region: $ARCHIVE_ITEM_URL/packs_${a_tag}.tar.* ==="
-    a_parts=$(curl -fsSL "$ARCHIVE_ITEM_URL/packs_${a_tag}.parts.txt" | tr -d '\r')
-    if [ -z "$a_parts" ]; then
-        echo "$a_region: could not fetch the parts list (packs_${a_tag}.parts.txt). Check your connection."
-        return 1
-    fi
-    a_total=$(printf '%s\n' "$a_parts" | grep -c .)
-    a_i=0; a_fail=0
-    for a_part in $a_parts; do
-        a_i=$((a_i + 1))
-        case "$a_part" in */*|*\\*) echo "skipping suspicious part name: $a_part"; a_fail=$((a_fail + 1)); continue ;; esac
-        if [ -e "$a_cache/.archive_done_$a_part" ]; then
-            echo "[$a_i/$a_total] $a_part already extracted, skipping."
-            continue
-        fi
-        echo "[$a_i/$a_total] $a_part"
-        # parts are independent, so keep going on failure - a rerun redoes only the failed ones
-        archive_part "$a_part" "$a_cache" "$a_parent" || a_fail=$((a_fail + 1))
-    done
-    if [ "$a_fail" -gt 0 ]; then
-        echo "$a_region finished with $a_fail failed part(s) - run this again to retry just those."
-        return 1
-    fi
-    echo "$a_region done."
-}
-
-# Download ALL game files as big archives from archive.org (gl, jp, or both). This does NOT touch
-# the game's CDN, so it won't burden it - this is the recommended way to get everything.
-download_all_archive() {
-    clear
-    echo "Download ALL game files (big archives from archive.org)."
-    echo "This does NOT use the game CDN, so it won't burden it."
-    echo ""
-    # resolve cdn_cache_dir from config.json. Empty/unset means the local static/ folder on PC and
-    # the shared sukusta folder on Termux/Android - matching the server's default for each.
-    cache_dir=$(grep -oE '"cdn_cache_dir":"[^"]*"' config.json 2>/dev/null | sed -E 's/.*:"([^"]*)"/\1/')
-    if [ -z "$cache_dir" ]; then
-        case "${PREFIX:-}" in
-            *com.termux*) cache_dir="$HOME/storage/downloads/sukusta/packs" ;;
-            *)            cache_dir="static" ;;
-        esac
-    fi
-    # expand a leading ~ (POSIX-safe; escape the ~ so it isn't tilde-expanded inside the pattern)
-    case "$cache_dir" in
-        "~")   cache_dir="$HOME" ;;
-        "~/"*) cache_dir="$HOME/${cache_dir#\~/}" ;;
-    esac
-    mkdir -p "$cache_dir"
-    dl_parent=$(dirname "$cache_dir")
-    echo "Save location: $cache_dir"
-    echo ""
-    echo "GL = Global (English/Korean/Chinese), JP = Japan. 'both' gets everything."
-    read -p "Region (gl/jp/both) [both]: " dl_region; dl_region=${dl_region:-both}
-    case "$dl_region" in
-        gl) dl_regions="gl" ;;
-        jp) dl_regions="jp" ;;
-        *)  dl_regions="gl jp" ;;
-    esac
-    wake_lock   # keep going with the screen off
-    dl_failed=0
-    for r in $dl_regions; do
-        archive_one "$r" "$cache_dir" "$dl_parent" || dl_failed=$((dl_failed + 1))
-    done
+    trap ':' INT
+    wake_lock
+    stop_server
+    sleep 1 && "$binary" "$@"
+    status=$?
     wake_unlock
+    trap - INT
+
     echo ""
-    if [ "$dl_failed" -gt 0 ]; then
-        echo "Finished with failures in $dl_failed region(s) - run this again to retry just the failed parts."
-    else
-        echo "All done."
+    if [ "$status" -ne 0 ]; then
+        echo "Download stopped or failed (exit code $status)."
     fi
-    echo "Restart the server (option 1) so it indexes the new files."
-    read -p "Press Enter to continue..." _dummy_dlall
+    echo "Start the server (option 1) to index downloaded files."
+    read -r -p "Press Enter to continue... " _dummy_download
 }
 
-# Download only the game files you don't already have, from the official game CDN. Gentle on the
-# server (few parallel downloads); for large amounts prefer download_all_archive.
+download_archive_menu() {
+    clear
+    echo "==== Download game files from archive.org ===="
+    echo "Verified cached packs are reused."
+    echo ""
+    echo "1. All (GL + JP)"
+    echo "2. GL all"
+    echo "3. JP all"
+    echo "4. GL APK"
+    echo "5. GL iOS"
+    echo "6. JP APK"
+    echo "7. JP iOS"
+    echo "0. Back"
+    echo ""
+
+    local archive_scope
+    read -r -p "Select a download preset [1]: " archive_scope || return
+    case "${archive_scope:-1}" in
+        1) set -- both both all "$@" ;;
+        2) set -- gl both all "$@" ;;
+        3) set -- jp both ja "$@" ;;
+        4) set -- gl android all "$@" ;;
+        5) set -- gl ios all "$@" ;;
+        6) set -- jp android ja "$@" ;;
+        7) set -- jp ios ja "$@" ;;
+        0) return ;;
+        *)
+            echo "Invalid download preset."
+            read -r -p "Press Enter to continue... " _dummy_archive
+            return
+            ;;
+    esac
+    run_game_download download_archive "$@"
+}
+
+download_missing_menu() {
+    clear
+    echo "==== Download missing game files ===="
+    echo "1. CDN"
+    echo "2. archive.org"
+    echo "0. Back"
+    echo ""
+
+    local download_source
+    read -r -p "Select a download source [1]: " download_source || return
+    case "${download_source:-1}" in
+        1) download_missing_cdn ;;
+        2) download_archive_menu --missing ;;
+        0) return ;;
+        *)
+            echo "Invalid download source."
+            read -r -p "Press Enter to continue... " _dummy_download_source
+            ;;
+    esac
+}
+
+# Download packs missing from the cache for a client, using the configured CDN.
 download_missing_cdn() {
     clear
     local dl_region dl_platform dl_language dl_workers
@@ -349,12 +246,7 @@ download_missing_cdn() {
         read -r -p "Press Enter to continue..." _dummy_dlmiss
         return
     fi
-    wake_lock   # keep going with the screen off
-    stop_server
-    sleep 1
-    "$(server_bin)" download_packs "$dl_workers" --region "$dl_region" --platform "$dl_platform" --language "$dl_language"
-    wake_unlock
-    read -p "Press Enter to continue..." _dummy_dlmiss
+    run_game_download download_packs "$dl_workers" --region "$dl_region" --platform "$dl_platform" --language "$dl_language"
 }
 
 while true; do
@@ -368,8 +260,8 @@ while true; do
     echo "4. Clear Cache Database"
     echo "5. Reset CDN to default (public server)"
     echo "6. CDN Cache: $cache_state (store game files locally & serve them)"
-    echo "7. Download all game files (fast, from archive.org)"
-    echo "8. Download missing files for a selected client (from the CDN)"
+    echo "7. Download game files from archive.org"
+    echo "8. Download missing game files (CDN or archive.org)"
     echo "9. Developer Menu"
     echo "10. Modding Menu"
     echo "0. Exit"
@@ -448,10 +340,10 @@ while true; do
             read -p "Press Enter to continue..." _dummy15236
             ;;
         7)
-            download_all_archive
+            download_archive_menu
             ;;
         8)
-            download_missing_cdn
+            download_missing_menu
             ;;
         9)
             # Dev Menu

@@ -32,11 +32,12 @@ class BridgeTests(unittest.TestCase):
                     bridge.run_from_config(config, Path(root, "packs"), "gl", "ios", "all")
                 implementation.assert_not_called()
                 config.write_text(self.config())
-                bridge.run_from_config(config, Path(root, "packs"), "gl", "ios", "ko")
+                bridge.run_from_config(config, Path(root, "packs"), "gl", "ios", "ko", static_packs=Path(root, "static"))
                 args, kwargs = implementation.call_args
                 self.assertEqual(args[0].catalog_sha256, "1" * 64)
                 self.assertEqual(args[0].target_manifest_sha256, "2" * 64)
                 self.assertEqual((kwargs["region"], kwargs["platform"], kwargs["language"]), ("gl", "ios", "ko"))
+                self.assertEqual(kwargs["static_packs"], Path(root, "static"))
 
     def test_packaging_accepts_only_valid_complete_or_incomplete_configs(self):
         with tempfile.TemporaryDirectory() as root:
@@ -93,6 +94,7 @@ class BridgeTests(unittest.TestCase):
             observer = Observer()
             def implementation(source, packs, **callbacks):
                 self.assertEqual(packs, data / "static")
+                self.assertEqual(callbacks["static_packs"], data / "static")
                 refused = []
                 def other_writer():
                     try:
@@ -116,6 +118,55 @@ class BridgeTests(unittest.TestCase):
                     self.assertEqual(result["status"], expected)
                     if expected == "error":
                         self.assertIn("HTTP 404", result["error"])
+
+    def test_required_file_selection_uses_fixed_argv_and_drops_nonprotocol_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            binary = data / "fake server"
+            binary.write_text('''#!/bin/sh
+[ "$*" = "archive_required jp ios ja" ] && [ "$PWD" = "$HOME" ] || exit 8
+printf '%s\n' 'private config detail' 'ELICHIKA_ARCHIVE_REQUIRED=["japanese","xyz123"]' 'additional message'
+printf '%s\n' 'private config error' >&2
+''')
+            binary.chmod(0o700)
+            self.assertEqual(bridge.required_from_server(binary, data, "jp", "ios", "ja", home=data), {"japanese", "xyz123"})
+            binary.write_text("#!/bin/sh\nprintf '%s\\n' 'private config detail'\nexit 7\n")
+            with self.assertRaisesRegex(DownloadError, "exit 7") as raised:
+                bridge.required_from_server(binary, data, "jp", "ios", "ja")
+            self.assertNotIn("private config", str(raised.exception))
+
+    def test_required_file_selection_rejects_invalid_output_and_cancels_or_times_out(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            binary = data / "fake-server"
+            for records in ("ELICHIKA_ARCHIVE_REQUIRED=[1]", "ELICHIKA_ARCHIVE_REQUIRED={}",
+                            "ELICHIKA_ARCHIVE_REQUIRED=[]\nELICHIKA_ARCHIVE_REQUIRED=[]"):
+                binary.write_text("#!/bin/sh\ncat <<'END'\n" + records + "\nEND\n")
+                binary.chmod(0o700)
+                with self.subTest(records=records), self.assertRaises(DownloadError):
+                    bridge.required_from_server(binary, data, "gl", "android", "en")
+            with patch.object(bridge, "MAX_REQUIRED_OUTPUT", 8), self.assertRaisesRegex(DownloadError, "size limit"):
+                bridge.required_from_server(binary, data, "gl", "android", "en")
+            binary.write_text("#!/bin/sh\nexec sleep 10\n")
+            with self.assertRaises(Cancelled):
+                bridge.required_from_server(binary, data, "gl", "android", "en", cancelled=lambda: True)
+            with patch.object(bridge, "REQUIRED_TIMEOUT", .01), self.assertRaisesRegex(DownloadError, "timed out"):
+                bridge.required_from_server(binary, data, "gl", "android", "en")
+
+    def test_android_only_requests_filtered_plan_when_executable_is_present(self):
+        with tempfile.TemporaryDirectory() as directory:
+            data, library = Path(directory, "data"), Path(directory, "library")
+            data.mkdir()
+            with (patch("costume_management.assert_safe_to_start"),
+                  patch.object(bridge, "required_from_server", return_value={"english"}) as required,
+                  patch.object(bridge, "download", return_value={}) as download):
+                bridge.run_android(str(data), str(library), self.config(), "gl", "android", "en", Observer())
+                required.assert_not_called()
+                self.assertIsNone(download.call_args.kwargs["required_names"])
+                bridge.run_android(str(data), str(library), self.config(), "gl", "android", "en", Observer(), "server")
+                required.assert_called_once_with("server", str(data), "gl", "android", "en",
+                                                 cancelled=download.call_args.kwargs["cancelled"], home=str(data))
+                self.assertEqual(download.call_args.kwargs["required_names"], {"english"})
 
 
 if __name__ == "__main__":

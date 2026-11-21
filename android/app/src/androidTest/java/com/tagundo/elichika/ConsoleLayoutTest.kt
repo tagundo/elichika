@@ -28,6 +28,19 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class ConsoleLayoutTest {
     @Test
+    fun everyArchivePresetUsesTheVerifiedCommandWithTheRequestedMode() {
+        val scopes = ArchiveDownloadScope.entries
+        val expected = listOf(
+            "gl" to "android", "gl" to "ios", "gl" to "both",
+            "jp" to "android", "jp" to "ios", "jp" to "both",
+            "both" to "both"
+        ).map { (region, platform) -> listOf("download_archive_profile", region, platform, "all") }
+        assertEquals(expected, scopes.map { it.command(missingOnly = false) })
+        assertEquals(expected.map { it + "--missing" }, scopes.map { it.command(missingOnly = true) })
+        assertEquals(expected.size, scopes.map { it.label }.toSet().size)
+    }
+
+    @Test
     fun logStartsCollapsedAndUserCanExpandClearAndCollapseIt() = withActivity { activity ->
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

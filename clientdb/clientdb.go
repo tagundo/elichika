@@ -229,8 +229,13 @@ func updateClientDbWithCatalogs(baseDir string, masterdataRefs []string, workerL
 }
 
 func scopedDownloadCommand(args []string) bool {
-	return len(args) >= 3 && args[1] == "download_packs" &&
-		(len(args) > 3 || strings.HasPrefix(args[2], "--"))
+	if len(args) < 3 {
+		return false
+	}
+	if args[1] == "archive_required" || (args[1] == "download_archive" && args[len(args)-1] == "--missing") {
+		return true
+	}
+	return args[1] == "download_packs" && (len(args) > 3 || strings.HasPrefix(args[2], "--"))
 }
 
 func registerPreparedDownloadProfile(name, sourcePath, servedPath string) error {

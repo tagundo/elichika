@@ -546,6 +546,10 @@ private struct ConsoleSheet: View {
     let presentation: ConsolePresentation
 
     private var action: ConsoleAction? { presentation.action }
+    private var usesArchiveScope: Bool {
+        action?.resolvedDownloadAction(source: model.consoleDownloadSource) == .downloadArchiveProfile
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text(title).font(.title2).accessibilityAddTraits(.isHeader)
@@ -564,10 +568,11 @@ private struct ConsoleSheet: View {
                 }.pickerStyle(.segmented).disabled(model.submittingConsoleAction)
                     .accessibilityIdentifier("console.downloadSource")
             }
-            if action == .downloadArchive {
-                downloadRegionPicker.pickerStyle(.radioGroup).disabled(model.submittingConsoleAction)
+            if usesArchiveScope {
+                archiveScopePicker
+            } else if action == .downloadPacks {
+                downloadScopePickers
             }
-            if action?.usesDownloadScope == true { downloadScopePickers }
             if let error = model.consoleActionError { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled).accessibilityIdentifier("console.actionError") }
             HStack {
                 Spacer()
@@ -590,6 +595,14 @@ private struct ConsoleSheet: View {
             }
         }.padding(24).frame(width: 580).accessibilityIdentifier("console.sheet")
             .interactiveDismissDisabled(model.submittingConsoleAction)
+    }
+
+    private var archiveScopePicker: some View {
+        Picker(model.text("Archive scope", "Archive 받기 범위", "Archiveの取得範囲"),
+               selection: $model.consoleArchiveScope) {
+            ForEach(ConsoleArchiveScope.allCases) { scope in Text(scope.title(model.language)).tag(scope) }
+        }.pickerStyle(.menu).disabled(model.submittingConsoleAction)
+            .accessibilityIdentifier("console.archiveScope")
     }
 
     private var downloadRegionPicker: some View {
@@ -641,10 +654,14 @@ private struct ConsoleSheet: View {
                 "ElichikaはSIFAS（ラブライブ！スクールアイドルフェスティバル ALL STARS）のプライベートサーバーです。このMacアプリはサーバー、Web UI、開発・MODツールを実行します。\n\nサーバーと開発ツール：elichikaプロジェクト（YumeMichi / arina999999997 / tatara_hisokaのフォーク）。MODツール：SIFAS-MODDING-HELPING-TOOLS。")
         case .action(let action):
             switch action {
-            case .downloadArchive:
-                return model.text("Download the full game data archive (several GB) from archive.org for the selected region. Wi-Fi is strongly recommended.", "선택한 지역의 전체 게임 데이터(수 GB)를 archive.org에서 받습니다. Wi-Fi 사용을 강력히 권장합니다.", "選択した地域の全ゲームデータ（数GB）をarchive.orgからダウンロードします。Wi-Fiの使用を強く推奨します。")
-            case .downloadArchiveProfile, .downloadPacks:
-                if action == .downloadArchiveProfile || model.consoleDownloadSource == .archive {
+            case .downloadArchive, .downloadArchiveProfile, .downloadPacks:
+                if usesArchiveScope {
+                    if action == .downloadPacks {
+                        return model.text(
+                            "Check the files required by the server's current game catalog for this scope. Download missing or invalid original files from archive.org. Local files that match their published SHA-256 are reused.",
+                            "이 범위에서 현재 서버 카탈로그에 필요한 파일을 검사합니다. 누락되거나 손상된 원본 파일은 archive.org에서 받습니다. 공개된 SHA-256과 일치하는 로컬 파일은 재사용합니다.",
+                            "選択範囲について、サーバーの現在のゲームカタログに必要なファイルを確認します。不足または破損した元ファイルをarchive.orgから取得し、公開SHA-256と一致するローカルファイルは再利用します。")
+                    }
                     return model.text("Use archive.org for the selected original game files and required shared files. Existing files are checked by SHA256: matching files are reused, and missing or different files are downloaded and repaired. The selected count and size appear during preparation. Wi-Fi is recommended.", "선택한 원본 게임 파일과 필요한 공용 파일을 archive.org에서 받습니다. 기존 파일은 SHA256으로 확인해 일치하면 재사용하고, 없거나 내용이 다르면 내려받아 복구합니다. 준비 중 선택된 파일 수와 용량이 표시됩니다. Wi-Fi를 권장합니다.", "選択した元ゲームファイルと必要な共通ファイルをarchive.orgから取得します。既存ファイルをSHA256で確認し、一致すれば再利用、不足または内容が異なるファイルは取得して修復します。準備中にファイル数と容量を表示します。Wi-Fiを推奨します。")
                 }
                 return model.text("Use the configured original CDN to download missing files for the region, game platform and game language selected below, including required shared files. The selected and missing file counts appear in the console after scanning. Game language is independent of app language. Wi-Fi is recommended.", "설정된 원본 CDN에서 아래 지역·게임 플랫폼·게임 언어에 필요한 누락 파일과 공용 파일을 받습니다. 검사 후 선택 범위와 누락 파일 수가 콘솔에 표시됩니다. 게임 언어는 앱 언어와 별개입니다. Wi-Fi를 권장합니다.", "設定済みの元CDNから、以下の地域・ゲームプラットフォーム・ゲーム言語に必要な不足ファイルと共通ファイルを取得します。走査後、選択範囲と不足ファイル数をコンソールに表示します。ゲーム言語はアプリの言語とは別です。Wi-Fiを推奨します。")
@@ -671,9 +688,9 @@ private struct ConsoleSheet: View {
     private var guideText: String {
         let address = model.connectionAddress ?? "http://127.0.0.1:8080"
         return model.text(
-            "1. Wait for the bundled tools to be ready. Your asset library is selected in App settings.\n2. Click Start server.\n3. Point the game app at \(address) (see the LL-hax guide). For another device, set the listen address to 0.0.0.0:8080 and connect the game to your Mac’s LAN address. Keep the original game CDN address unchanged.\n4. Optional: use Download all (archive.org) for a full region archive, or Download missing to choose CDN (default) or archive.org and select a region, game platform and language.\n\nAndroid game: In game, hold the top-right corner for 2 seconds to open FOV settings. iOS / PlayCover: Settings is shown initially. After hiding its button, hold the top-right corner for 2 seconds to reopen the menu.\n\nCDN cache: when on, missing packs download as needed during play and are saved to packs/. Pre-downloading is optional. Keep Elichika running while downloads finish.\n\nPages: Server settings / Accounts = server WebUI; Server content = development tools; Asset editing tools = modding tools; 3D model = model viewer.\n\nAsset library: \(model.libraryDirectory)\nextracted = decrypted models (edit input); modded = edited bundles (edit output); suit / live / card / livetimeline = add-on drop folders; sql = DB patches; packs = game pack cache; backup = DB backups; logs = logs.\n\nUse Server content to make DB backups and Accounts to export your accounts before resetting the server.",
-            "1. 내장 도구 준비가 끝날 때까지 기다리세요. 에셋 보관 폴더는 앱 설정에서 선택합니다.\n2. ‘서버 시작’을 누르세요.\n3. 게임 앱을 \(address)으로 연결하세요(LL-hax 가이드 참고). 다른 기기는 수신 주소를 0.0.0.0:8080으로 설정하고 게임을 Mac의 LAN 주소로 연결하세요. 원본 게임 CDN 주소는 유지하세요.\n4. 선택 사항: ‘전체 받기’(archive.org)로 지역별 전체 파일을 받거나 ‘누락분 받기’에서 CDN(기본) 또는 archive.org와 지역·게임 플랫폼·게임 언어를 선택하세요.\n\nAndroid 게임: 게임 화면 오른쪽 위를 2초간 길게 누르면 FOV 설정창을 열 수 있습니다. iOS / PlayCover: 처음에는 Settings 버튼이 표시됩니다. 버튼을 숨긴 뒤에도 오른쪽 위를 2초간 길게 누르면 설정 메뉴를 다시 열 수 있습니다.\n\nCDN 캐시: 켜져 있으면 플레이 중 필요한 팩을 자동으로 받아 packs/에 저장합니다. 미리 받기는 필수가 아닙니다. 다운로드가 끝날 때까지 Elichika를 실행해 두세요.\n\n화면: 서버 설정 / 계정 = 서버 웹 UI; 서버 콘텐츠 = 개발 도구; 에셋 편집 도구 = 모딩 도구; 3D 모델 = 모델 뷰어.\n\n에셋 보관 폴더: \(model.libraryDirectory)\nextracted = 복호화된 모델(편집 입력); modded = 편집된 번들(편집 출력); suit / live / card / livetimeline = 애드온 드롭 폴더; sql = DB 패치; packs = 게임 팩 캐시; backup = DB 백업; logs = 로그.\n\n서버 초기화 전에 서버 콘텐츠에서 DB를 백업하고 계정에서 계정을 내보내세요.",
-            "1. 内蔵ツールの準備が終わるまでお待ちください。アセット保存先はアプリ設定で選択できます。\n2. 「サーバー起動」をクリック。\n3. ゲームアプリを\(address)に接続（LL-haxガイド参照）。別端末では待ち受けアドレスを0.0.0.0:8080にし、MacのLANアドレスに接続してください。元のゲームCDNアドレスは維持してください。\n4. 任意：「全ファイル取得」（archive.org）で地域ごとに全ファイルを取得できます。「不足分を取得」ではCDN（初期値）またはarchive.orgと、地域・ゲームプラットフォーム・ゲーム言語を選択します。\n\nAndroidゲーム：ゲーム画面の右上を2秒間長押しするとFOV設定を開けます。iOS / PlayCover：最初はSettingsボタンが表示されます。ボタンを非表示にした後も、右上を2秒間長押しするとメニューを再び開けます。\n\nCDNキャッシュ：オンの場合、プレイ中に必要なパックを自動取得してpacks/に保存します。事前取得は任意です。完了までElichikaを起動したままにしてください。\n\n画面：サーバー設定 / アカウント = サーバーWeb UI、サーバーコンテンツ = 開発ツール、アセット編集ツール = MODツール、3Dモデル = モデルビューア。\n\nアセット保存先：\(model.libraryDirectory)\nextracted = 復号済みモデル（編集入力）、modded = 編集済みバンドル（編集出力）、suit / live / card / livetimeline = アドオンのドロップ先、sql = DBパッチ、packs = パックキャッシュ、backup = DBバックアップ、logs = ログ。\n\nサーバー初期化前に、サーバーコンテンツでDBをバックアップし、アカウントでエクスポートしてください。")
+            "1. Wait for the bundled tools to be ready. Your asset library is selected in App settings.\n2. Click Start server.\n3. Point the game app at \(address) (see the LL-hax guide). For another device, set the listen address to 0.0.0.0:8080 and connect the game to your Mac’s LAN address. Keep the original game CDN address unchanged.\n4. Optional: choose one of seven Archive scopes from Download all (archive.org) or Download missing → archive.org. Matching local files are reused. Download missing → CDN lets you select the region, game platform, and game language separately.\n\nAndroid game: In game, hold the top-right corner for 2 seconds to open FOV settings. iOS / PlayCover: Settings is shown initially. After hiding its button, hold the top-right corner for 2 seconds to reopen the menu.\n\nCDN cache: when on, missing packs download as needed during play and are saved to packs/. Pre-downloading is optional. Keep Elichika running while downloads finish.\n\nPages: Server settings / Accounts = server WebUI; Server content = development tools; Asset editing tools = modding tools; 3D model = model viewer.\n\nAsset library: \(model.libraryDirectory)\nextracted = decrypted models (edit input); modded = edited bundles (edit output); suit / live / card / livetimeline = add-on drop folders; sql = DB patches; packs = game pack cache; backup = DB backups; logs = logs.\n\nUse Server content to make DB backups and Accounts to export your accounts before resetting the server.",
+            "1. 내장 도구 준비가 끝날 때까지 기다리세요. 에셋 보관 폴더는 앱 설정에서 선택합니다.\n2. ‘서버 시작’을 누르세요.\n3. 게임 앱을 \(address)으로 연결하세요(LL-hax 가이드 참고). 다른 기기는 수신 주소를 0.0.0.0:8080으로 설정하고 게임을 Mac의 LAN 주소로 연결하세요. 원본 게임 CDN 주소는 유지하세요.\n4. 선택 사항: ‘전체 받기’(archive.org) 또는 ‘누락분 받기 → archive.org’에서 일곱 범위 중 하나를 선택하세요. 일치하는 로컬 파일은 재사용합니다. ‘누락분 받기 → CDN’에서는 지역·게임 플랫폼·게임 언어를 따로 선택할 수 있습니다.\n\nAndroid 게임: 게임 화면 오른쪽 위를 2초간 길게 누르면 FOV 설정창을 열 수 있습니다. iOS / PlayCover: 처음에는 Settings 버튼이 표시됩니다. 버튼을 숨긴 뒤에도 오른쪽 위를 2초간 길게 누르면 설정 메뉴를 다시 열 수 있습니다.\n\nCDN 캐시: 켜져 있으면 플레이 중 필요한 팩을 자동으로 받아 packs/에 저장합니다. 미리 받기는 필수가 아닙니다. 다운로드가 끝날 때까지 Elichika를 실행해 두세요.\n\n화면: 서버 설정 / 계정 = 서버 웹 UI; 서버 콘텐츠 = 개발 도구; 에셋 편집 도구 = 모딩 도구; 3D 모델 = 모델 뷰어.\n\n에셋 보관 폴더: \(model.libraryDirectory)\nextracted = 복호화된 모델(편집 입력); modded = 편집된 번들(편집 출력); suit / live / card / livetimeline = 애드온 드롭 폴더; sql = DB 패치; packs = 게임 팩 캐시; backup = DB 백업; logs = 로그.\n\n서버 초기화 전에 서버 콘텐츠에서 DB를 백업하고 계정에서 계정을 내보내세요.",
+            "1. 内蔵ツールの準備が終わるまでお待ちください。アセット保存先はアプリ設定で選択できます。\n2. 「サーバー起動」をクリック。\n3. ゲームアプリを\(address)に接続（LL-haxガイド参照）。別端末では待ち受けアドレスを0.0.0.0:8080にし、MacのLANアドレスに接続してください。元のゲームCDNアドレスは維持してください。\n4. 任意：「全ファイル取得」（archive.org）または「不足分を取得 → archive.org」で7種類の範囲を選べます。一致するローカルファイルは再利用します。「不足分を取得 → CDN」では地域・ゲームプラットフォーム・ゲーム言語を個別に選べます。\n\nAndroidゲーム：ゲーム画面の右上を2秒間長押しするとFOV設定を開けます。iOS / PlayCover：最初はSettingsボタンが表示されます。ボタンを非表示にした後も、右上を2秒間長押しするとメニューを再び開けます。\n\nCDNキャッシュ：オンの場合、プレイ中に必要なパックを自動取得してpacks/に保存します。事前取得は任意です。完了までElichikaを起動したままにしてください。\n\n画面：サーバー設定 / アカウント = サーバーWeb UI、サーバーコンテンツ = 開発ツール、アセット編集ツール = MODツール、3Dモデル = モデルビューア。\n\nアセット保存先：\(model.libraryDirectory)\nextracted = 復号済みモデル（編集入力）、modded = 編集済みバンドル（編集出力）、suit / live / card / livetimeline = アドオンのドロップ先、sql = DBパッチ、packs = パックキャッシュ、backup = DBバックアップ、logs = ログ。\n\nサーバー初期化前に、サーバーコンテンツでDBをバックアップし、アカウントでエクスポートしてください。")
     }
 }
 

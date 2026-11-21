@@ -8,8 +8,10 @@
       "group": "grp_downloads",
       "type": "binary",
       "args": [
-        "download_archive",
-        "both"
+        "download_archive_profile",
+        "both",
+        "both",
+        "all"
       ],
       "stop_server": true
     },
