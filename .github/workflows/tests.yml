@@ -264,6 +264,7 @@ jobs:
           node tests/mv_studio_split_test.js
           node tests/mv_studio_stage_coloring_test.js
           node tests/mv_studio_stage_display_test.js
+          node tests/mv_studio_stage_flash_test.js
           node tests/mv_studio_stage_motion_test.js
           node tests/mv_studio_bloom_test.js
           node tests/mv_studio_dof_focus_test.js
@@ -271,6 +272,7 @@ jobs:
           node tests/mv_studio_stage_overlay_test.js
           node tests/mv_studio_title_test.js
           node tests/mv_studio_shaft_test.js
+          node tests/mv_studio_spotlight_area_test.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node tests/mv_studio_hdr_browser_test.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio" node tests/mv_studio_browser.js
           VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio-stream" node tests/mv_studio_game_stream_browser.js
