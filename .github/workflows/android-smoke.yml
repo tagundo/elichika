@@ -217,8 +217,9 @@ jobs:
           from pathlib import Path
           import re
           text = Path('evidence/native-instrumentation.txt').read_text()
-          # Preserve every prior case and add native partial graft + multi-ZIP updater cases.
-          assert re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text) == ['35'] and 'FAILURES' not in text, text
+          # Keep the existing native coverage, including the Archive scope case.
+          counts = re.findall(r'(?m)^OK \((\d+) tests?\)\s*$', text)
+          assert len(counts) == 1 and int(counts[0]) >= 36 and 'FAILURES' not in text, text
           PY
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-texture65-report.json > evidence/native-texture65-report.json
           adb -s 127.0.0.1:5555 exec-out cat /data/user/0/com.tagundo.elichika/files/native-cdn-catalog-report.json > evidence/native-cdn-catalog-report.json
