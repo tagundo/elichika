@@ -282,6 +282,7 @@ jobs:
           node tests/mv_studio_finale_floor_test.js
           node tests/mv_studio_sparks_a_test.js
           node tests/mv_studio_sparks_b_test.js
+          node tests/mv_studio_sparks_roop_test.js
           node tests/mv_studio_ribbon_shine_test.js
           node tests/mv_studio_shaft_test.js
           node tests/mv_studio_spotlight_area_test.js
