@@ -65,9 +65,12 @@ def _dictionary_conn(x, base=".", lang=None):
     return sqlite3.connect(dp) if dp else None
 
 
-def _pick_asset_db(x, base="."):
-    """Choose an asset DB without prompting: prefer Android (asset_a_*), GL, English."""
+def _pick_asset_db(x, base=".", *, platform=None):
+    """Keep legacy priorities within the selected platform's native catalogs."""
     dbs = x.list_asset_dbs(base)
+    if platform is not None:
+        prefix = "asset_i_" if platform == "ios" else "asset_a_"
+        dbs = [path for path in dbs if os.path.basename(path).lower().startswith(prefix)]
     if not dbs:
         return None
 
@@ -433,8 +436,14 @@ def _rina_unmask_model(x, base, model_path):
 def run_extract(job, params):
     x = _mod()
     base = "."
-    asset_db = _pick_asset_db(x, base)
+    platform = params.get("platform")
+    if "platform" in params and platform not in ("android", "ios"):
+        raise ValueError("Choose Android or iOS game assets.")
+    asset_db = _pick_asset_db(x, base, platform=platform)
     if not asset_db:
+        if platform:
+            label = "iOS" if platform == "ios" else "Android"
+            raise FileNotFoundError(f"No {label} asset DB under assets/db.")
         raise FileNotFoundError(
             "No asset DB under assets/db — download or rebuild the game data first.")
 
@@ -461,6 +470,10 @@ def run_extract(job, params):
     work = [_resolve_pick(x, base, pick, cid0, lang=params.get("lang"))
             for pick in selections]
     out_dir = _extracted_dir()
+    if platform:
+        # Model paths may be shared by Android and iOS, while bytes and
+        # decryption keys differ. Separate their outputs and manifests.
+        out_dir = os.path.join(out_dir, platform)
     os.makedirs(out_dir, exist_ok=True)
     use_cdn = params.get("cdn", True)
     game_found = [p for p, s in x.detect_game_candidates() if s == "found"]

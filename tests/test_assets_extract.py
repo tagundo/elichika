@@ -94,6 +94,41 @@ class CostumeOwnerTests(unittest.TestCase):
         })
         self.assert_outputs(self.models)
 
+    def test_explicit_platforms_extract_distinct_native_resources(self):
+        model = "model/ch0102_co0001"
+        ios_body = b"UnityFS\x00separate iOS costume bundle"
+        ios_pack = bytearray(ios_body)
+        extractor.decrypt_section(ios_pack, extractor.FIXED_KEY0, 13, 17)
+        (self.root / "packs/ios_costume_pack").write_bytes(ios_pack)
+        with sqlite3.connect("assets/db/gl/asset_i_en.db") as asset:
+            asset.execute("CREATE TABLE member_model (asset_path TEXT, pack_name TEXT, "
+                          "head INTEGER, size INTEGER, key1 INTEGER, key2 INTEGER)")
+            asset.execute("INSERT INTO member_model VALUES (?, ?, 0, ?, 13, 17)",
+                          (model, "ios_costume_pack", len(ios_pack)))
+        for platform in ("ios", "android"):
+            extract.run_extract(Job(platform, "extract_assets"), {
+                "platform": platform, "costume": model, "cdn": False, "recolour_variant": False,
+            })
+        output = self.root / "sukusta/extracted"
+        body_name = "Riko_ch0102_co0001_Shared Song.unity"
+        for platform, expected in (("ios", ios_body), ("android", self.payload)):
+            directory = output / platform
+            self.assertEqual((directory / "3d_model" / body_name).read_bytes(), expected)
+            self.assertTrue((directory / "_extract_manifest.csv").is_file())
+
+    def test_explicit_ios_never_falls_back_to_an_android_catalog(self):
+        with self.assertRaisesRegex(FileNotFoundError, "No iOS asset DB"):
+            extract.run_extract(Job("missing-ios", "extract_assets"), {
+                "platform": "ios", "costume": "model/ch0102_co0001", "cdn": False,
+            })
+        self.assertFalse((self.root / "sukusta/extracted").exists())
+
+    def test_invalid_explicit_platform_is_rejected(self):
+        for platform in ("both", None, 9):
+            with self.subTest(platform=platform):
+                with self.assertRaisesRegex(ValueError, "Choose Android or iOS game assets"):
+                    extract.run_extract(Job("invalid-platform", "extract_assets"), {"platform": platform})
+
     def test_model_owner_is_recovered_with_empty_character_filter(self):
         cid, label = extract._resolve_cid_and_label(
             extractor, ".", "model/ch0107_co0001", "")

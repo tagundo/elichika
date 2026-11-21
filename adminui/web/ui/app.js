@@ -201,13 +201,18 @@ function renderField(field) {
     wrap.appendChild(el("label", { for: id, text: field.label }));
     const sel = el("select", { id });
     sel.dataset.name = field.name; sel.dataset.ftype = "select";
+    // The native host sets the initial form choice. The requested platform
+    // always controls which game catalog the server reads.
+    const nativeMac = window.ElichikaPlatform && window.ElichikaPlatform.info().platform === "macos";
+    const selected = state.currentTool.id === "extract_assets" && field.name === "platform" && nativeMac
+      ? "ios" : field.default;
     if (field.multi) sel.multiple = true;
     for (const opt of field.options || []) {
       // options may be plain strings (value == label) or {value, label} objects
       const value = (opt && typeof opt === "object") ? opt.value : opt;
       const label = (opt && typeof opt === "object") ? opt.label : opt;
       const o = el("option", { value: String(value), text: String(label) });
-      if (value === field.default) o.selected = true;
+      if (value === selected) o.selected = true;
       sel.appendChild(o);
     }
     if (field.multi) {
