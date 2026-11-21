@@ -61,7 +61,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/evidence"
           sudo env ELICHIKA_APT_EVIDENCE="$GITHUB_WORKSPACE/evidence/apt" python3 android/ci/prepare_ubuntu_apt.py
           sudo apt-get update -qq
-          sudo apt-get install -y adb apksigner tesseract-ocr
+          sudo apt-get install -y adb apksigner tesseract-ocr python3-pil
           df -h "$RUNNER_TEMP" | tee "$GITHUB_WORKSPACE/evidence/disk.txt"
 
       - name: Build and start the isolated candidate server

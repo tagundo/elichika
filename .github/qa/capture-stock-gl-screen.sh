@@ -2,6 +2,7 @@
 set -euo pipefail
 python3 - "$@" <<'PY'
 import csv
+from PIL import Image
 import xml.etree.ElementTree as ET
 from pathlib import Path
 import re
@@ -44,32 +45,49 @@ def screen(path):
     return data, lines
 
 
-def tap(line):
-    text = line[0]
-    # The native title accepts a tap anywhere in the main Unity surface.
-    # Android provides that surface's position through its accessibility tree.
+def native_game_bounds():
     tree = subprocess.check_output([*adb, 'exec-out', 'uiautomator', 'dump', '/dev/tty'],
                                    text=True, timeout=15)
     start, end = tree.find('<?xml'), tree.rfind('</hierarchy>')
     if min(start, end) < 0:
-        raise RuntimeError('Android did not expose the title UI bounds.')
+        return None
     tree = ET.fromstring(tree[start:end + len('</hierarchy>')])
     app = 'com.klab.lovelive.allstars.global'
     nodes = [node for node in tree.iter('node') if node.get('package') == app]
-    surface = next((node for node in nodes if node.get('class') == 'android.view.SurfaceView'), None)
+    surface = next((node for node in nodes if node.get('content-desc') == 'Game view'), None)
     if surface is None:
-        surface = next(iter(nodes), None)
+        surface = next((node for node in nodes if node.get('class') == 'android.view.SurfaceView'), None)
     if surface is None:
-        raise RuntimeError('Unity title was not in the active game window.')
-    x1, y1, x2, y2 = map(int, re.findall(r'\d+', surface.get('bounds', '')))
-    x, y = (x1+x2)//2, (y1+y2)//2
-    subprocess.run([*adb, 'shell', 'input', 'tap', str(x), str(y)], check=True, timeout=10)
-    print(f'Tapped verified title prompt at {x},{y}: {text}', flush=True)
+        return None
+    return tuple(map(int, re.findall(r'\d+', surface.get('bounds', ''))))
+
+
+def tap_at(bounds, x_offset, y_offset, action):
+    left, top, right, bottom = bounds
+    x = left + round((right - left) * x_offset)
+    y = top + round((bottom - top) * y_offset)
+    subprocess.run([*adb, 'shell', 'input', 'tap', str(x), str(y)], check=True, timeout=15)
+    print(f'Tapped {action} at {x},{y}', flush=True)
+
+
+def english_chooser(frame, bounds, output):
+    left, top, right, bottom = bounds
+    width, height = right - left, bottom - top
+    # Unity exposes one Game view. Check the English label at its fixed
+    # top-left choice using the Game view's live Android bounds.
+    box = (left + round(width*.315), top + round(height*.401),
+           left + round(width*.419), top + round(height*.463))
+    image = Image.open(frame).convert('RGB').crop(box)
+    image.getchannel('G').point(lambda value: 0 if value > 195 else 255).resize((940, 268)).save(output)
+    label = subprocess.check_output(['tesseract', str(output), 'stdout', '--psm', '7'],
+                                    text=True, stderr=subprocess.DEVNULL, timeout=12)
+    return label.strip().casefold() == 'english'
 
 
 with tempfile.TemporaryDirectory(prefix='stock-gl-screen-') as directory:
     path = Path(directory) / 'working.png'
     tapped_title = False
+    selected_language = False
     data = b''
     text = ''
     deadline = time.monotonic() + 240
@@ -85,10 +103,19 @@ with tempfile.TemporaryDirectory(prefix='stock-gl-screen-') as directory:
             (destination / 'download-dialog-ocr.txt').write_text(text + '\n')
             stock_dialog = 'Light and Full detected'
             break
-        if title and not tapped_title:
-            (destination / 'stock-title.png').write_bytes(data)
-            tap(title)
-            tapped_title = True
+        if not selected_language or (title and not tapped_title):
+            try:
+                bounds = native_game_bounds()
+            except subprocess.TimeoutExpired:
+                bounds = None
+            if bounds and not selected_language and english_chooser(path, bounds, Path(directory) / 'label.png'):
+                (destination / 'stock-language.png').write_bytes(data)
+                tap_at(bounds, .366, .435, 'English')
+                selected_language = True
+            elif bounds and title and not tapped_title:
+                (destination / 'stock-title.png').write_bytes(data)
+                tap_at(bounds, .5, .5, 'the title screen')
+                tapped_title = True
         time.sleep(2)
     else:
         (destination / 'last-stock-screen.png').write_bytes(data)
