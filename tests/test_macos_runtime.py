@@ -376,12 +376,14 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
         external = self.root / "external asset library/packs"
         config = json.loads((runtime.data / "config.json").read_text())
         config["cdn_cache_dir"] = str(external)
+        config["archive_connections"] = 8
         (runtime.data / "config.json").write_text(json.dumps(config))
         def download(config_path, packs, region, platform, language, **callbacks):
             self.assertEqual(config_path, runtime.resources / "python-app/archive-hosted-catalog.json")
             self.assertEqual(packs, external)
             self.assertEqual((region, platform, language), ("gl", "android", "ko"))
             self.assertEqual(callbacks["static_packs"], runtime.data / "static")
+            self.assertEqual(callbacks["workers"], 4)
             self.assertTrue(runtime.controller.busy())
             callbacks["progress"]({"stage":"files", "completed_files":1, "total_files":2,
                 "completed_bytes":5, "total_bytes":10, "current":"fixture", "percent":50})

@@ -215,7 +215,7 @@ def ensure_config(data: Path, sukusta: Path, language: str) -> dict:
         "cdn_partial_file_capability": "nothing",
         "cdn_cache": True,
         "cdn_cache_dir": str(sukusta / "packs"),
-        "archive_connections": 8,
+        "archive_connections": 2,
         "admin_password": "",
         "tap_bond_gain": 20,
         "auto_judge_type": 30,

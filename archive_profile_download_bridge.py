@@ -7,7 +7,7 @@ import stat
 import subprocess
 import time
 
-from archive_profile_download import (Source, Cancelled, DownloadError, digest, download, console_progress_record,
+from archive_profile_download import (DEFAULT_WORKERS, MAX_WORKERS, Source, Cancelled, DownloadError, digest, download, console_progress_record,
                                       select_profiles, validate_required_names)
 
 REQUIRED_MARKER = b"ELICHIKA_ARCHIVE_REQUIRED="
@@ -53,8 +53,8 @@ def load_source_config(path, *, allow_incomplete=False):
         raise DownloadError("The bundled archive publication configuration is missing or unreadable.") from None
 
 
-def resolve_packs(data_dir, library_root):
-    """Use the same explicit CDN cache location as Go, preserving managed aliases."""
+def resolve_download_settings(data_dir, library_root):
+    """Resolve the pack location and worker limit from one server config snapshot."""
     data_dir, library_root = Path(data_dir).absolute(), Path(library_root).absolute()
     path = data_dir / "config.json"
     try:
@@ -64,27 +64,29 @@ def resolve_packs(data_dir, library_root):
         settings = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(settings, dict):
             raise DownloadError("config.json must contain a JSON object with cache settings; no asset files were changed.")
-        value = settings.get("cdn_cache_dir")
     except FileNotFoundError:
-        value = None
+        settings = {}
     except json.JSONDecodeError as error:
         raise DownloadError(f"config.json is invalid JSON at line {error.lineno}, column {error.colno}; no asset files were changed.") from None
     except UnicodeError:
         raise DownloadError("config.json is not valid UTF-8; the asset destination was left unchanged.") from None
     except OSError as error:
         raise DownloadError(f"The CDN cache destination could not be read from config.json ({error.strerror or type(error).__name__}).") from None
+    value = settings.get("cdn_cache_dir")
+    workers = settings.get("archive_connections")
+    workers = max(1, min(MAX_WORKERS, workers)) if type(workers) is int else DEFAULT_WORKERS
     if value is None or value == "":
         # Match Go cacheDir(): no configured cache directory uses StaticDataPath
         # beside the running server. Fresh managed configs explicitly set the
         # selected library's packs directory; existing blank configs stay blank.
-        return data_dir / "static"
+        return data_dir / "static", workers
     if not isinstance(value, str) or "\x00" in value:
         raise DownloadError("cdn_cache_dir in config.json must be a filesystem path string or null.")
     alias = "~/storage/downloads/sukusta"
     if value == alias or value.startswith(alias + "/"):
-        return library_root / value[len(alias):].lstrip("/")
+        return library_root / value[len(alias):].lstrip("/"), workers
     target = Path(value).expanduser()
-    return target if target.is_absolute() else data_dir / target
+    return (target if target.is_absolute() else data_dir / target), workers
 
 
 def required_from_server(server_executable, data_dir, region, platform, language, *, cancelled=None, home=None, env=None):
@@ -149,9 +151,9 @@ def required_from_server(server_executable, data_dir, region, platform, language
 
 
 def run_from_config(config_path, packs, region, platform, language, *, static_packs=None, required_names=None,
-                    progress=None, cancelled=None):
+                    workers=DEFAULT_WORKERS, progress=None, cancelled=None):
     return download(load_source_config(config_path), packs, region=region, platform=platform,
-                    language=language, progress=progress, cancelled=cancelled, static_packs=static_packs,
+                    language=language, workers=workers, progress=progress, cancelled=cancelled, static_packs=static_packs,
                     required_names=required_names)
 
 
@@ -175,7 +177,8 @@ def run_android(data_dir, library_root, config_json, region, platform, language,
             required = (required_from_server(server_executable, data_dir, region, platform, language,
                                              cancelled=cancelled, home=data_dir)
                         if server_executable is not None else None)
-            result = download(source, resolve_packs(data_dir, library_root), region=region,
+            packs, workers = resolve_download_settings(data_dir, library_root)
+            result = download(source, packs, region=region, workers=workers,
                               platform=platform, language=language, static_packs=Path(data_dir) / "static",
                               required_names=required,
                               progress=lambda packet: callbacks.onProgress(json.dumps(packet, separators=(",", ":"))),
