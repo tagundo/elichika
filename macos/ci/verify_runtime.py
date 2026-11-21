@@ -54,13 +54,20 @@ for texture65_space in (0,1):
     assert texture65_image.mode=='RGBA' and texture65_image.size==(16,16)
     assert hashlib.sha256(texture65_image.tobytes()).hexdigest()==texture65_meta['rgba_display_sha256']
 assert hashlib.sha256(texture65_source.read_bytes()).hexdigest()==texture65_source_sha
+for stage_format,encoded,pixel in (
+        (34,bytes.fromhex('ff00000000000000')*4,bytes((255,2,2,255))),
+        (32,bytes.fromhex('0000000000fc00fc')*4,bytes((255,0,0,255)))):
+    stage_texture=SimpleNamespace(m_Width=8,m_Height=8,m_TextureFormat=stage_format,
+        image_data=encoded,get_image_data=lambda:encoded)
+    with texture_decode._android_image(stage_texture,time.monotonic()+15,stage=True) as stage_image:
+        assert stage_image.size==(8,8) and stage_image.tobytes()==pixel*64
 texture65_probe={'status':'PASS_PRIVATE_EXECUTABLE_EXACT_RGBA','format':65,'width':16,'height':16,
     'executable_sha256':hashlib.sha256(texture65_binary.read_bytes()).hexdigest(),
     'encoded_sha256':texture65_source_sha,'rgba_unflipped_sha256':texture65_meta['rgba_unflipped_sha256'],
     'rgba_display_sha256':texture65_meta['rgba_display_sha256'],
     'one_vertical_flip':True,'color_space_preserved':True,'straight_alpha':True,
     'zero_alpha_nonzero_rgb_pixels':texture65_zero_rgb,'partial_alpha_pixels':texture65_partial,
-    'source_unchanged':True,'private_executable':True,'neutral_fixture':True}
+    'source_unchanged':True,'private_executable':True,'neutral_fixture':True,'mv_stage_formats':[32,34]}
 '''
 
 
