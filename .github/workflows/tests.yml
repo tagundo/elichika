@@ -154,6 +154,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_viewer_transplants.py -v
           python3 -m unittest discover -s tests -p test_viewer_body_controls.py -v
           python3 -m unittest discover -s tests -p 'test_game_models*.py' -v
+          python3 -m unittest discover -s tests -p 'test_costume_platform_*.py' -v
           python3 -m unittest discover -s tests -p test_model_materials.py -v
           python3 -m unittest discover -s tests -p test_viewer_thumbnails.py -v
           python3 -m unittest discover -s tests -p test_viewer_thumbnail_roles.py -v

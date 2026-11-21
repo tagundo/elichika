@@ -35,6 +35,36 @@
       motion: clone(motion) };
     return clone({ rig: motion.rig, audio: audio, manager: manager, clock: clock });
   }
+  function playingClockOnRigFrame() {
+    var before = ModelViewer.getMotionState().rig;
+    return new Promise(function (resolve, reject) {
+      var request;
+      var timeout = setTimeout(function () {
+        cancelAnimationFrame(request);
+        reject(new Error('The playing rig did not advance on an animation frame'));
+      }, 1000);
+      function sample() {
+        try {
+          var rig = ModelViewer.getMotionState().rig;
+          if (!rig || !rig.playing || rig.playbackRevision !== before.playbackRevision) {
+            throw new Error('Playback changed before the rig clock observation');
+          }
+          if (rig.time <= before.time) {
+            request = requestAnimationFrame(sample);
+            return;
+          }
+          clearTimeout(timeout);
+          resolve(snapshot(true));
+        } catch (error) {
+          clearTimeout(timeout);
+          reject(error);
+        }
+      }
+      // Playback has queued the viewer's next draw. Wait for a frame that
+      // advances the rig, since game physics can skip a display frame.
+      request = requestAnimationFrame(sample);
+    });
+  }
   function fixture() {
     var channels = 2, sampleRate = 44100, frames = sampleRate * 4, bytes = new ArrayBuffer(44 + frames * channels * 2);
     var view = new DataView(bytes);
@@ -134,7 +164,7 @@
           var observed = snapshot(), p = observed.audio.tracks[0].player;
           return observed.rig.playing && observed.rig.time > .25 && p.contextState === 'running' && p.sourceActive && p.sourceStarts >= 1;
         });
-        var playing = snapshot(true), player = playing.audio.tracks[0].player;
+        var playing = await playingClockOnRigFrame(), player = playing.audio.tracks[0].player;
         retainPlayingClock(playing, round, rate, offset);
         assert(Number.isFinite(playing.clock) && Math.abs(playing.clock - playing.rig.time) < .04,
           'The unchanged product getter maps the actual PCM clock into motion time');
