@@ -188,6 +188,9 @@ jobs:
       - name: Test real Windows database upgrades
         run: go test -count=1 -v ./clientdb/upgrades
 
+      - name: Test Windows Archive pack installation and repair
+        run: python -m unittest discover -s tests -p 'test_archive_profile_download.py' -k existing_verified_files_reused_and_corruption_repaired
+
   viewer-webgl:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
