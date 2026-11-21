@@ -125,6 +125,7 @@ class MainActivity : AppCompatActivity() {
             Tab("server-content", getString(R.string.tab_dev), "http://127.0.0.1:8772/", localTools = true),
             Tab(TAB_ASSET_TOOLS, getString(R.string.tab_mod), webToolsUrl, localTools = true, section = "tools"),
             Tab(TAB_MODEL_VIEWER, getString(R.string.tab_model), webToolsUrl, localTools = true, section = "viewer"),
+            Tab(TAB_MV_STUDIO, getString(R.string.tab_mv), webToolsUrl, localTools = true, section = "mv"),
         )
     }
 
@@ -1257,5 +1258,6 @@ class MainActivity : AppCompatActivity() {
         internal const val TAB_CONSOLE = "console"
         internal const val TAB_ASSET_TOOLS = "asset-tools"
         internal const val TAB_MODEL_VIEWER = "model-viewer"
+        internal const val TAB_MV_STUDIO = "mv-studio"
     }
 }

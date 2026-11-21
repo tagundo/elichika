@@ -433,9 +433,21 @@ enum NativeError: LocalizedError {
 }
 
 enum EditorSurface: String, Codable, CaseIterable, Sendable {
-    case tools, viewer
-    var section: AppSection { self == .viewer ? .viewer : .assets }
-    var command: String { self == .viewer ? "showViewer" : "showTools" }
+    case tools, viewer, mv
+    var section: AppSection {
+        switch self {
+        case .tools: return .assets
+        case .viewer: return .viewer
+        case .mv: return .mv
+        }
+    }
+    var command: String {
+        switch self {
+        case .tools: return AssetEditorCommand.showTools.rawValue
+        case .viewer: return AssetEditorCommand.showViewer.rawValue
+        case .mv: return AssetEditorCommand.showMV.rawValue
+        }
+    }
     var appSection: AppSection { section }
 
     static func embeddedURL(_ base: URL, section: Self) -> URL? {
@@ -452,8 +464,20 @@ enum EditorSurface: String, Codable, CaseIterable, Sendable {
 
 typealias AssetEditorSection = EditorSurface
 
+enum AssetEditorCommand: String {
+    case showTools, showViewer, showMV, openModel, saveModel, openMV, saveMV
+
+    var surface: EditorSurface {
+        switch self {
+        case .showTools: return .tools
+        case .showViewer, .openModel, .saveModel: return .viewer
+        case .showMV, .openMV, .saveMV: return .mv
+        }
+    }
+}
+
 enum AppSection: String, CaseIterable, Identifiable {
-    case server, accounts, serverSettings, content, assets, viewer, settings
+    case server, accounts, serverSettings, content, assets, viewer, mv, settings
     var id: String { rawValue }
     var symbol: String {
         switch self {
@@ -463,6 +487,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .content: return "externaldrive"
         case .assets: return "wrench.and.screwdriver"
         case .viewer: return "cube.transparent"
+        case .mv: return "film"
         case .settings: return "gearshape"
         }
     }
@@ -473,6 +498,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             "content": ["Server content", "서버 콘텐츠", "サーバーコンテンツ"],
             "assets": ["Asset editing tools", "에셋 편집 도구", "アセット編集ツール"],
             "viewer": ["3D model", "3D 모델", "3Dモデル"],
+            "mv": ["3D MV", "3D MV", "3D MV"],
             "settings": ["App settings", "앱 설정", "アプリ設定"],
             "serverSettings": ["Server settings", "서버 설정", "サーバー設定"],
         ]
@@ -483,6 +509,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .assets: return .tools
         case .viewer: return .viewer
+        case .mv: return .mv
         default: return nil
         }
     }

@@ -25,6 +25,7 @@ STATIC_FILES = tuple("webtools/web/" + name for name in (
     "static/viewer-transplants.js", "static/viewer-rig.js", "static/panel-settings.js", "static/viewer-texture-tools.js",
     "static/viewer-texture-tools.css", "static/texture-panel-expand.js",
     "static/texture-panel-expand.css", "static/vendor/fflate-0.8.2/fflate.min.js",
+    "static/mv-studio.js", "static/mv-studio-scene.js", "static/mv-studio.css",
     "static/vendor/fflate-0.8.2/LICENSE")) + (
     "adminui/web/index.html", "adminui/web/ui/app.js", "adminui/web/ui/style.css",
     "adminui/web/ui/game-quality.js", "adminui/web/ui/game-quality.css", "adminui/web/ui/panel-settings.js") + (
@@ -41,6 +42,8 @@ MODTOOLS_ROOT_MODULES = (
     "graft_uv_reuse", "graft_uv_upscale", "transplant_bundle_io")
 MODULES = (
     "webtools/server", "webtools/i18n", "webtools/core/viewer_texture_tools",
+    "mv_studio_live", "mv_studio_native_assets", "webtools/core/mv_studio",
+    "webtools/core/mv_studio_game", "webtools/core/mv_studio_timeline", "webtools/core/mv_studio_quality",
     "webtools/core/texture_image_io", "webtools/core/texture_project_io",
     "webtools/core/model_edits", "webtools/core/model_viewer",
     "webtools/core/viewer_mesh_tools", "webtools/core/viewer_transplants",

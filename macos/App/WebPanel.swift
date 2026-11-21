@@ -34,7 +34,7 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     let initialRequest: URLRequest?
     private let bridgeEnabled: Bool
     private var loaded = false
-    private var pendingPerform: (String, [String]?)?
+    private var pendingPerform: (AssetEditorCommand, [String]?)?
     private var activeRequests = Set<String>()
     private var windowObservers: [NSObjectProtocol] = []
     private weak var observedWindow: NSWindow?
@@ -110,9 +110,9 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func perform(_ action: String, paths: [String]? = nil) {
-        guard bridgeEnabled, route == .assets, ["openModel", "saveModel", "showViewer", "showTools"].contains(action) else { return }
-        showAssetSection(action == "showTools" ? .tools : .viewer)
-        guard loaded else { pendingPerform = (action, paths); return }
+        guard bridgeEnabled, route == .assets, let command = AssetEditorCommand(rawValue: action) else { return }
+        showAssetSection(command.surface)
+        guard loaded else { pendingPerform = (command, paths); return }
         let arguments: [String: Any] = ["action": action, "payload": paths.map { ["paths": $0] } ?? [:]]
         let data = try! JSONSerialization.data(withJSONObject: arguments)
         let json = String(decoding: data, as: UTF8.self)
@@ -129,8 +129,8 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         guard route == .assets, loaded, assetNavigation.needsUpdate else { return }
         let section = assetNavigation.desired
         assetNavigation.markSent(section)
-        let name = String(decoding: try! JSONSerialization.data(withJSONObject: [section.rawValue]), as: UTF8.self)
-        let script = "(function(){const section=" + name + "[0];if(window.ElichikaDesktop)ElichikaDesktop.editorSurface=section;if(window.ElichikaNavigation&&typeof ElichikaNavigation.showSection==='function')return ElichikaNavigation.showSection(section,{notify:false})!==false;if(window.ElichikaPlatform)return ElichikaPlatform.perform(section==='viewer'?'showViewer':'showTools');return false;})();"
+        let navigation = String(decoding: try! JSONSerialization.data(withJSONObject: [section.rawValue, section.command]), as: UTF8.self)
+        let script = "(function(){const [section,command]=" + navigation + ";if(window.ElichikaDesktop)ElichikaDesktop.editorSurface=section;if(window.ElichikaNavigation&&typeof ElichikaNavigation.showSection==='function')return ElichikaNavigation.showSection(section,{notify:false})!==false;if(window.ElichikaPlatform)return ElichikaPlatform.perform(command);return false;})();"
         webView.evaluateJavaScript(script) { [weak self] result, error in
             let accepted = error == nil && (result as? Bool) == true
             Task { @MainActor in
@@ -341,7 +341,12 @@ final class BrowserSession: NSObject, ObservableObject, WKNavigationDelegate, WK
         applyAssetSection()
         observeWindow()
         if let model { setLanguage(model.language) }
-        if let (action, paths) = pendingPerform { pendingPerform = nil; perform(action, paths: paths) }
+        if let (command, paths) = pendingPerform {
+            pendingPerform = nil
+            if command.surface == model?.selectedSection?.assetEditorSection {
+                perform(command.rawValue, paths: paths)
+            }
+        }
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
