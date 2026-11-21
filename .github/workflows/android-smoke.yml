@@ -135,6 +135,8 @@ jobs:
           if [[ -f $evidence/android-logcat.txt ]]; then
             grep -E 'Unity.*(Initialize engine version|GfxDevice|Renderer|OpenGL|Vulkan)|Fatal signal|EGL_BAD|AndroidRuntime.*FATAL EXCEPTION' \
               "$evidence/android-logcat.txt" | tail -n 250 > "$evidence/unity-graphics.txt" || true
+            grep -Ei 'Unity|am_(crash|anr)|ANativeWindow|native_bridge' "$evidence/android-logcat.txt" \
+              | sed -E 's/[A-Za-z0-9_+=\/-]{28,}/[redacted]/g' | tail -n 350 > "$evidence/game-startup-diagnostics.txt" || true
             rm "$evidence/android-logcat.txt"
           fi
           rm -f "$evidence/android-properties.txt" "$evidence/android-activities.txt"

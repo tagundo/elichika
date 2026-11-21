@@ -119,12 +119,12 @@ with tempfile.TemporaryDirectory(prefix='stock-gl-screen-') as directory:
                 (destination / 'stock-language-confirmation.png').write_bytes(data)
                 tap_at(bounds, .652, .791, 'the English selection confirmation')
                 confirmed_language = True
-                deadline = max(deadline, time.monotonic() + 180)
+                deadline = max(deadline, time.monotonic() + 540)
             elif bounds and title and not tapped_title:
                 (destination / 'stock-title.png').write_bytes(data)
                 tap_at(bounds, .5, .5, 'the title screen')
                 tapped_title = True
-        time.sleep(2)
+        time.sleep(4)
     else:
         (destination / 'last-stock-screen.png').write_bytes(data)
         (destination / 'last-stock-screen-ocr.txt').write_text(text + '\n')

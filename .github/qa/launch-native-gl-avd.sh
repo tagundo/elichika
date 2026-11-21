@@ -54,7 +54,7 @@ printf 'no\n' | "$sdk_tools/avdmanager" create avd --name "$avd" --package "$sys
     --path "$ANDROID_AVD_HOME/$avd.avd" --device pixel_4 > "$scratch/avd-create.txt"
 printf '%s\n' "$system_image" > "$evidence/android-system-image.txt"
 "$sdk/emulator/emulator" -avd "$avd" -port 5554 -accel on -no-window -no-snapshot \
-    -gpu swangle -no-boot-anim -camera-back none -camera-front none \
+    -gpu swangle -cores 4 -memory 4096 -no-boot-anim -camera-back none -camera-front none \
     > "$evidence/emulator-start.txt" 2>&1 &
 emulator_pid=$!
 
@@ -82,6 +82,7 @@ grep -Eq '^ro.dalvik.vm.native.bridge=lib[^[:space:]]+\.so$' "$evidence/gms-arm6
 
 device shell input keyevent KEYCODE_WAKEUP
 device shell wm dismiss-keyguard
+device shell wm size 540x1140
 device shell settings --user 0 put secure immersive_mode_confirmations confirmed
 device reverse tcp:8080 tcp:8080
 device reverse --list > "$evidence/reverse.txt"
