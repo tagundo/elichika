@@ -261,6 +261,7 @@ jobs:
           node tests/mv_studio_physics_test.js
           node tests/mv_studio_penlight_test.js
           node tests/mv_studio_props_test.js
+          node tests/mv_studio_prop_light_test.js
           node tests/mv_studio_split_test.js
           node tests/mv_studio_stage_coloring_test.js
           node tests/mv_studio_stage_display_test.js
