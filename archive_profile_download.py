@@ -430,6 +430,15 @@ def existing_matches(path, name, size, sha256, progress, *, root_fd=None, primar
         after = os.fstat(fd)
         try:
             current = os.stat(path, dir_fd=root_fd, follow_symlinks=root_fd is None and not primary)
+            if os.name == "nt" and regular_pack(current):
+                # Windows path stats and descriptor stats can report different
+                # file identifiers. Compare the opened file with a second
+                # descriptor for the currently served pathname.
+                named = os.open(path, flags)
+                try:
+                    current = os.fstat(named)
+                finally:
+                    os.close(named)
         except OSError:
             current = None
         require(current is not None and regular_pack(current) and os.path.samestat(info, current) and
