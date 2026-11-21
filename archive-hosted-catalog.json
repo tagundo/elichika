@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "status": "INCOMPLETE",
+  "status": "COMPLETE",
   "requested_total": 42830,
-  "catalog_url": null,
-  "catalog_sha256": null,
+  "catalog_url": "https://archive.org/download/elichika-assets-20261115-e316340d-fa6f6031-b00/elichika-selective-five-v1/catalog.json",
+  "catalog_sha256": "c4d024d839774eff12df84ca135937df6e5ac6d7e820cdba0063cf262ac4ffb4",
   "target_manifest_sha256": "e53683769dc0a382783efe0403105905d3ef461ce89664f0906c728a6cc3982c"
 }
