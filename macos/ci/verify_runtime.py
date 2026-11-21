@@ -113,6 +113,7 @@ modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.regi
          'webtools.core.mv_studio_props','webtools.core.mv_studio_split',
          'webtools.core.mv_studio_stage_materials','webtools.core.mv_studio_stage_coloring',
          'webtools.core.mv_studio_stage_display','webtools.core.mv_studio_stage_motion','webtools.core.mv_studio_stage_nodes',
+         'webtools.core.mv_studio_stage_overlay',
          'webtools.core.model_accessory_unclip','webtools.core.model_edits',
          'webtools.core.viewer_texture_tools',
          'webtools.core.texture_image_io',
