@@ -404,6 +404,7 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
         required = {"test-pack"}
         result = {"total_files": 1, "downloaded_files": 0, "reused_files": 1}
         with patch("archive_profile_download_bridge.required_from_server", return_value=required) as catalog, \
+                patch("elichika_macos_memory.available_macos_memory_bytes", return_value=2 << 30), \
                 patch("elichika_macos.run_from_config", return_value=result) as download:
             status, _ = self.console_request(ready, {"action": "download_archive_profile",
                 "region": "gl", "platform": "ios", "language": "all", "missing_only": True,
@@ -414,6 +415,7 @@ if management: print('ELICHIKA_MANAGEMENT_READY '+json.dumps({'url':'http://127.
             catalog.assert_called_once()
             self.assertEqual(catalog.call_args.args, (runtime.binary, runtime.data, "gl", "ios", "all"))
             self.assertFalse(catalog.call_args.kwargs["cancelled"]())
+            self.assertEqual(catalog.call_args.kwargs["env"]["ELICHIKA_CLIENTDB_MEMORY_BYTES"], str(2 << 30))
             download.assert_called_once()
             self.assertEqual(download.call_args.args, (config, runtime.sukusta / "packs", "gl", "ios", "all"))
             self.assertIs(download.call_args.kwargs["required_names"], required)

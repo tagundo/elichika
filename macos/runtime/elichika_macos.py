@@ -673,7 +673,8 @@ class Runtime:
                         from archive_profile_download_bridge import required_from_server
 
                         selection["required_names"] = required_from_server(
-                            self.binary, self.data, region, platform, language, cancelled=cancelled.is_set)
+                            self.binary, self.data, region, platform, language,
+                            cancelled=cancelled.is_set, env=fresh_macos_memory_env(os.environ))
 
                     def report_archive(packet):
                         record = console_progress_record(packet)

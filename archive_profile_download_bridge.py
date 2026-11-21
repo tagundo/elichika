@@ -87,13 +87,14 @@ def resolve_packs(data_dir, library_root):
     return target if target.is_absolute() else data_dir / target
 
 
-def required_from_server(server_executable, data_dir, region, platform, language, *, cancelled=None, home=None):
+def required_from_server(server_executable, data_dir, region, platform, language, *, cancelled=None, home=None, env=None):
     """Read the authoritative requested pack names from the local Go server."""
     select_profiles(region, platform, language)
     cancelled = cancelled or (lambda: False)
     if cancelled():
         raise Cancelled()
-    env = {**os.environ, "HOME": os.fspath(home)} if home is not None else None
+    if home is not None:
+        env = {**(os.environ if env is None else env), "HOME": os.fspath(home)}
     try:
         child = subprocess.Popen([os.fspath(Path(server_executable).absolute()), "archive_required", region, platform, language],
                                  cwd=data_dir, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
