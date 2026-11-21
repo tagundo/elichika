@@ -273,6 +273,7 @@ jobs:
           node tests/mv_studio_flare_test.js
           node tests/mv_studio_stage_overlay_test.js
           node tests/mv_studio_title_test.js
+          node tests/mv_studio_ribbon_shine_test.js
           node tests/mv_studio_shaft_test.js
           node tests/mv_studio_spotlight_area_test.js
           CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node tests/mv_studio_hdr_browser_test.js
