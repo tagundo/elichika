@@ -6,10 +6,10 @@
     "tools/archive_inventory/activation.json": "bc47fbf5c5dd3ed2f1c9793c8bfc07fed28570dc5deabd5b8c67d58aaef71017",
     "tools/archive_inventory/source-files.json": "b3846891a36131f80d3b0bd1d53f482df02259c0e9d9f48f2744e42ec0adee46",
     "tools/archive_inventory/test_owned_publisher.py": "435873a6a447c485ed4c56f1b838602e8169158d47f31487a15f07dbfcbff945",
-    "tools/archive_resume/chain_control.py": "a7b56f5d6212adfb9b111b5452eeab82abeb4283cc4400851de45323ca57dbaa",
+    "tools/archive_resume/chain_control.py": "eba02484ecad095fd74b4c85c4fec8f9a97af419219b475677ddb454dae8f017",
     "tools/archive_resume/resumable_publisher.py": "0347b7d93fa47bdd79b964f373cc0a9ff6c7d9ccd913a4470c97fb1f251d51e0",
     "tools/archive_resume/test_chain_control.py": "07f3a6509be716b4ae08ddfede213267bbe2d82a5dcd5974cb6eebdba7768e49",
-    "tools/archive_resume/test_halt_recovery.py": "c0daaaa435d2754ca61e91af1112d730f3b853be22f380f54cd2e051059f2c18",
+    "tools/archive_resume/test_halt_recovery.py": "6aef175f61ed3b11fc3cfedad1f4a9daa4de86438490e4541d6abcc22d120fef",
     "tools/archive_resume/test_resumable_publisher.py": "68c8570a35af39fe9c489232101defbc630ff32f39fe7ca0f3e03deb7a09ffa3"
   },
   "hard_seconds": 20400,

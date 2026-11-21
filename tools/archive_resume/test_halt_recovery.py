@@ -1,4 +1,4 @@
-"""Credential-free tests for the one pinned, publicly resolved HALT import."""
+"""Credential-free tests for the pinned HALT import and its public proofs."""
 import copy
 import hashlib
 import io
@@ -13,16 +13,22 @@ from test_chain_control import GithubArtifact, Public, checkpoint, fixture, iden
 
 
 class RecoveryPublic(Public):
-    """Publish the ambiguous object and the selected durable ACKs."""
+    """Publish the ambiguous objects and the selected durable ACKs."""
 
-    def __init__(self, records, payload, *, ack_names=("00jst0", "60abcd"), missing=False,
+    def __init__(self, records, payloads, *, ack_names=("00jst0", "60abcd"), missing=False,
                  wrong=False, wrong_ack=False, owner=False, status=200,
-                 encoding="identity", length=None, body=None, unavailable=False):
+                 encoding="identity", length=None, body=None, unavailable=False,
+                 fault_target="qk7doc"):
         visible = {name: row for name, row in records.items()
-                   if (name == "iwbf95" and not missing) or name in ack_names}
+                   if (name in payloads and not (missing and name == fault_target))
+                   or name in ack_names}
         super().__init__(visible, include_staged=True, wrong=wrong)
-        self.payload = payload if body is None else body
-        self.length = len(payload) if length is None else length
+        self.expected_urls = {
+            "https://archive.org/download/" + records[name]["item"] + "/" + records[name]["path"]: name
+            for name in payloads
+        }
+        self.payloads = payloads
+        self.fault_target, self.length, self.body = fault_target, length, body
         self.owner, self.status, self.encoding = owner, status, encoding
         self.unavailable = unavailable
         self.wrong_ack = wrong_ack
@@ -40,12 +46,15 @@ class RecoveryPublic(Public):
 
     def open(self, url, headers=None, timeout=60):
         self.opens.append((url, headers, timeout))
-        if self.unavailable:
+        name = self.expected_urls[url]
+        fault = name == self.fault_target
+        if fault and self.unavailable:
             raise OSError("fixture download unavailable")
-        response = io.BytesIO(self.payload)
-        response.status = self.status
-        response.headers = {"Content-Length": str(self.length),
-                            "Content-Encoding": self.encoding}
+        payload = self.payloads[name]
+        response = io.BytesIO(self.body if fault and self.body is not None else payload)
+        response.status = self.status if fault else 200
+        response.headers = {"Content-Length": str(self.length if fault and self.length is not None else len(payload)),
+                            "Content-Encoding": self.encoding if fault else "identity"}
         return response
 
 
@@ -56,26 +65,28 @@ class HaltRecoveryTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.source = self.root / "frozen"
         self.inventory, self.plan, self.records = fixture(self.source, staged=True)
-        self.payload = b"exact public bytes for the ambiguous iwbf95 fixture\n"
+        self.payloads = {name: f"exact public bytes for the ambiguous {name} fixture\n".encode()
+                         for name in ("iwbf95", "qk7doc")}
         self.pin = copy.deepcopy(c.HALT_RECOVERY)
         self.pin.pop("halt_reason", None)
         self.pin["segment"] = 3
         self.pin["never_submitted_staged"] = ["jzpao2", "k0jfna"]
-        self.pin["unresolved_put"] = {
-            "item": c.layout.ITEMS[0], "path": "packs/iwbf95",
-            "size": len(self.payload),
-            "md5": hashlib.md5(self.payload).hexdigest(),
-            "sha256": hashlib.sha256(self.payload).hexdigest(),
-        }
+        self.targets = [
+            {"item": c.layout.ITEMS[number], "path": "packs/" + name, "size": len(payload),
+             "md5": hashlib.md5(payload).hexdigest(), "sha256": hashlib.sha256(payload).hexdigest()}
+            for number, (name, payload) in enumerate(self.payloads.items())
+        ]
+        self.pin["unresolved_puts"] = copy.deepcopy(self.targets)
         self.records["k0jfna"] = {
             **self.records["jzpao2"], "path": "packs/k0jfna", "size": 4494,
             "sha256": "7" * 64, "md5": "6" * 32,
         }
-        self.records["iwbf95"] = {**self.pin["unresolved_put"], "status": "STAGED"}
+        for target in self.targets:
+            self.records[target["path"][6:]] = {**target, "status": "STAGED"}
         self.records["60abcd"] = {
             **self.records["k0jfna"], "path": "packs/60abcd", "status": "PUT_ACKNOWLEDGED",
         }
-        additional = ("k0jfna", "iwbf95", "60abcd")
+        additional = ("k0jfna", *self.payloads, "60abcd")
         for name in additional:
             row = self.records[name]
             self.inventory["objects"][name] = {
@@ -98,12 +109,16 @@ class HaltRecoveryTests(unittest.TestCase):
                      "run_attempt": 1, "source_sha": self.pin["source_sha"],
                      "workflow_path": c.WORKFLOW, "segment": 3,
                      "parent": copy.deepcopy(self.pin["parent"])},
-            unresolved_puts=[copy.deepcopy(self.pin["unresolved_put"])],
+            unresolved_puts=copy.deepcopy(self.targets),
             never_submitted_staged=["jzpao2", "k0jfna"],
         )
+        first, second = self.targets
         self.trace_events = [
-            {"type": kind, "attempt": 1, **self.pin["unresolved_put"]}
-            for kind in ("put_begin", "put_unresolved")]
+            {"type": "put_begin", "attempt": 1, **second},
+            {"type": "put_begin", "attempt": 2, **first},
+            {"type": "put_unresolved", "attempt": 2, **first},
+            {"type": "put_unresolved", "attempt": 1, **second},
+        ]
         self.write_trace()
         self.repin()
         self.current = {**identity(), "run_id": self.pin["run_id"] + 100}
@@ -142,7 +157,7 @@ class HaltRecoveryTests(unittest.TestCase):
         return c.validate_halt_recovery(self.source, self.inventory, self.plan)
 
     def public(self, **kwargs):
-        return RecoveryPublic(self.records, self.payload, **kwargs)
+        return RecoveryPublic(self.records, self.payloads, **kwargs)
 
     def github(self):
         pin = self.pin
@@ -253,6 +268,7 @@ class HaltRecoveryTests(unittest.TestCase):
         changes = [("status", "PAUSED_BUDGET"), ("phase", "index"),
                    ("all_workers_reaped", False), ("active_workers", 1),
                    ("active_puts", 1), ("unresolved_puts", []),
+                   ("unresolved_puts", list(reversed(self.targets))),
                    ("never_submitted_staged", ["iwbf95", "jzpao2", "k0jfna"]),
                    ("never_submitted_index_staged", ["catalog"]),
                    ("credentials_in_receipt", True), ("identity_sha256", "f" * 64),
@@ -297,8 +313,8 @@ class HaltRecoveryTests(unittest.TestCase):
             self.validate()
 
     def test_extra_unresolved_put_cannot_be_adopted(self):
-        extra = {key: self.records["k0jfna"][key] for key in self.pin["unresolved_put"]}
-        self.trace_events.extend({"type": kind, "attempt": 2, **extra}
+        extra = {key: self.records["k0jfna"][key] for key in self.targets[0]}
+        self.trace_events.extend({"type": kind, "attempt": 3, **extra}
                                  for kind in ("put_begin", "put_unresolved"))
         self.receipt["unresolved_puts"].append(extra)
         self.receipt["never_submitted_staged"] = ["jzpao2"]
@@ -309,11 +325,22 @@ class HaltRecoveryTests(unittest.TestCase):
 
     def test_duplicate_ack_or_finish_does_not_resolve_ambiguous_attempt(self):
         self.trace_events.append({"type": "put_ack", "attempt": 1,
-                                  **self.pin["unresolved_put"]})
+                                  **self.targets[1]})
         self.write_trace()
         self.repin()
         with self.assertRaises(c.ChainError):
             self.validate()
+
+    def test_trace_cannot_resolve_or_replace_the_second_pinned_target(self):
+        original = self.trace_events.copy()
+        for event in ({**original[-1], "type": "put_ack"},
+                      {**original[-1], "sha256": "a" * 64}):
+            with self.subTest(event=event):
+                self.trace_events[-1] = event
+                self.write_trace()
+                self.repin()
+                with self.assertRaises(c.ChainError):
+                    self.validate()
 
     def test_ack_demotion_in_durable_events_is_rejected(self):
         with (self.source / "journal.events.jsonl").open("ab") as stream:
@@ -329,53 +356,56 @@ class HaltRecoveryTests(unittest.TestCase):
         before = c.raw_journals(self.source)
         public = self.public(ack_names=())
         checks = c.check_halt_recovery_public(records, public)
-        self.assertIsInstance(checks, dict)
         self.assertEqual(checks["acknowledged_metadata_verified"], [])
-        self.assertTrue(public.opens)
-        url = public.opens[0][0]
-        self.assertIn(self.pin["unresolved_put"]["item"], url)
-        self.assertIn("packs/iwbf95", url)
+        self.assertEqual(checks["full_body_verified"], self.targets)
+        self.assertEqual(checks["visible_exact_size_md5_checked"], 2)
+        self.assertEqual([url for url, _, _ in public.opens], list(public.expected_urls))
         self.assertEqual(c.raw_journals(self.source), before)
         self.assertEqual(records["objects"]["00jst0"]["status"], "PUT_ACKNOWLEDGED")
+        payload = self.payloads["qk7doc"]
         cases = [dict(missing=True), dict(wrong=True), dict(wrong_ack=True), dict(owner=True),
                  dict(unavailable=True), dict(status=206), dict(encoding="gzip"),
-                 dict(length=len(self.payload) - 1), dict(body=self.payload[:-1]),
-                 dict(body=self.payload + b"!"), dict(body=b"x" * len(self.payload))]
+                 dict(length=len(payload) - 1), dict(body=payload[:-1]),
+                 dict(body=payload + b"!"), dict(body=b"x" * len(payload)),
+                 dict(body=self.payloads["iwbf95"])]
         for kwargs in cases:
             with self.subTest(kwargs=kwargs), self.assertRaises((c.ChainError, c.u.Failure, OSError)):
                 c.check_halt_recovery_public(records, self.public(**kwargs))
         self.assertEqual(c.raw_journals(self.source), before)
 
     def test_drained_metadata_halt_preserves_acks_and_requires_complete_trace(self):
-        target = self.pin["unresolved_put"]
         reason = {"exception_class": "Failure", "phase": "data",
                   "public_message": "Bounded public metadata request failed"}
-        self.pin.update(unresolved_put=None, halt_reason=reason)
+        self.pin.update(unresolved_puts=[], halt_reason=reason)
         self.receipt.update(unresolved_puts=[], halt_reason=reason)
-        self.records["iwbf95"] = {**target, "status": "PUT_ACKNOWLEDGED"}
+        for target in self.targets:
+            self.records[target["path"][6:]] = {**target, "status": "PUT_ACKNOWLEDGED"}
         self.receipt["counts"] = c._record_counts({"objects": self.records})
         with (self.source / c.JOURNALS[1]).open("ab") as stream:
-            stream.write(c.u.canonical({"type": "objects", "name": "iwbf95",
-                                        "record": self.records["iwbf95"]}))
+            for name in self.payloads:
+                stream.write(c.u.canonical({"type": "objects", "name": name,
+                                            "record": self.records[name]}))
             stream.write(c.u.canonical({"type": "status", "status": "SEGMENT_HALTED"}))
         self.repin()
         with self.assertRaisesRegex(c.ChainError, "unambiguous result"):
             self.validate()
-        self.trace_events.extend({"type": kind, "attempt": 2, **target}
-                                 for kind in ("put_begin", "put_ack"))
+        for number, target in enumerate(self.targets, start=3):
+            self.trace_events.extend({"type": kind, "attempt": number, **target}
+                                     for kind in ("put_begin", "put_ack"))
         self.write_trace()
         self.repin()
-        public = self.public(ack_names=("iwbf95",))
+        public = self.public(ack_names=("iwbf95",), missing=True)
         work, receipt = self.import_checkpoint(public)
         self.assert_originals(work)
         self.assertEqual(receipt["status"], "DRAINED_METADATA_HALT_IMPORTED")
         self.assertEqual(receipt["public_checks"]["acknowledged_metadata_verified"], ["iwbf95"])
-        self.assertEqual(receipt["counts_at_import"]["PUT_ACKNOWLEDGED"], 2)
+        self.assertEqual(receipt["public_checks"]["full_body_verified"], [])
+        self.assertEqual(receipt["counts_at_import"]["PUT_ACKNOWLEDGED"], 3)
         self.assertFalse(receipt["public_checks"]["missing_ack_allows_reput"])
         self.assertEqual(public.opens, [])
         self.assertEqual(receipt["account_writes"], 0)
 
-    def test_import_preserves_all_originals_and_appends_only_one_metadata_promotion(self):
+    def test_import_preserves_all_originals_and_appends_only_two_verified_promotions(self):
         work, receipt = self.import_checkpoint(self.public(ack_names=()))
         self.assert_originals(work)
         self.assertNotIn(receipt["status"], ("HALTED", "PAUSED_BUDGET", "COMPLETE",
@@ -383,13 +413,15 @@ class HaltRecoveryTests(unittest.TestCase):
         self.assertEqual(receipt["account_writes"], 0)
         self.assertEqual((work / "journal.json").read_bytes(),
                          (self.source / "journal.json").read_bytes())
-        promoted = {**self.records["iwbf95"], "status": "REMOTE_METADATA_VERIFIED"}
-        suffix = c.u.canonical({"type": "objects", "name": "iwbf95", "record": promoted})
+        promoted = {name: {**self.records[name], "status": "REMOTE_METADATA_VERIFIED"}
+                    for name in self.payloads}
+        suffix = b"".join(c.u.canonical({"type": "objects", "name": name, "record": row})
+                          for name, row in promoted.items())
         self.assertEqual((work / "journal.events.jsonl").read_bytes(),
                          (self.source / "journal.events.jsonl").read_bytes() + suffix)
         records = c.validate_halt_bootstrap(work, receipt, self.current,
                                             self.inventory, self.plan)
-        self.assertEqual(records["objects"], {**self.records, "iwbf95": promoted})
+        self.assertEqual(records["objects"], {**self.records, **promoted})
         self.assertEqual(sum(row["status"] == "STAGED" for row in records["objects"].values()), 2)
         self.assertFalse((work / c.TRACE).exists())
         self.assertTrue((work / c.RESOLUTION_AUDIT).is_file())
@@ -400,12 +432,12 @@ class HaltRecoveryTests(unittest.TestCase):
                 public = self.public(ack_names=acknowledgments)
                 work, receipt = self.import_checkpoint(public, name="runner-" + str(len(acknowledgments)))
                 self.assert_originals(work)
-                self.assertEqual(len(public.opens), 1)
+                self.assertEqual(len(public.opens), len(self.targets))
                 self.assertEqual(receipt["public_checks"]["acknowledged_metadata_verified"],
                                  list(acknowledgments))
                 promoted = {
                     name: {**self.records[name], "status": "REMOTE_METADATA_VERIFIED"}
-                    for name in ("iwbf95", *acknowledgments)
+                    for name in (*self.payloads, *acknowledgments)
                 }
                 suffix = b"".join(c.u.canonical({"type": "objects", "name": name, "record": row})
                                   for name, row in promoted.items())
@@ -417,30 +449,50 @@ class HaltRecoveryTests(unittest.TestCase):
                 self.assertEqual(receipt["counts_at_import"].get("PUT_ACKNOWLEDGED", 0),
                                  2 - len(acknowledgments))
                 self.assertEqual(receipt["counts_at_import"]["REMOTE_METADATA_VERIFIED"],
-                                 1 + len(acknowledgments))
+                                 len(self.targets) + len(acknowledgments))
 
-    def test_bootstrap_rejects_reordered_or_duplicate_ack_appends_with_matching_hash(self):
+    def test_bootstrap_rejects_reordered_or_duplicate_appends_with_matching_hash(self):
         work, receipt = self.import_checkpoint()
         events = work / "journal.events.jsonl"
         prefix = (self.source / "journal.events.jsonl").read_bytes()
-        target, first_ack, second_ack = events.read_bytes()[len(prefix):].splitlines(keepends=True)
-        for suffix in (target + second_ack + first_ack, target + first_ack + first_ack):
+        first, second, first_ack, second_ack = events.read_bytes()[len(prefix):].splitlines(keepends=True)
+        for suffix in (second + first + first_ack + second_ack,
+                       first + first + first_ack + second_ack,
+                       first + second + second_ack + first_ack,
+                       first + second + first_ack + first_ack):
             with self.subTest(suffix=suffix):
                 events.write_bytes(prefix + suffix)
                 changed = {**receipt, "raw_journal_sha256": c.raw_journals(work)}
                 with self.assertRaises(c.ChainError):
                     c.validate_halt_bootstrap(work, changed, self.current, self.inventory, self.plan)
 
-    def test_failed_public_proof_cannot_create_promoted_bootstrap(self):
+    def test_bootstrap_rejects_missing_mismatched_or_reordered_full_body_proof(self):
+        work, receipt = self.import_checkpoint()
+        audit_path = work / c.RESOLUTION_AUDIT
+        audit = c.read_json(audit_path)
+        first, second = self.targets
+        for proof in ([first], [second, first], [first, first],
+                      [first, {**second, "sha256": first["sha256"]}]):
+            with self.subTest(proof=proof):
+                checks = {**audit["public_checks"], "full_body_verified": proof}
+                audit_path.write_bytes(c.u.canonical({**audit, "public_checks": checks}))
+                changed = {**receipt, "public_checks": checks,
+                           "resolution_audit_sha256": c.file_sha(audit_path)}
+                with self.assertRaisesRegex(c.ChainError, "public resolution proof"):
+                    c.validate_halt_bootstrap(work, changed, self.current, self.inventory, self.plan)
+
+    def test_second_failed_public_proof_cannot_commit_first_promotion(self):
         runner = self.root / "failed-runner"
         runner.mkdir()
         work = c.initialize_bootstrap_evidence(runner)
         github, _ = self.github()
+        public = self.public(body=self.payloads["iwbf95"])
         with self.assertRaises((c.ChainError, c.u.Failure, OSError)):
             c.import_halt_recovery(github, self.current, self.root / "failed-incoming",
-                                   work, self.inventory, self.plan,
-                                   self.public(body=self.payload[:-1]))
+                                   work, self.inventory, self.plan, public)
+        self.assertEqual([url for url, _, _ in public.opens], list(public.expected_urls))
         self.assertEqual(c.read_json(work / "bootstrap.json")["status"], "HALTED")
+        self.assertFalse((work / c.RESOLUTION_AUDIT).exists())
         events = work / "journal.events.jsonl"
         if events.exists():
             self.assertEqual(events.read_bytes(),
