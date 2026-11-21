@@ -204,24 +204,7 @@ func selfServeStatic() bool {
 // cacheDir returns the directory (with a trailing slash) where cached packs are stored and looked up.
 // It's cdn_cache_dir, with ~ expanded; when empty (the PC default) it is the local static/ folder.
 func cacheDir() string {
-	dir := ""
-	if config.Conf.CdnCacheDir != nil {
-		dir = *config.Conf.CdnCacheDir
-	}
-	if dir == "" {
-		// empty (the PC default) means the local static/ folder next to the server.
-		// StaticDataPath already ends in "/", so return it directly.
-		return config.StaticDataPath
-	}
-	if strings.HasPrefix(dir, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			dir = home + dir[1:]
-		}
-	}
-	if !strings.HasSuffix(dir, "/") {
-		dir += "/"
-	}
-	return dir
+	return config.CdnPackDirectory()
 }
 
 // packPath returns the canonical cache path for a pack/metapack file: directly under the cache dir.

@@ -39,6 +39,28 @@ type RuntimeConfig struct {
 // the shared sukusta folder, so the cache lines up with the game and llas_asset_extractor.py.
 const DefaultCdnCacheDir = "~/storage/downloads/sukusta/packs"
 
+// CdnPackDirectory returns the directory that stores locally available packs.
+func CdnPackDirectory() string {
+	dir := ""
+	if Conf.CdnCacheDir != nil {
+		dir = *Conf.CdnCacheDir
+	}
+	if dir == "" {
+		// empty (the PC default) means the local static/ folder next to the server.
+		// StaticDataPath already ends in "/", so return it directly.
+		return StaticDataPath
+	}
+	if strings.HasPrefix(dir, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			dir = home + dir[1:]
+		}
+	}
+	if !strings.HasSuffix(dir, "/") {
+		dir += "/"
+	}
+	return dir
+}
+
 // DefaultCdnServer is the original-game source, separate from client-facing mod URLs.
 const DefaultCdnServer = "https://llsifas.imsofucking.gay/static/"
 
