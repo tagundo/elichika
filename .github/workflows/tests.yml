@@ -273,6 +273,7 @@ jobs:
           node tests/mv_studio_flare_test.js
           node tests/mv_studio_stage_overlay_test.js
           node tests/mv_studio_stage_beam_test.js
+          node tests/mv_studio_laser_cores_test.js
           node tests/mv_studio_title_test.js
           node tests/mv_studio_speed_back_test.js
           node tests/mv_studio_center_stars_test.js
