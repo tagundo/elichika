@@ -1,48 +1,20 @@
-# Builds the standalone elichika Android server app (see android/README.md).
-#
-# This is the "update = rebuild" path: it pulls the latest server (this repo) and
-# the latest modding tools (SIFAS-MODDING-HELPING-TOOLS), assembles everything the
-# app bundles, and produces an installable debug-signed APK as an artifact. No
-# local Android toolchain needed.
-
+# Builds the signed Elichika Android preview and encrypts it for the preview recipient.
 name: Build Android APK
 
 on:
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: "CalVer tag to publish a GitHub Release as (e.g. v2026.07.02.1). The tag is created on the run's commit — no local git needed. Leave blank to only build APK artifacts."
-        required: false
-        default: ""
-      release_notes:
-        description: "Optional text shown at the TOP of the release notes (above the auto-generated changelog). Use for user-facing highlights, e.g. changed defaults."
-        required: false
-        default: ""
       build_version:
-        description: "Artifact-only APK version YYYY.MM.DD[.N] (e.g. 2026.11.04.2). Does not publish a release. Leave release_tag blank."
-        required: false
-        default: ""
-  push:
-    # No paths filter: the APK bundles the whole Go server, so any source change
-    # (clientdb/, config/, handler/, …) must trigger a rebuild. A narrow filter
-    # previously skipped a clientdb/ fix and shipped a stale APK.
-    branches: [claude/elichika-apk-build-wwkuu3, main, codex/release-readiness-audit, codex/first-lesson-rank-compat, codex/console-tools-release]
-    # Pushing a CalVer tag (vYYYY.MM.DD, e.g. v2026.07.02) builds a release-signed APK and publishes it
-    # to a GitHub Release. See android/README.md for the one-time secret setup.
-    tags: ['v*']
+        description: "Android preview version (YYYY.MM.DD[.N])."
+        required: true
+        default: "2026.11.22.2"
 
 permissions:
-  contents: write   # needed to create a GitHub Release on tag builds
-  actions: read
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    outputs:
-      apk_sha256: ${{ steps.layout.outputs.sha256 }}
-      version_name: ${{ steps.ver.outputs.name }}
-      version_code: ${{ steps.ver.outputs.code }}
-      noop_probe_sha256: ${{ steps.noop_probe.outputs.sha256 }}
     env:
       NDK_VERSION: "28.2.13676358"
       PYTHONDONTWRITEBYTECODE: "1"
@@ -59,12 +31,10 @@ jobs:
       - name: Derive app version (CalVer)
         id: ver
         env:
-          REL_TAG: ${{ github.event.inputs.release_tag }}
           BUILD_VERSION: ${{ github.event.inputs.build_version }}
         run: |
           python3 android/ci/app_version.py \
-            --release-tag "${REL_TAG:-}" \
-            --build-version "${BUILD_VERSION:-}" \
+            --build-version "$BUILD_VERSION" \
             --ref "$GITHUB_REF" \
             --github-output "$GITHUB_OUTPUT"
 
@@ -335,53 +305,19 @@ jobs:
           -PappVersionName="${{ steps.ver.outputs.name }}"
           -PappVersionCode="${{ steps.ver.outputs.code }}"
 
-      - name: Build debug APK
-        working-directory: android
-        run: >-
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
-          -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}"
-          -PappVersionName="${{ steps.ver.outputs.name }}"
-          -PappVersionCode="${{ steps.ver.outputs.code }}"
-
-      - name: Rename debug APK
-        run: |
-          set -eu
-          d=android/app/build/outputs/apk/debug
-          mv "$d/app-debug.apk" "$d/elichika-${{ steps.ver.outputs.name }}-debug.apk"
-
-      - name: Bind debug texture editor resources and Python code to reviewed sources
-        run: |
-          python3 -m unittest discover -s tests -p test_android_texture_editor_packaging.py -v
-          python3 android/ci/verify_texture_editor_apk.py \
-            "android/app/build/outputs/apk/debug/elichika-${{ steps.ver.outputs.name }}-debug.apk" \
-            --report android-debug-texture-editor.json
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-      # --- Release-signed build (for public GitHub Release distribution) --------
-      # Requires four repo secrets (one-time setup, see android/README.md):
-      #   RELEASE_KEYSTORE_BASE64  - base64 of your private .keystore (NEVER committed)
-      #   RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD
-      # Without them, the release build falls back to the committed debug key.
-      - name: Decode release keystore
+      - name: Prepare official Android signing key
         id: relkey
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
-          set -eu
-          if [ -n "${RELEASE_KEYSTORE_BASE64:-}" ]; then
-            echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
-            echo "have_key=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "have_key=false" >> "$GITHUB_OUTPUT"
-            echo "No RELEASE_KEYSTORE_BASE64 secret; release APK will use the debug key."
+          set -euo pipefail
+          if [ -z "${RELEASE_KEYSTORE_BASE64:-}" ]; then
+            echo "Official Android signing key is unavailable." >&2
+            exit 1
           fi
+          umask 077
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
 
       - name: Build release APK
         working-directory: android
@@ -407,12 +343,12 @@ jobs:
 
       - name: Bind release texture editor resources and Python code to reviewed sources
         run: |
+          python3 -m unittest discover -s tests -p test_android_texture_editor_packaging.py -v
           python3 android/ci/verify_texture_editor_apk.py \
             "android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk" \
             --report android-texture-editor.json
 
       - name: Reject incompatible native files in the actual APK
-        id: layout
         run: |
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/elichika-${{ steps.ver.outputs.name }}.apk
@@ -421,7 +357,6 @@ jobs:
           python3 android/ci/verify_texture65_apk.py "$APK" --report android-texture65-decoder.json
           python3 android/ci/verify_installer_apk.py "$APK" --report android-installer-resources.json
           python3 payload_revision.py verify-apk --apk "$APK" --report payload-revision-audit.json
-          echo "sha256=$(sha256sum "$APK" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
 
       - name: Upload native layout evidence
         if: always()
@@ -433,7 +368,6 @@ jobs:
             android-hca-decoder.json
             android-texture65-decoder.json
             android-installer-resources.json
-            android-debug-texture-editor.json
             android-texture-editor.json
             android/app/build/generated/texture65/reports/*.json
           if-no-files-found: warn
@@ -446,128 +380,65 @@ jobs:
           path: payload-revision-audit.json
           if-no-files-found: warn
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
-
-      - name: Assemble Android native-package instrumentation
-        working-directory: android
+      - name: Verify official signing and encrypt the Android preview
         env:
-          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          EXPECTED_VERSION: ${{ steps.ver.outputs.name }}
+          EXPECTED_VERSION_CODE: ${{ steps.ver.outputs.code }}
+          EXPECTED_CERT_SHA256: fed020601692d2e759286831ad229f0c8e4562a8e90f9067d7472fa5fc99f930
         run: |
           set -euo pipefail
-          mkdir -p app/src/androidTest/assets
-          cp ../tests/android_native_functional.py app/src/androidTest/assets/native_python_checks.py
-          cp ../tests/android_payload_upgrade_benchmark.py app/src/androidTest/assets/android_payload_upgrade_benchmark.py
-          cp ../tests/android_payload_merge_benchmark.py app/src/androidTest/assets/android_payload_merge_benchmark.py
-          ./gradlew :app:assembleReleaseAndroidTest --no-daemon --stacktrace \
-            -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
-            -PappVersionName="${{ steps.ver.outputs.name }}" \
-            -PappVersionCode="${{ steps.ver.outputs.code }}"
-          test_apks=(app/build/outputs/apk/androidTest/release/*.apk)
-          test "${#test_apks[@]}" -eq 1
-          test -f "${test_apks[0]}"
-          python3 ../payload_revision.py verify-apk \
-            --apk "${test_apks[0]}" \
-            --report "$GITHUB_WORKSPACE/instrumentation-payload-revision-audit.json"
+          sdk_tools="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          apk="android/app/build/outputs/apk/release/elichika-$EXPECTED_VERSION.apk"
+          recipient="$GITHUB_WORKSPACE/mv_studio_preview_recipient.pem"
+          delivery="$RUNNER_TEMP/elichika-private-android"
+          mkdir -p "$delivery"
+          "$sdk_tools/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/android-preview-signature.txt"
+          "$sdk_tools/aapt" dump badging "$apk" > "$RUNNER_TEMP/android-preview-badging.txt"
+          python3 - "$apk" "$delivery" <<'PYTHON'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+          import sys
 
-      - name: Upload instrumentation APK payload revision evidence
-        if: always()
+          apk, delivery = map(Path, sys.argv[1:])
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          signature = (tmp / "android-preview-signature.txt").read_text()
+          signer = re.findall(r"^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]{64})$", signature, re.M)
+          if [digest.lower() for digest in signer] != [os.environ["EXPECTED_CERT_SHA256"]]:
+              raise SystemExit("APK signer does not match the official installation certificate.")
+          badging = (tmp / "android-preview-badging.txt").read_text()
+          package = re.search(r"^package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", badging, re.M)
+          expected = ("com.tagundo.elichika", os.environ["EXPECTED_VERSION_CODE"], os.environ["EXPECTED_VERSION"])
+          if package is None or package.groups() != expected or re.search(r"^application-debuggable$", badging, re.M):
+              raise SystemExit("APK identity or release build type does not match the preview request.")
+          with apk.open("rb") as payload:
+              digest = hashlib.file_digest(payload, "sha256").hexdigest()
+          report = {
+              "file": apk.name,
+              "bytes": apk.stat().st_size,
+              "sha256": digest,
+              "signerCertificateSha256": signer[0].lower(),
+              "package": package[1],
+              "versionCode": int(package[2]),
+              "versionName": package[3],
+              "serverCommit": os.environ["GITHUB_SHA"],
+              "modtoolsCommit": subprocess.check_output(["git", "-C", "modtools", "rev-parse", "HEAD"], text=True).strip(),
+          }
+          (delivery / "android-private-build.json").write_text(json.dumps(report, indent=2) + "\n")
+          PYTHON
+          openssl cms -encrypt -binary -aes256 -stream -outform DER \
+            -in "$apk" -out "$delivery/$(basename "$apk").p7m" "$recipient"
+          test -s "$delivery/$(basename "$apk").p7m"
+
+      - name: Upload encrypted Android preview
         uses: actions/upload-artifact@v4
         with:
-          name: instrumentation-payload-revision-audit-evidence
-          path: instrumentation-payload-revision-audit.json
-          if-no-files-found: warn
-
-      - name: Upload native-package instrumentation APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-native-test-apk
-          path: android/app/build/outputs/apk/androidTest/release/*.apk
+          name: elichika-private-android
+          path: |
+            ${{ runner.temp }}/elichika-private-android/*.apk.p7m
+            ${{ runner.temp }}/elichika-private-android/android-private-build.json
+          compression-level: 0
           if-no-files-found: error
-
-      - name: Build a QA-only same-data APK with a different application version
-        id: noop_probe
-        working-directory: android
-        env:
-          RELEASE_KEYSTORE_FILE: ${{ steps.relkey.outputs.path }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-          PRODUCTION_VERSION_NAME: ${{ steps.ver.outputs.name }}
-          PRODUCTION_VERSION_CODE: ${{ steps.ver.outputs.code }}
-        run: |
-          set -euo pipefail
-          probe_code=$((PRODUCTION_VERSION_CODE + 1))
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace \
-            -PchaquopyWheelhouse="${{ steps.python_wheels.outputs.path }}" \
-            -PappVersionName="${PRODUCTION_VERSION_NAME}-qa-noop" \
-            -PappVersionCode="$probe_code"
-          mkdir -p "$GITHUB_WORKSPACE/noop-probe"
-          cp app/build/outputs/apk/release/app-release.apk \
-            "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk"
-          python3 ../payload_revision.py verify-apk \
-            --apk "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk" \
-            --report "$GITHUB_WORKSPACE/noop-probe-audit.json"
-          echo "sha256=$(sha256sum "$GITHUB_WORKSPACE/noop-probe/elichika-revision-noop-probe.apk" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload QA-only version-change probe separately from the release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-revision-noop-probe-apk
-          path: noop-probe/*.apk
-          if-no-files-found: error
-
-  native-compatibility:
-    needs: build
-    uses: ./.github/workflows/android-16k.yml
-    with:
-      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      version_name: ${{ needs.build.outputs.version_name }}
-
-  android-upgrade:
-    needs: build
-    uses: ./.github/workflows/android-smoke.yml
-    with:
-      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      version_name: ${{ needs.build.outputs.version_name }}
-      version_code: ${{ needs.build.outputs.version_code }}
-      noop_probe_sha256: ${{ needs.build.outputs.noop_probe_sha256 }}
-
-  apk-audit:
-    needs: build
-    uses: ./.github/workflows/release-audit.yml
-    with:
-      candidate_sha256: ${{ needs.build.outputs.apk_sha256 }}
-      version_name: ${{ needs.build.outputs.version_name }}
-      version_code: ${{ needs.build.outputs.version_code }}
-      source_commit: ${{ github.sha }}
-
-  publish:
-    needs: [build, native-compatibility, android-upgrade, apk-audit]
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download validated release APK
-        uses: actions/download-artifact@v4
-        with:
-          name: elichika-release-apk
-          path: release
-
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.release_tag }}
-          target_commitish: ${{ github.sha }}
-          files: release/*.apk
-          # release_notes (if given) appears at the top; with
-          # generate_release_notes the changelog is appended below it.
-          body: ${{ github.event.inputs.release_notes }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true

@@ -10,7 +10,7 @@ import androidx.webkit.WebViewFeature
 import org.json.JSONObject
 import java.util.UUID
 
-/** Two native destinations share one live tool document, model and authoring session. */
+/** Asset tools, the model viewer, and MV Studio share one live tool document. */
 internal class AssetNavigationBridge(
     private val activity: Activity,
     private val onSection: (WebView, String, Boolean) -> Unit,
@@ -35,8 +35,8 @@ internal class AssetNavigationBridge(
     fun onPageFinished(view: WebView) {
         if (!trustedView(view)) return
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            // Older providers get two fixed navigation commands, never a Java
-            // object exposed to arbitrary frames or loaded model content.
+            // Older providers get the same fixed section messages through a
+            // capability URL scoped to this loaded document.
             val token = UUID.randomUUID().toString()
             legacyTokens[view] = token
             view.evaluateJavascript("""
@@ -45,7 +45,7 @@ internal class AssetNavigationBridge(
                   var capability='$token';
                   window.$BRIDGE={postMessage:function(raw){
                     var value;try{value=JSON.parse(raw);}catch(e){return;}
-                    if(!value||(value.section!=='tools'&&value.section!=='viewer'))return;
+                    if(!value||(value.section!=='tools'&&value.section!=='viewer'&&value.section!=='mv'))return;
                     if(value.event!=='ready'&&value.event!=='change')return;
                     location.href='$SCHEME://'+value.event+'/'+value.section+'?token='+capability;
                   }};
@@ -104,7 +104,7 @@ internal class AssetNavigationBridge(
         const val ORIGIN = "http://127.0.0.1:8770"
         private const val BRIDGE = "ElichikaNavigationNative"
         private const val SCHEME = "elichika-asset-navigation"
-        private val SECTIONS = setOf("tools", "viewer")
+        private val SECTIONS = setOf("tools", "viewer", "mv")
         private val queries = Lang.SUPPORTED.map { "embedded=1&lang=$it" }.toSet()
 
         fun pageUrl(language: String): String {

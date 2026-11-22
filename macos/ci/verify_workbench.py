@@ -125,6 +125,12 @@ shutil.copy2(repo / 'tests/test_admin_costume_thumbnails.py', test_stage / 'test
 for name in numeric_fixtures:
     shutil.copy2(test_source / 'fixtures' / name, test_stage / 'fixtures' / name)
 static_files = ['vendor/three-r128/three.min.js', 'style.css', 'platform.js', 'viewer-physics.js',
+    'mv-studio.js', 'mv-studio.css', 'mv-studio-scene.js',
+    'mv-studio-lighting.js', 'mv-studio-penlight.js', 'mv-studio-props.js', 'mv-studio-split.js',
+    'mv-studio-stage-material.js', 'mv-studio-stage-coloring.js', 'mv-studio-physics.js',
+    'mv-studio-stage-display.js', 'mv-studio-stage-motion.js', 'mv-studio-post.js',
+    'mv-studio-dof-focus.js', 'mv-studio-dof.js', 'mv-studio-hdr.js',
+    'mv-studio-flare.js', 'mv-studio-stage-overlay.js', 'mv-studio-shaft.js', 'mv-studio-title.js',
     'model-viewer.js', 'viewer-rig.js', 'panel-settings.js',
     'viewer-signed-inputs.js', 'viewer-signed-inputs.css', 'viewer-editing.js',
     'texture-png.js', 'texture-color-math.js', 'texture-color-worker.js',

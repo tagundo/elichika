@@ -19,6 +19,9 @@ func skip(ctx *gin.Context) {
 	utils.CheckErr(err)
 
 	session := ctx.MustGet("session").(*userdata.Session)
+	if !requireRhythmChart(ctx, session, req.LiveDifficultyMasterId) {
+		return
+	}
 
 	resp := user_live.SkipLive(session, req)
 

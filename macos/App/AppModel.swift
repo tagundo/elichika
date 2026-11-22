@@ -650,10 +650,10 @@ final class AppModel: ObservableObject {
     }
 
     func perform(_ action: String) {
-        guard ["openModel", "saveModel", "showViewer"].contains(action), toolsReady else { return }
-        selectedSection = .viewer
+        guard let command = AssetEditorCommand(rawValue: action), toolsReady else { return }
+        selectedSection = command.surface.appSection
         let session = browser(.assets)
-        session.setEditorSurface(.viewer)
+        session.setEditorSurface(command.surface)
         session.perform(action)
     }
 

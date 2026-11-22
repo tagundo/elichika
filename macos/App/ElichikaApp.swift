@@ -16,11 +16,19 @@ struct ElichikaMacApp: App {
         .defaultSize(width: 1280, height: 860)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button(model.text("Open model…", "모델 열기…", "モデルを開く…")) { model.perform("openModel") }
+                Button(model.selectedSection == .mv
+                    ? model.text("Open MV project…", "MV 프로젝트 열기…", "MVプロジェクトを開く…")
+                    : model.text("Open model…", "모델 열기…", "モデルを開く…")) {
+                    model.perform(model.selectedSection == .mv ? "openMV" : "openModel")
+                }
                     .keyboardShortcut("o").disabled(!model.toolsReady)
             }
             CommandGroup(after: .saveItem) {
-                Button(model.text("Save edited model", "편집 모델 저장", "編集モデルを保存")) { model.perform("saveModel") }
+                Button(model.selectedSection == .mv
+                    ? model.text("Save MV project", "MV 프로젝트 저장", "MVプロジェクトを保存")
+                    : model.text("Save edited model", "편집 모델 저장", "編集モデルを保存")) {
+                    model.perform(model.selectedSection == .mv ? "saveMV" : "saveModel")
+                }
                     .keyboardShortcut("s").disabled(!model.toolsReady)
             }
             CommandGroup(replacing: .appSettings) {
@@ -32,6 +40,8 @@ struct ElichikaMacApp: App {
                     .disabled(!model.canControlServer)
                 Button(model.text("Show model viewer", "모델 뷰어 표시", "モデルビューアを表示")) { model.perform("showViewer") }
                     .keyboardShortcut("3", modifiers: [.command, .shift]).disabled(!model.toolsReady)
+                Button(model.text("Show 3D MV", "3D MV 표시", "3D MVを表示")) { model.perform("showMV") }
+                    .keyboardShortcut("4", modifiers: [.command, .shift]).disabled(!model.toolsReady)
             }
         }
     }
@@ -136,10 +146,9 @@ struct RootView: View {
                     .onAppear { model.retryManagement() }
             }
             else { ManagementPreparationView(model: model) }
-        case .assets, .viewer:
+        case .assets, .viewer, .mv:
             if model.toolsReady {
-                WebPanel(model: model, route: .assets,
-                         editorSurface: model.selectedSection == .viewer ? .viewer : .tools)
+                WebPanel(model: model, route: .assets, editorSurface: model.selectedSection?.assetEditorSection)
             }
             else { PreparationView(model: model) }
         case .content:

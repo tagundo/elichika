@@ -41,7 +41,7 @@ internal object HeaderLayoutNativeQa {
         lateinit var tabObjects: List<TabLayout.Tab>
         lateinit var labels: List<CharSequence?>
         val labelIds = listOf(R.string.tab_console, R.string.tab_webui, R.string.tab_user,
-            R.string.tab_dev, R.string.tab_mod, R.string.tab_model)
+            R.string.tab_dev, R.string.tab_mod, R.string.tab_model, R.string.tab_mv)
         var selected = 0
         var originalWidth = 0
         var originalStatus: CharSequence = ""
@@ -62,7 +62,7 @@ internal object HeaderLayoutNativeQa {
             assertSame(controls, status.parent)
             assertSame(controls, toggle.parent)
             assertSame(controls, progress.parent)
-            assertEquals("All six top-level destinations must remain native tabs", labelIds.size, tabs.tabCount)
+            assertEquals("Each top-level destination must have a native tab", labelIds.size, tabs.tabCount)
             val strip = tabs.getChildAt(0) as ViewGroup
             tabViews = labelIds.indices.map(strip::getChildAt)
             tabObjects = labelIds.indices.map { tabs.getTabAt(it)!! }
@@ -209,11 +209,12 @@ internal object HeaderLayoutNativeQa {
                     .put("actionContrast", ColorUtils.calculateContrast(toggle.currentTextColor, surface))
                     .put("spinnerContrast", ColorUtils.calculateContrast(spinnerColor, surface))
                 if (dp == 320 && state == "stopped") assertFalse("A narrow stopped header must retain two readable rows", inline)
-                if (language == "ko" && kotlin.math.abs(scale - 1f) < .01f && state == "stopped" && dp in listOf(768, 853)) {
-                    assertTrue("Korean stopped controls and all six tabs must fit inline at $dp dp", inline)
+                assertEquals("The header must use the measured fit of all tabs", measured.getBoolean("calculatedFits"), inline)
+                if (language == "ko" && kotlin.math.abs(scale - 1f) < .01f && state == "stopped" && dp >= 1000) {
+                    assertTrue("Korean stopped controls and all native tabs must fit inline at $dp dp", inline)
                 }
                 if (inline) {
-                    assertEquals("The actual six-tab group must end at the padded header edge: $groupGeometry",
+                    assertEquals("The tab group must end at the padded header edge: $groupGeometry",
                         expectedGroupRight, tabRects.last().right)
                     val key = JSONArray().put(language).put(scale.toDouble()).put(header.width)
                         .put(JSONArray(tabObjects.map { it.text.toString() })).toString()
@@ -235,7 +236,7 @@ internal object HeaderLayoutNativeQa {
                     if (inline) {
                         val rect = bounds(header, tab)
                         val target = "tab=$index rect=$rect header=${header.width}x${header.height} navigationScrollX=${tabs.scrollX}"
-                        assertTrue("All six inline tabs must be fully inside the header: $target", rect.left >= 0 && rect.right <= header.width && rect.top >= 0 && rect.bottom <= header.height)
+                        assertTrue("Every inline tab must be fully inside the header: $target", rect.left >= 0 && rect.right <= header.width && rect.top >= 0 && rect.bottom <= header.height)
                         val visible = Rect()
                         assertTrue("Every inline tab must actually be visible in the native window: $target", tab.getGlobalVisibleRect(visible))
                         assertEquals("The whole inline tab width must be visible: $target visible=$visible", tab.width, visible.width())

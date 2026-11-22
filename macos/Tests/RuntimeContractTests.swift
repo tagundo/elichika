@@ -116,13 +116,24 @@ final class RuntimeContractTests: XCTestCase {
         let sections = AppSection.allCases
         let tools = try XCTUnwrap(sections.firstIndex(of: .assets))
         XCTAssertEqual(sections[tools + 1], .viewer)
+        XCTAssertEqual(sections[tools + 2], .mv)
         XCTAssertEqual(AppSection.assets.title("ko"), "에셋 편집 도구")
         XCTAssertEqual(AppSection.viewer.title("ko"), "3D 모델")
+        XCTAssertEqual(AppSection.mv.title("ko"), "3D MV")
         XCTAssertEqual(EditorSurface.tools.section, .assets)
         XCTAssertEqual(EditorSurface.viewer.section, .viewer)
+        XCTAssertEqual(EditorSurface.mv.section, .mv)
         XCTAssertEqual(EditorSurface.tools.command, "showTools")
         XCTAssertEqual(EditorSurface.viewer.command, "showViewer")
-        for name in ["tools", "viewer"] {
+        XCTAssertEqual(EditorSurface.mv.command, "showMV")
+        XCTAssertEqual(AssetEditorCommand.openMV.surface, .mv)
+        XCTAssertEqual(AssetEditorCommand.saveMV.surface, .mv)
+        XCTAssertEqual(AssetEditorCommand.openModel.surface, .viewer)
+        XCTAssertEqual(AssetEditorCommand.saveModel.surface, .viewer)
+        let base = try XCTUnwrap(URL(string: "http://127.0.0.1:8770/?lang=ko"))
+        XCTAssertEqual(EditorSurface.embeddedURL(base, section: .mv)?.absoluteString,
+                       "http://127.0.0.1:8770/?lang=ko&embedded=1#mv")
+        for name in ["tools", "viewer", "mv"] {
             let request = try NativeRequest.parse(["id": "editor-1", "action": "setEditorSurface", "editorSurface": name])
             XCTAssertEqual(request.editorSurface?.rawValue, name)
         }

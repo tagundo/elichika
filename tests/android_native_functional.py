@@ -262,6 +262,14 @@ def texture65_checks(astcenc, temporary):
         assert Path(previous).resolve() == executable, "Texture decoder escaped the APK native directory"
     os.environ["ELICHIKA_TEXTURE65_BIN"] = str(executable)
     try:
+        for stage_format, encoded, pixel in (
+            (34, bytes.fromhex("ff00000000000000") * 4, bytes((255, 2, 2, 255))),
+            (32, bytes.fromhex("0000000000fc00fc") * 4, bytes((255, 0, 0, 255))),
+        ):
+            stage_texture = SimpleNamespace(m_Width=8, m_Height=8, m_TextureFormat=stage_format,
+                image_data=encoded, get_image_data=lambda: encoded)
+            with decode._android_image(stage_texture, time.monotonic()+15, stage=True) as stage_image:
+                assert stage_image.size == (8, 8) and stage_image.tobytes() == pixel * 64
         with tempfile.TemporaryDirectory(prefix="texture65-native-", dir=temporary) as directory:
             source, target = Path(directory) / "neutral.crn", Path(directory) / "neutral.rgba"
             source.write_bytes(compressed)

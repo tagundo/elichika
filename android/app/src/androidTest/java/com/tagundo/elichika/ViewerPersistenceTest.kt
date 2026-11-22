@@ -500,12 +500,12 @@ class ViewerPersistenceTest {
             instrumentation.runOnMainSync {
                 NativeTabsQa.tab(activity, id).select()
                 val visible = descendants(activity.findViewById(R.id.content)).filterIsInstance<WebView>().filter { it.visibility == View.VISIBLE }
-                assertEquals("Native tools and viewer must reveal exactly the same WebView", listOf(webView), visible.toList())
+                assertEquals("All native asset tabs must reveal exactly the same WebView", listOf(webView), visible.toList())
                 assertEquals(id, NativeTabsQa.selectedId(activity))
                 val toolViews = descendants(activity.findViewById(R.id.content)).filterIsInstance<WebView>().filter {
                     android.net.Uri.parse(it.url ?: "").port == 8770
                 }.toList()
-                assertEquals("Never create a second webtools document for the viewer tab", listOf(webView), toolViews)
+                assertEquals("Never create a second webtools document for another editor tab", listOf(webView), toolViews)
             }
         }
         fun waitSection(section: String) = waitForDom(webView, "native-selected $section section") {
@@ -517,6 +517,11 @@ class ViewerPersistenceTest {
         run(webView, "document.querySelector('#tool-list button[data-id=\"mesh_baker\"]').click();" +
             "var input=document.querySelector('#tool-form [data-name=\"in_path\"]');if(!input)throw new Error('The real Mesh Baker form is required');" +
             "input.value='native-navigation-unsaved-draft.unity';input.dispatchEvent(new Event('input',{bubbles:true}));")
+        select(MainActivity.TAB_MV_STUDIO)
+        waitSection("mv")
+        waitForDom(webView, "the shared MV timeline") {
+            "return JSON.stringify({ok:!!window.MVStudio&&MVStudio.getState().visible&&!!document.getElementById('mv-timeline-grid')});"
+        }
         select(MainActivity.TAB_MODEL_VIEWER)
         waitSection("viewer")
         val after = evaluate(webView, "var s=ModelViewer.getState();return JSON.stringify({id:s.modelId,camera:s.camera,marker:window.__nativeNavigationMarker,authoring:ModelViewer.getAuthoringState()});")
@@ -573,7 +578,8 @@ class ViewerPersistenceTest {
         assertEquals(Lang.effective(activity), embedded.getString("language"))
         return JSONObject().put("sharedWebView", true).put("liveDocumentRetained", true).put("modelAndCameraRetained", true)
             .put("unsavedNodeAndMeshRetained", true).put("toolsDraftRetained", true)
-            .put("rapidNativeSelection", true).put("pageToNativeSynchronized", true).put("childFrameProbe", frameProbe)
+            .put("rapidNativeSelection", true).put("mvSharedWebView", true)
+            .put("pageToNativeSynchronized", true).put("childFrameProbe", frameProbe)
             .put("unsupportedMessagesIgnored", true).put("embedded", embedded)
     }
 

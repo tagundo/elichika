@@ -7,10 +7,6 @@ on:
         description: "Review app version YYYY.MM.DD[.N]; blank uses macos/VERSION"
         required: false
         default: ""
-      validated_release:
-        description: "Publish already-validated APK/Mac artifacts using the reviewed JSON manifest; blank performs the normal app build"
-        required: false
-        default: ""
   pull_request:
     paths:
       - 'macos/**'
@@ -41,12 +37,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: macos-${{ inputs.validated_release && 'validated-release' || github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ !inputs.validated_release }}
+  group: macos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   apple-silicon:
-    if: ${{ !inputs.validated_release }}
     # Explicit standard ARM64 label; macos-14 retired in November 2026.
     runs-on: macos-15
     timeout-minutes: 60
@@ -125,7 +120,6 @@ jobs:
           python3 macos/build/build_payload.py --repo . --output "$RUNNER_TEMP/elichika-macos-shared"
 
       - name: Build self-contained signed app with private Python and executables
-        id: bundle_build
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -141,32 +135,6 @@ jobs:
           python3 macos/ci/audit_bundle.py \
             --app "$RUNNER_TEMP/elichika-macos-built/Elichika.app" --arch arm64 \
             --report "$RUNNER_TEMP/macos-evidence/bundle-before-launch.json"
-
-      - name: Preserve the signed candidate before mandatory execution gates
-        if: ${{ always() && steps.bundle_build.outcome == 'success' }}
-        run: |
-          python3 - <<'PY'
-          import os, pathlib, sys
-          sys.path.insert(0, 'macos/build')
-          from common import archive_app, write_json
-          temporary = pathlib.Path(os.environ['RUNNER_TEMP'])
-          destination = temporary / 'macos-candidate'
-          destination.mkdir(exist_ok=True)
-          name = 'Elichika-' + os.environ['ELICHIKA_MAC_VERSION'] + '-UNVALIDATED-AppleSilicon.app.zip'
-          receipt = archive_app(temporary / 'elichika-macos-built/Elichika.app', destination / name)
-          receipt.update(status='UNVALIDATED_CANDIDATE_NOT_FOR_DELIVERY', source_commit=os.environ['GITHUB_SHA'],
-                         workflow_run=os.environ['GITHUB_RUN_ID'], mandatory_execution_gates='PENDING')
-          write_json(destination / 'candidate-manifest.json', receipt)
-          PY
-
-      - name: Upload candidate for exact-byte diagnostic reruns
-        if: ${{ always() && steps.bundle_build.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: elichika-macos-unvalidated-candidate
-          path: ${{ runner.temp }}/macos-candidate/
-          if-no-files-found: error
-          compression-level: 0
 
       - name: Test bundled interpreter, native codecs and HTTPS without runtime installation
         run: |
@@ -220,22 +188,51 @@ jobs:
             --app "$RUNNER_TEMP/이동한 Elichika 앱/Elichika.app" --arch arm64 \
             --report "$RUNNER_TEMP/macos-evidence/bundle-after-relaunch.json"
 
-      - name: Package the exact validated Apple Silicon app
+      - name: Encrypt the exact validated Apple Silicon app for the preview recipient
         run: |
-          python3 - <<'PY'
-          import json, os, pathlib, sys
+          set -euo pipefail
+          openssl3="$(brew --prefix openssl@3)/bin/openssl"
+          if [ ! -x "$openssl3" ]; then
+            brew install openssl@3
+          fi
+          "$openssl3" version | grep '^OpenSSL 3\.'
+          export ELICHIKA_CMS_OPENSSL="$openssl3"
+          python3 - <<'PY_INNER'
+          import os, pathlib, subprocess, sys, tempfile
           sys.path.insert(0, 'macos/build')
-          from common import archive_app, write_json
+          from common import archive_app, sha256, write_json
           temporary = pathlib.Path(os.environ['RUNNER_TEMP'])
           app = temporary / '이동한 Elichika 앱/Elichika.app'
           destination = temporary / 'macos-delivery'
-          name = 'Elichika-' + os.environ['ELICHIKA_MAC_VERSION'] + '-AppleSilicon.app.zip'
-          receipt = archive_app(app, destination / name)
-          (destination / 'SHA256SUMS').write_text(receipt['sha256'] + '  ' + name + '\n')
-          write_json(temporary / 'macos-evidence/app-archive.json', receipt)
-          PY
+          version = os.environ['ELICHIKA_MAC_VERSION']
+          name = 'Elichika-' + version + '-AppleSilicon.app.zip'
+          encrypted = destination / (name + '.cms')
+          recipient = pathlib.Path('mv_studio_preview_recipient.pem').resolve(strict=True)
+          with tempfile.TemporaryDirectory(prefix='mac-app-plaintext-', dir=temporary) as staging:
+              archive = pathlib.Path(staging) / name
+              receipt = archive_app(app, archive)
+              subprocess.run([
+                  os.environ['ELICHIKA_CMS_OPENSSL'], 'cms', '-encrypt', '-binary',
+                  '-aes256', '-stream', '-outform', 'DER', '-in', str(archive),
+                  '-out', str(encrypted), str(recipient),
+              ], check=True)
+          manifest = {
+              'version': version,
+              'source_commit': os.environ['GITHUB_SHA'],
+              'workflow_run': os.environ['GITHUB_RUN_ID'],
+              'app': receipt,
+              'encrypted': {
+                  'name': encrypted.name,
+                  'bytes': encrypted.stat().st_size,
+                  'sha256': sha256(encrypted),
+                  'encoding': 'CMS EnvelopedData',
+              },
+          }
+          write_json(destination / 'manifest.json', manifest)
+          write_json(temporary / 'macos-evidence/app-archive.json', manifest)
+          PY_INNER
 
-      - name: Upload validated standalone app
+      - name: Upload the encrypted standalone app
         uses: actions/upload-artifact@v4
         with:
           name: elichika-macos-apple-silicon
@@ -252,41 +249,4 @@ jobs:
             ${{ runner.temp }}/macos-evidence/
             !${{ runner.temp }}/macos-evidence/native-app-data/application-support/**
             !${{ runner.temp }}/macos-evidence/native-app-data/sukusta/**
-          if-no-files-found: warn
-
-  publish-validated-apps:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.validated_release != '' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - name: Check out the exact reviewed publisher source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Verify all three runs and publish their exact validated app bytes
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          VALIDATED_RELEASE_JSON: ${{ inputs.validated_release }}
-          APP_SOURCE_SHA: ${{ fromJSON(inputs.validated_release).source_sha }}
-        run: |
-          python3 macos/ci/publish_validated_apps.py \
-            --manifest-env VALIDATED_RELEASE_JSON \
-            --repository "$GITHUB_REPOSITORY" \
-            --source-sha "$APP_SOURCE_SHA" \
-            --publisher-source-sha "$GITHUB_SHA" \
-            --version-file macos/VERSION \
-            --work-dir "$RUNNER_TEMP/validated-app-release"
-
-      - name: Preserve validated publication evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: validated-app-release-evidence-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/validated-app-release/publish-result.json
           if-no-files-found: warn

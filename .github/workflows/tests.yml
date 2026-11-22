@@ -100,6 +100,7 @@ jobs:
           python3 -m unittest discover -s ../tests -p test_costume_cdn_restore.py -v
           python3 -m unittest discover -s ../tests -p test_costume_cdn_packaging.py -v
           python3 -m unittest discover -s ../tests -p test_game_quality_settings.py -v
+          python3 -m unittest discover -s ../tests -p 'test_mv_studio*.py' -v
           python3 -m unittest discover -s ../tests -p test_shared_asset_crypto.py -v
           python3 -m unittest discover -s ../tests -p test_pack_lookup.py -v
           python3 -m unittest discover -s ../tests -p test_viewer_part_oracle.py -v
@@ -119,6 +120,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_renamer_bytecode.py -v
           python3 -m unittest discover -s tests -p test_texture65_decode.py -v
           python3 -m unittest discover -s tests -p test_model_viewer.py -v
+          python3 -m unittest discover -s tests -p 'test_mv_studio*.py' -v
           python3 -m unittest discover -s tests -p test_model_faces.py -v
           python3 -m unittest discover -s tests -p test_viewer_facial_role_metadata.py -v
           python3 -m unittest discover -s tests -p test_face_cache_prune.py -v
@@ -253,6 +255,47 @@ jobs:
           done
           curl --fail --silent "$VIEWER_URL/api/tools" > /dev/null
           EVIDENCE_DIR="$EVIDENCE_DIR/navigation" node tests/viewer_navigation_browser.js
+          node tests/mv_studio_scene_lifecycle_test.js
+          node tests/mv_studio_outfit_reuse_test.js
+          node tests/mv_studio_lighting_test.js
+          node tests/mv_studio_physics_test.js
+          node tests/mv_studio_penlight_test.js
+          node tests/mv_studio_props_test.js
+          node tests/mv_studio_prop_light_test.js
+          node tests/mv_studio_member_shadow_test.js
+          node tests/mv_studio_split_test.js
+          node tests/mv_studio_stage_coloring_test.js
+          node tests/mv_studio_stage_display_test.js
+          node tests/mv_studio_stage_particles_test.js
+          node tests/mv_studio_stage_burst_simulation_test.js
+          node tests/mv_studio_stage_burst_renderer_test.js
+          node tests/mv_studio_stage_flash_test.js
+          node tests/mv_studio_stage_motion_test.js
+          node tests/mv_studio_bloom_test.js
+          node tests/mv_studio_dof_focus_test.js
+          node tests/mv_studio_flare_test.js
+          node tests/mv_studio_stage_overlay_test.js
+          node tests/mv_studio_stage_beam_test.js
+          node tests/mv_studio_laser_cores_test.js
+          node tests/mv_studio_title_test.js
+          node tests/mv_studio_speed_back_test.js
+          node tests/mv_studio_center_stars_test.js
+          node tests/mv_studio_moving_companions_test.js
+          node tests/mv_studio_display_lights_test.js
+          node tests/mv_studio_falling_display_test.js
+          node tests/mv_studio_stage_break_test.js
+          node tests/mv_studio_finale_floor_test.js
+          node tests/mv_studio_sparks_a_test.js
+          node tests/mv_studio_sparks_b_test.js
+          node tests/mv_studio_sparks_roop_test.js
+          node tests/mv_studio_ribbon_shine_test.js
+          node tests/mv_studio_shaft_test.js
+          node tests/mv_studio_spotlight_area_test.js
+          node tests/mv_studio_stage_spotlight_test.js
+          node tests/mv_studio_butterfly_test.js
+          CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" node tests/mv_studio_hdr_browser_test.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio" node tests/mv_studio_browser.js
+          VIEWER_PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/mv-studio-stream" node tests/mv_studio_game_stream_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/accessories" node tests/viewer_accessories_browser.js
           node tests/viewer_rig_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/runtime-optimization" node tests/viewer_runtime_optimization_browser.js

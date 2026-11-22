@@ -883,6 +883,7 @@ class Runtime:
         os.environ["PYTHONSAFEPATH"] = "1"
         os.environ["PYTHONPATH"] = str(CODE_DIR)
         os.environ["SUKUSTA_DIR"] = str(self.sukusta)
+        os.environ["ELICHIKA_MV_PRIVATE_CACHE"] = str(self.data / "cache" / "mv-studio")
         os.environ["SUKUSTA_BACKUP_ROOT"] = str(self.sukusta / "backup")
         os.environ["SIFAS_LANG"] = self.language
         os.environ["ELICHIKA_TOOL_MODE"] = "cli"
