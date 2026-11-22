@@ -267,6 +267,8 @@ jobs:
           node tests/mv_studio_stage_coloring_test.js
           node tests/mv_studio_stage_display_test.js
           node tests/mv_studio_stage_particles_test.js
+          node tests/mv_studio_stage_burst_simulation_test.js
+          node tests/mv_studio_stage_burst_renderer_test.js
           node tests/mv_studio_stage_flash_test.js
           node tests/mv_studio_stage_motion_test.js
           node tests/mv_studio_bloom_test.js
