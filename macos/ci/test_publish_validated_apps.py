@@ -279,6 +279,16 @@ class PublisherContractTests(unittest.TestCase):
     def test_workflow_publication_is_separate_from_normal_build_and_job_scoped(self):
         workflow = MODULE_PATH.parents[2] / '.github/workflows/macos.yml'
         text=workflow.read_text()
+        if (MODULE_PATH.parents[2] / 'mv_studio_preview_recipient.pem').is_file():
+            self.assertIn('permissions:\n  contents: read', text)
+            self.assertNotIn('contents: write', text)
+            self.assertNotIn('publish-validated-apps:', text)
+            self.assertNotIn('elichika-macos-unvalidated-candidate', text)
+            self.assertEqual(text.count('uses: actions/upload-artifact@v4'), 2)
+            self.assertIn('name: Upload the encrypted standalone app', text)
+            self.assertIn("'encoding': 'CMS EnvelopedData'", text)
+            self.assertLess(text.index('name: Exercise actual app'), text.index('name: Upload the encrypted standalone app'))
+            return
         self.assertIn('  apple-silicon:\n    if: ${{ !inputs.validated_release }}',text)
         self.assertIn("  publish-validated-apps:\n    if: ${{ github.event_name == 'workflow_dispatch' && inputs.validated_release != '' }}",text)
         self.assertEqual(text.count('contents: write'),1)
@@ -439,6 +449,12 @@ class PublisherRecoveryBoundaryTests(unittest.TestCase):
 
     def test_workflow_passes_separate_approved_app_and_checked_out_publisher_shas(self):
         text = (MODULE_PATH.parents[2] / '.github/workflows/macos.yml').read_text()
+        if (MODULE_PATH.parents[2] / 'mv_studio_preview_recipient.pem').is_file():
+            self.assertIn("ref: ${{ github.event.pull_request.head.sha || github.sha }}", text)
+            self.assertIn("'source_commit': os.environ['GITHUB_SHA']", text)
+            self.assertIn("'workflow_run': os.environ['GITHUB_RUN_ID']", text)
+            self.assertNotIn('--publisher-source-sha', text)
+            return
         self.assertIn('APP_SOURCE_SHA: ${{ fromJSON(inputs.validated_release).source_sha }}', text)
         self.assertIn('--source-sha "$APP_SOURCE_SHA"', text)
         self.assertIn('--publisher-source-sha "$GITHUB_SHA"', text)
