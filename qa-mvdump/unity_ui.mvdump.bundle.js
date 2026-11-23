@@ -5400,8 +5400,15 @@ function splashFadeRGBA(splash) {
   // Root GameObjects can share a name: in the 12035 Max 3D dump GameObject.Find("/EntryPoint") returned a
   // root holding only PopupView, not the root of /EntryPoint/Live, so every root-anchored path (census,
   // stageNodes bindings, material renderer slots, anchor:stageOrigin) missed. A root-anchored path is now
-  // tried from every root of that name: the LiveDirector's own root first, then GameObject.Find's,
-  // deduplicated by instanceId.
+  // tried from these candidate roots of that name, deduplicated by instanceId, in this order:
+  //   1. the LiveDirector's own root (walked up from its transform);
+  //   2. GameObject.Find's result;
+  //   3. only when 1-2 miss the path, and always for the census: the roots reached by walking up from
+  //      objects the dump enumerates anyway (the active cameras of cameraCensus, the active
+  //      LiveCoreCameraManager components), by ascending instanceId. The 12035 dump lists cameras such
+  //      as /EntryPoint/AlwaysCamera that are in neither of the first two roots.
+  // A same-name root that holds none of these objects is still not reached; census.selfCheck.roots lists
+  // the roots that were.
   function rootOfTransform(ctx, tr) {
     var cur = tr, guard = 0, parent;
     while (cur && guard++ < 48) {
@@ -5411,35 +5418,60 @@ function splashFadeRGBA(splash) {
     }
     return null;
   }
-  function rootCandidates(ctx, name) {
-    var memo = ctx.memo.roots || (ctx.memo.roots = {});
-    if (memo.hasOwnProperty(name)) return memo[name];
-    var out = [], seen = {};
-    function add(tr, source) {
+  // The candidate roots named `name` ({tr, instanceId, source, via?}); `extended` adds step 3 once per record.
+  function rootCandidates(ctx, name, extended) {
+    var memo = ctx.memo.roots || (ctx.memo.roots = {}), entry = memo[name];
+    function add(tr, source, via) {
       var id = tr ? iid(tr) : null;
-      if (id === null || seen[id]) return;
-      seen[id] = true;
-      out.push({ tr: tr, instanceId: id, source: source });
+      if (id === null || entry.seen[id]) return;
+      entry.seen[id] = true;
+      var root = { tr: tr, instanceId: id, source: source };
+      if (via) root.via = via;
+      entry.list.push(root);
     }
-    try {
-      liveDirectors(ctx).forEach(function (ld) {
-        var root = rootOfTransform(ctx, trOf(ctx, ld)), rootName = root ? nameOf(ctx, root) : null;
-        if (root && (rootName === name || stripName(rootName) === name)) add(root, "LiveDirector");
-      });
-    } catch (error) { ctx.err("roots.liveDirector", error); }
-    var go = inv(ctx, "UnityEngine.GameObject", "Find", null, [Il2Cpp.string("/" + name)]);
-    if (alive(go)) add(refValue(inv(ctx, "UnityEngine.GameObject", "get_transform", go, [])), "GameObject.Find");
-    memo[name] = out;
-    return out;
+    if (!entry) {
+      entry = memo[name] = { list: [], seen: {}, extended: false };
+      try {
+        liveDirectors(ctx).forEach(function (ld) {
+          var root = rootOfTransform(ctx, trOf(ctx, ld)), rootName = root ? nameOf(ctx, root) : null;
+          if (root && (rootName === name || stripName(rootName) === name)) add(root, "LiveDirector");
+        });
+      } catch (error) { ctx.err("roots.liveDirector", error); }
+      var go = inv(ctx, "UnityEngine.GameObject", "Find", null, [Il2Cpp.string("/" + name)]);
+      if (alive(go)) add(refValue(inv(ctx, "UnityEngine.GameObject", "get_transform", go, [])), "GameObject.Find");
+    }
+    if (extended && !entry.extended) {
+      entry.extended = true;
+      var found = [];
+      var reach = function (object, info, source) {
+        var rawRoot = typeof info.rawPath === "string" ? info.rawPath.split("/")[1] : null;
+        if (info.segments[0] !== name && rawRoot !== name) return;
+        var root = rootOfTransform(ctx, trOf(ctx, object)), id = root ? iid(root) : null;
+        if (id !== null && !entry.seen[id] && !found.some(function (f) { return f.id === id; })) found.push({ tr: root, id: id, source: source, via: info.path });
+      };
+      try { cameraCensus(ctx).forEach(function (c) { reach(c.object, c.info, "Camera"); }); } catch (error) { ctx.err("roots.cameras", error); }
+      try {
+        cameraManagers(ctx).forEach(function (m) { if (activeGo(ctx, m)) reach(m, pathInfo(ctx, m), "LiveCoreCameraManager"); });
+      } catch (error) { ctx.err("roots.cameraManager", error); }
+      found.sort(function (a, b) { return a.id - b.id; });
+      found.forEach(function (f) { add(f.tr, f.source, f.via); });
+    }
+    return entry.list;
   }
-  function resolvePath(ctx, path) {
-    var parts = String(path).replace(/^\//, "").split("/"), roots = rootCandidates(ctx, parts[0]);
-    for (var i = 0; i < roots.length; i++) {
+  function findUnder(ctx, roots, parts, from) {
+    for (var i = from; i < roots.length; i++) {
       if (parts.length === 1) return roots[i].tr;
       var found = refValue(inv(ctx, "UnityEngine.Transform", "Find", roots[i].tr, [Il2Cpp.string(parts.slice(1).join("/"))]));
       if (found) return found;
     }
     return null;
+  }
+  // A root-anchored path from the candidate roots: steps 1-2 first, step 3 only when they miss it.
+  function resolvePath(ctx, path) {
+    var parts = String(path).replace(/^\//, "").split("/"), roots = rootCandidates(ctx, parts[0], false), tried = roots.length;
+    var found = findUnder(ctx, roots, parts, 0);
+    if (found) return found;
+    return findUnder(ctx, rootCandidates(ctx, parts[0], true), parts, tried);
   }
   // Components of a GameObject by type: GameObject.GetComponents(Type) (Component.GetComponents(Type) is
   // stripped from the GL client) and GameObject.GetComponentsInChildren(Type, includeInactive).
@@ -5601,6 +5633,11 @@ function splashFadeRGBA(splash) {
     ctx.memo.liveDirectors = out;
     return out;
   }
+  // LiveCoreCameraManager components (at most 2), enumerated once per record.
+  function cameraManagers(ctx) {
+    if (!ctx.memo.cameraManagers) ctx.memo.cameraManagers = instances(ctx, cls(ctx, "LiveCoreCameraManager"), 8).slice(0, 2);
+    return ctx.memo.cameraManagers;
+  }
   function readDirectors(ctx) {
     var PD = H.findClass("UnityEngine.Playables.PlayableDirector", true), D = "UnityEngine.Playables.PlayableDirector";
     var held = {};
@@ -5707,7 +5744,7 @@ function splashFadeRGBA(splash) {
       if (id !== null && roles[id] === undefined) { roles[id] = role; sources[id] = source; }
     }
     try {
-      instances(ctx, cls(ctx, "LiveCoreCameraManager"), 8).slice(0, 2).forEach(function (manager) {
+      cameraManagers(ctx).forEach(function (manager) {
         [["overlay", ["overlayCamera"]], ["cutin", ["cutinCamera"]], ["cutinOverlay", ["cutinOverlayCamera"]]].forEach(function (pair) {
           pair[1].forEach(function (name) {
             var found = fieldAny(manager, backingNames(name));
@@ -6059,7 +6096,7 @@ function splashFadeRGBA(splash) {
       if (on) out.playing = true;
     }
     try {
-      instances(ctx, cls(ctx, "LiveCoreCameraManager"), 8).slice(0, 2).forEach(function (manager) {
+      cameraManagers(ctx).forEach(function (manager) {
         var found = fieldAny(manager, backingNames("cutinOverlayCamera"));
         if (found && alive(found.value)) check("cutinOverlayCamera", refValue(g(ctx, "UnityEngine.Component", "GetComponent", found.value, null, [CAM.type.object])));
       });
@@ -6179,11 +6216,15 @@ function splashFadeRGBA(splash) {
       if (!cur) return { next: null, emitted: emitted };
     }
   }
-  // Self-check of the census root: every root of that name (instanceId, source), the LiveDirector's path,
-  // and whether /<root>/Live resolves inside the LiveDirector's own root and holds the LiveDirector
-  // (the live hierarchy; in the GL client the LiveDirector sits on /EntryPoint/Live itself).
+  // Self-check of the census root: the candidate roots of that name (instanceId, source, via), the
+  // LiveDirector's path, and whether /<root>/Live resolves inside the LiveDirector's own root and holds
+  // the LiveDirector (the live hierarchy; in the GL client the LiveDirector sits on /EntryPoint/Live itself).
   function censusSelfCheck(ctx, rootName, roots) {
-    var out = { root: "/" + rootName, roots: roots.map(function (r) { return { instanceId: r.instanceId, source: r.source, childCount: childCount(ctx, r.tr) }; }) };
+    var out = { root: "/" + rootName, roots: roots.map(function (r) {
+      var item = { instanceId: r.instanceId, source: r.source, childCount: childCount(ctx, r.tr) };
+      if (r.via) item.via = r.via;
+      return item;
+    }) };
     var ld = liveDirectors(ctx)[0], ldTr = ld ? trOf(ctx, ld) : null;
     out.liveDirector = ldTr ? pathInfo(ctx, ldTr).path : null;
     var livePath = "/" + rootName + "/Live", live = resolvePath(ctx, livePath), liveRoot = live ? rootOfTransform(ctx, live) : null;
@@ -6195,14 +6236,25 @@ function splashFadeRGBA(splash) {
     out.ok = out.live.found && out.live.inLiveDirectorRoot && out.live.holdsLiveDirector;
     return out;
   }
-  // Pre-order walk of every root named like options.root (the LiveDirector's root first), resumable from
-  // {root, path, emitted}. A DEFERRED_ROOTS node is listed (with its childCount) but not descended while
-  // no skill cut-in plays.
+  // Pre-order walk of the candidate roots named like options.root (all three steps of rootCandidates, the
+  // LiveDirector's root first), resumable from {root, rootId, path, emitted}. A DEFERRED_ROOTS node is
+  // listed (with its childCount) but not descended while no skill cut-in plays.
   function partCensus(ctx, options) {
     var cursor = cursorOf(options), done = Number(cursor.emitted) || 0, r = Number(cursor.root) || 0;
-    var rootName = String(options.root || "/EntryPoint").replace(/^\//, "").split("/")[0], roots = rootCandidates(ctx, rootName);
-    var body = { census: { roots: roots.map(function (x, i) { return { index: i, path: "/" + rootName, instanceId: x.instanceId, source: x.source }; }), nodes: [] }, next: null };
+    var rootName = String(options.root || "/EntryPoint").replace(/^\//, "").split("/")[0], roots = rootCandidates(ctx, rootName, true);
+    var body = { census: { roots: roots.map(function (x, i) {
+      var item = { index: i, path: "/" + rootName, instanceId: x.instanceId, source: x.source };
+      if (x.via) item.via = x.via;
+      return item;
+    }), nodes: [] }, next: null };
     if (r === 0 && !Array.isArray(cursor.path)) body.census.selfCheck = censusSelfCheck(ctx, rootName, roots);
+    // Resume by the root's instanceId: a step-3 root comes and goes with its camera.
+    if (typeof cursor.rootId === "number") {
+      var at = -1;
+      roots.forEach(function (x, i) { if (at < 0 && x.instanceId === cursor.rootId) at = i; });
+      if (at < 0) { body.census.rootGone = cursor.rootId; return body; }
+      r = at;
+    }
     if (r >= roots.length) return body;
     var COMP = H.findClass("UnityEngine.Component", true), nodes = body.census.nodes, cutin = cutinState(ctx), skipDeferred = cutin.known && !cutin.playing;
     var result = walk(ctx, roots[r].tr, cursor.path, CAPS.censusDepth, Math.min(CAPS.censusChunk, CAPS.censusNodes - done), function (tr, path, names) {
@@ -6224,8 +6276,8 @@ function splashFadeRGBA(splash) {
     });
     var total = done + result.emitted;
     if (total < CAPS.censusNodes) {
-      if (result.next) body.next = { root: r, path: result.next, emitted: total };
-      else if (r + 1 < roots.length) body.next = { root: r + 1, path: [], emitted: total };
+      if (result.next) body.next = { root: r, rootId: roots[r].instanceId, path: result.next, emitted: total };
+      else if (r + 1 < roots.length) body.next = { root: r + 1, rootId: roots[r + 1].instanceId, path: [], emitted: total };
     }
     return body;
   }

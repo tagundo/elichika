@@ -882,6 +882,16 @@ function createWorld(opts = {}) {
     component(g, 'UnityEngine.MeshFilter', { mesh: groundMesh });
     component(g, 'UnityEngine.MeshRenderer', { materials: [matStageA] });
   }
+  // opts.thirdRoot: a third root named EntryPoint that only a camera leads to (the 12035 dump lists
+  // /EntryPoint/AlwaysCamera and the renderer /EntryPoint/DarkFilterField outside the live and PopupView roots).
+  if (opts.thirdRoot) {
+    const third = gameObject('EntryPoint', 0), always = gameObject('AlwaysCamera', third.tr);
+    component(always, CAM, { fov: 60, aspect: 1280 / 720, near: 0.3, far: 1000, depth: 5 });
+    const dark = gameObject('DarkFilterField', third.tr);
+    const matDark = newUnity(C['UnityEngine.Material'], { name: 'dark_filter_mt', shader: shaderColor, props: { _TintColor: [0, 0, 0, 0.5] } });
+    component(dark, 'UnityEngine.MeshFilter', { mesh: groundMesh });
+    component(dark, 'UnityEngine.MeshRenderer', { materials: [matDark] });
+  }
   // A CustomControl clip's "<prefab> [Timeline]" scene root (fx_flo_so2035_02 clip 36.9-45.1 s): two systems.
   const floRoot = gameObject('fx_flo_so2035_02 [Timeline]', 0), floInner = gameObject('root', floRoot.tr);
   ['flower_01', 'flower_02'].forEach(n => { const g = gameObject(n, floInner.tr); component(g, PS); component(g, 'UnityEngine.ParticleSystemRenderer', { materials: [] }); });

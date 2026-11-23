@@ -638,6 +638,33 @@ test('a client that keeps UnityEngine.Light: lights are read, no unavailable not
   assert.equal(rec.unavailable.lights, undefined);
 });
 
+test('a third same-name root reached through its camera: census, self-check and renderer slots use it', async () => {
+  const h = await bound({ thirdRoot: true });
+  const records = await runPart(h, 'census', {});
+  assertClean(h.world);
+  const self = records[0].census.selfCheck;
+  assert.equal(self.ok, true);
+  assert.deepEqual(self.roots.map(r => [r.source, r.via]), [['LiveDirector', undefined], ['GameObject.Find', undefined], ['Camera', '/EntryPoint/AlwaysCamera']]);
+  assert.deepEqual(records[0].census.roots.map(r => r.source), ['LiveDirector', 'GameObject.Find', 'Camera']);
+  const nodes = records.flatMap(r => r.census.nodes);
+  assert.deepEqual(nodes.filter(n => n.rootIndex === 2).map(n => n.path), ['/EntryPoint', '/EntryPoint/AlwaysCamera', '/EntryPoint/DarkFilterField']);
+  assert.ok(records.slice(1).every(r => typeof r.cursor.rootId === 'number'), 'later chunks resume by root instanceId');
+  // Materials: live-root slots resolve without looking further; the DarkFilterField slot through the camera's root.
+  const renderers = (await runPart(h, 'renderers', {})).flatMap(r => r.renderers);
+  const wanted = materialRequests(renderers), dark = wanted.find(w => w.usedBy.some(u => /DarkFilterField/.test(u)));
+  assert.ok(dark, 'the renderers part lists the third root\'s renderer');
+  const live = wanted.filter(w => w !== dark).slice(0, 8);
+  let before = h.world.findAllTypes.length;
+  const a = await h.rpc('mvruntime', { part: 'materials', materials: live, shaders: h.world.keys.shaders });
+  assert.ok(a.materials.every(m => m.resolvedBy === 'renderer'));
+  assert.ok(!h.world.findAllTypes.slice(before).includes('UnityEngine.Camera'), 'no camera enumeration while the first two roots resolve');
+  before = h.world.findAllTypes.length;
+  const b = await h.rpc('mvruntime', { part: 'materials', materials: [dark], shaders: h.world.keys.shaders });
+  assertClean(h.world);
+  assert.deepEqual([b.materials[0].name, b.materials[0].resolvedBy], ['dark_filter_mt', 'renderer']);
+  assert.ok(!h.world.findAllTypes.slice(before).includes('UnityEngine.Material'), 'no Material scan');
+});
+
 test('census without the decoy root: one root, same self-check', async () => {
   const h = await bound({ decoyRoot: false });
   const records = await runPart(h, 'census', {});
