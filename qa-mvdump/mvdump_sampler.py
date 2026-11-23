@@ -714,11 +714,14 @@ class Dumper:
                             cur['materialOrder'].append(iid)
                         cur['materialUsers'][iid] = []
                         cur['materialRefs'][iid] = []
-                    cur['materialUsers'][iid].append(f'{renderer.get("key")}#{slot.get("slot")}')
+                    users, user = cur['materialUsers'][iid], f'{renderer.get("key")}#{slot.get("slot")}'
+                    if user not in users:
+                        users.append(user)
                     path = renderer.get('rawPath') or renderer.get('path')
                     refs = cur['materialRefs'][iid]
-                    if isinstance(path, str) and isinstance(slot.get('slot'), int) and len(refs) < 2:
-                        refs.append({'path': path, 'slot': slot['slot'], 'rendererId': renderer.get('instanceId')})
+                    ref = {'path': path, 'slot': slot.get('slot'), 'rendererId': renderer.get('instanceId')}
+                    if isinstance(path, str) and isinstance(slot.get('slot'), int) and len(refs) < 2 and ref not in refs:
+                        refs.append(ref)
         if part == 'materials':
             index = int(cur['cursor'].get('index', 0)) + max(1, int(rec.get('processed') or 0))
             nxt = {'index': index} if index < len(cur['materialOrder']) else None
@@ -749,6 +752,10 @@ class Dumper:
         cur['chunk'], cur['cursor'], cur['errors'] = 0, {}, 0
         if cur['part_i'] >= len(cur['parts']):
             self.close_pass(not cur['partial'], None)
+        elif cur['parts'][cur['part_i']] == 'renderers' and cur.get('materialSource'):
+            # The pass read its materials through the carried catalog already: its own renderers
+            # part builds a fresh catalog (no users appended twice, none left over from that pass).
+            cur.update(materialOrder=[], materialUsers={}, materialRefs={})
 
     @staticmethod
     def director_time(rec):

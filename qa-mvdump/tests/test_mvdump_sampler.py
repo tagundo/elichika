@@ -231,6 +231,11 @@ class TestIntegration(SamplerCase):
         late = [r for r in fulls if r['pass'] == 3 and r['part'] == 'materials']
         self.assertTrue(late and all(r.get('materialSource') == 'pass 2 renderers' for r in late), [r.get('materialSource') for r in late])
         self.assertTrue(all(m['resolvedBy'] == 'renderer' for r in late for m in r['materials']))
+        end = [r for r in fulls if r['pass'] == 4 and r['part'] == 'materials']
+        self.assertTrue(end and all(r.get('materialSource') == 'pass 3 renderers' for r in end), [r.get('materialSource') for r in end])
+        for r in late + end:
+            for m in r['materials']:
+                self.assertTrue(m['usedBy'] and len(m['usedBy']) == len(set(m['usedBy'])), (r['id'], m['usedBy']))
         coverage = trailer['partCoverage']
         for part in ('members', 'materials', 'post'):
             self.assertGreaterEqual(coverage[part]['last'], 107.3 - 8, (part, coverage[part]))
@@ -784,10 +789,6 @@ class TestEmission(unittest.TestCase):
         self.assertEqual(index['chunks'], len(lines) - 3)
 
 
-if __name__ == '__main__':
-    unittest.main()
-
-
 class TestScheduling(unittest.TestCase):
     """Window, face and census helpers of the Dumper, without an agent."""
 
@@ -881,3 +882,39 @@ class TestScheduling(unittest.TestCase):
         d.material_catalog = None
         d.start_pass(4, 99.0, 'test')
         self.assertEqual(d.current['materialOrder'], [], 'no catalog: the materials part has nothing to read')
+
+    def test_carried_catalog_is_rebuilt_by_the_pass_own_renderers_part(self):
+        """A late pass reads materials through the carried catalog, then its own renderers part
+        builds a fresh catalog: no user listed twice, no user left over from the earlier pass."""
+        d = self.d
+        d.material_catalog = {'order': [-10, -11], 'users': {'-10': ['renderer:/a#0'], '-11': ['renderer:/gone#1']},
+                              'refs': {'-10': [{'path': '/a', 'slot': 0, 'rendererId': -3}], '-11': [{'path': '/gone', 'slot': 1, 'rendererId': -4}]},
+                              'source': 'pass 2 renderers'}
+        renderers = [{'key': 'renderer:/a', 'path': '/a', 'instanceId': -3, 'materials': [{'slot': 0, 'instanceId': -10}]},
+                     {'key': 'renderer:/b', 'path': '/b', 'instanceId': -5, 'materials': [{'slot': 0, 'instanceId': -10}, {'slot': 1, 'instanceId': -12}]}]
+        sent = []
+
+        def record(part, options, kind, extra=None):
+            sent.append((part, options))
+            if part == 'renderers':
+                # The same renderer listed by two chunks (a cursor that re-reads it) stays one user.
+                return {'renderers': renderers, 'next': {'afterInstanceId': -1} if extra['chunk'] == 0 else None}
+            if part == 'materials':
+                return {'materials': [], 'processed': 8, 'next': None}
+            return {'next': None}
+        for k in (3, 4):
+            with mock.patch.object(d, 'record', side_effect=record):
+                d.start_pass(k, 80.0 + k, 'test')
+                while d.current is not None:
+                    d.run_chunk()
+            self.assertEqual(d.material_catalog['source'], f'pass {k} renderers')
+            self.assertEqual(d.material_catalog['order'], [-10, -12])
+            self.assertEqual(d.material_catalog['users'], {'-10': ['renderer:/a#0', 'renderer:/b#0'], '-12': ['renderer:/b#1']})
+            self.assertEqual(d.material_catalog['refs']['-10'], [{'path': '/a', 'slot': 0, 'rendererId': -3}, {'path': '/b', 'slot': 0, 'rendererId': -5}])
+        p4 = [options for part, options in sent if part == 'materials'][-1]
+        self.assertEqual([(m['instanceId'], m['usedBy']) for m in p4['materials']],
+                         [(-10, ['renderer:/a#0', 'renderer:/b#0']), (-12, ['renderer:/b#1'])], 'pass 4 reads pass 3\'s catalog once')
+
+
+if __name__ == '__main__':
+    unittest.main()
