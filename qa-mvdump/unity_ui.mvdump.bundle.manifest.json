@@ -8,12 +8,12 @@
   "dispatcher_sha256": "844f52ae68019e1c30b54cc8164e68e664d1a675d22e6c6b02f4f4d068a89e65",
   "observer_sha256": "957e71e7d76cdcc1077fc0497e44cc224dcb65449e11e4fcce92ef0c5557ea38",
   "patched_observer_sha256": "ac0eb9292909c6ca11ebfcd346e6bdaaef6dfef2bb48744925c410dc9ff64e0d",
-  "extension_sha256": "41e1cf773f956b56b3b8b8abee4c5f724afdbd9fb363e5427458ca71ff71d13b",
+  "extension_sha256": "d3fe38852747400a515bfa2b0e07dacac19127a127e6793deca7a378528f80fc",
   "expose_line_sha256": "1f1c5680bf488ef50285d82402b8edcfc499d294d30665daa235ffb7b9df2507",
   "anchor": "  rpc.exports = {",
   "bundle": "unity_ui.mvdump.bundle.js",
-  "bytes": 371545,
-  "sha256": "b19b262f9730c2e800fa99c9264c599d996a0750c3184f413ea45302423dd96c",
+  "bytes": 371660,
+  "sha256": "8f8fa7329e06450780bc5f7c49cfc36a2fbba8c8c2c771f4683d3ea24101c32a",
   "layout": "bridge + \\n;\\n + dispatcher + \\n;\\n + patched observer + \\n;\\n + extension + \\n",
   "runtime_validation": "Pending a real Unity process: hashes, anchors and syntax are not runtime proof"
 }

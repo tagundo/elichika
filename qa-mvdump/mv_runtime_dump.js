@@ -1820,7 +1820,9 @@
     function visit(track, depth, parent) {
       if (!isObj(track) || out.length >= CAPS.timelineTracks) return;
       out.push({ track: track, depth: depth, parent: parent });
-      if (depth < 3) listItems(fv(track, "m_Children"), 64).forEach(function (child) { visit(child, depth + 1, out.length - 1); });
+      // This track's own index, taken before its children (and their subtrees) are appended.
+      var own = out.length - 1;
+      if (depth < 3) listItems(fv(track, "m_Children"), 64).forEach(function (child) { visit(child, depth + 1, own); });
     }
     listItems(fv(asset, "m_Tracks"), 128).forEach(function (track) { visit(track, 0, null); });
     return out;

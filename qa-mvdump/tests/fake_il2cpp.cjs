@@ -760,7 +760,11 @@ function createWorld(opts = {}) {
   set(ccPar, 'prefabGameObject', prefabPar.go);
   const controlTrack = track('LLAS.Components.Timeline.CustomControlTrack', 'fx', [clip(36.9, 8.2, 'fx_flo_so2035_02', ccFlo), clip(73.9, 4.9, 'fx_par_so2035_03', ccPar)]);
   const activation = track('UnityEngine.Timeline.ActivationTrack', 'main_01_act', [clip(0, 33.6, 'Active', 0)]);
-  const group = track('UnityEngine.Timeline.GroupTrack', 'stage', [], [activation]);
+  // The 12035 nesting StageEffect/Expert/Control/[Particle, Floor, Light]: groups with several children.
+  const control = track('UnityEngine.Timeline.GroupTrack', 'Control', [], ['Particle', 'Floor', 'Light'].map(n => track('UnityEngine.Timeline.ActivationTrack', n, [clip(1, 2, 'Active', 0)])));
+  const expert = track('UnityEngine.Timeline.GroupTrack', 'Expert', [], [control]);
+  const group = track('UnityEngine.Timeline.GroupTrack', 'stage', [], [activation, expert,
+    track('UnityEngine.Timeline.ActivationTrack', 'main_02_act', [clip(33.6, 10, 'Active', 0)])]);
   const animation = track('UnityEngine.Timeline.AnimationTrack', 'litC', [clip(0, 100, 'litC_anim', 0)]);
   set(timeline, 'm_Tracks', objList([group, controlTrack, animation]));
   // A second root GameObject named EntryPoint (PopupView only), created first: GameObject.Find("/EntryPoint")

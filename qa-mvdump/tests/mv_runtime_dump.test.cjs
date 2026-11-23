@@ -276,7 +276,11 @@ test('every full part terminates, stays read-only and keeps no object across cal
   // Timeline: CustomControl clip windows with their prefabs; the grouped activation track; others counted only.
   const tl = out.timeline[0].timeline;
   assert.equal(tl.asset, 'so2035_timeline');
-  assert.equal(tl.trackCount, 4);
+  assert.equal(tl.trackCount, 10);
+  // Parent indices: a track's parent is its group's index, also for every sibling after the first
+  // (stage 0: main_01_act 1, Expert 2, main_02_act 7; Expert: Control 3; Control: Particle 4, Floor 5, Light 6).
+  assert.deepEqual(tl.tracks.filter(t => t.class === 'UnityEngine.Timeline.ActivationTrack').map(t => [t.name, t.index, t.depth, t.parent]),
+    [['main_01_act', 1, 1, 0], ['Particle', 4, 3, 3], ['Floor', 5, 3, 3], ['Light', 6, 3, 3], ['main_02_act', 7, 1, 0]]);
   const cc = tl.tracks.find(t => t.class === 'LLAS.Components.Timeline.CustomControlTrack');
   assert.deepEqual(cc.clips.map(c => [c.start, c.duration, c.prefab, c.assetClass]),
     [[36.9, 8.2, 'fx_flo_so2035_02', 'LLAS.Components.Timeline.CustomControlClip'], [73.9, 4.9, 'fx_par_so2035_03', 'LLAS.Components.Timeline.CustomControlClip']]);
