@@ -17,7 +17,10 @@ r8 cached dispatcher; host RPC timeout 12 s > the dispatcher's 10 s ticket timeo
   - part order per pass (PASS_PARTS): pass 0 reads the timeline first, then the members; the
     late passes (3, 4) read members, materials (through the material catalog of the last
     renderers part), post and particles before the renderers, so those values reach the song's
-    end (the 12035 Max 3D dump stopped them at 80.4 s);
+    end (the 12035 Max 3D dump stopped them at 80.4 s). The end pass (D - 8 s) has room for
+    about 7 chunks before D at the 12035 dump's rate (~1 chunk per director second): it reads
+    post (1 chunk) and particles (2-3) before materials (~4 without the skill cut-in), since
+    pass 3 already read materials from 3D/4 and particles have no per-frame section;
   - particle windows: the timeline part lists the CustomControl/Control clips with their prefab;
     while a clip's window is open (start + 0.25 s .. end - 0.1 s) and it was not sampled yet, a
     window run (pass 10+n, part particles with options.roots = ["<prefab> [Timeline]"]) takes the
@@ -56,8 +59,9 @@ PARTS_ALL = ['timeline', 'members', 'census', 'quality', 'fovmodNative', 'render
              'particles', 'springs', 'stageNodes']
 PARTS_MID = ['members', 'post', 'renderers', 'materials', 'particles', 'springs', 'stageNodes']
 # Late passes: members/materials/post/particles first (materials from the carried catalog), renderers last.
+# The end pass puts post and particles before materials (see the module docstring).
 PARTS_LATE = ['members', 'materials', 'post', 'particles', 'springs', 'stageNodes', 'renderers']
-PARTS_END = ['members', 'materials', 'post', 'particles', 'quality', 'fovmodNative', 'census', 'springs', 'stageNodes',
+PARTS_END = ['members', 'post', 'particles', 'materials', 'quality', 'fovmodNative', 'census', 'springs', 'stageNodes',
              'lightingRefs', 'renderers']
 PASS_PARTS = {-1: PARTS_ALL, 0: PARTS_ALL, 1: PARTS_MID, 2: PARTS_MID, 3: PARTS_LATE, 4: PARTS_END}
 DISCOVERY_PASS = -1

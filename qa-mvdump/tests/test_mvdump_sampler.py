@@ -237,7 +237,7 @@ class TestIntegration(SamplerCase):
             for m in r['materials']:
                 self.assertTrue(m['usedBy'] and len(m['usedBy']) == len(set(m['usedBy'])), (r['id'], m['usedBy']))
         coverage = trailer['partCoverage']
-        for part in ('members', 'materials', 'post'):
+        for part in ('members', 'materials', 'post', 'particles'):
             self.assertGreaterEqual(coverage[part]['last'], 107.3 - 8, (part, coverage[part]))
         self.assertEqual(coverage['particles:window']['records'], 2)
         # Faces: the members part's CombineFace (+ Body) renderers ride on every later frame.
@@ -898,6 +898,15 @@ class TestScheduling(unittest.TestCase):
         d.material_catalog = None
         d.start_pass(4, 99.0, 'test')
         self.assertEqual(d.current['materialOrder'], [], 'no catalog: the materials part has nothing to read')
+
+    def test_end_pass_reads_post_and_particles_before_materials(self):
+        """The end pass (D - 8 s) has room for about 7 chunks before D: post (1) and particles (2-3) come
+        before the ~4 materials chunks; pass 3 keeps materials first (it starts at 3D/4)."""
+        end, late = mvdump_sampler.PARTS_END, mvdump_sampler.PARTS_LATE
+        self.assertEqual(end[:4], ['members', 'post', 'particles', 'materials'])
+        self.assertLess(end.index('materials'), end.index('renderers'), 'materials still read through the carried catalog')
+        self.assertEqual(late[:4], ['members', 'materials', 'post', 'particles'])
+        self.assertEqual(sorted(end), sorted(set(end)))
 
     def test_carried_catalog_is_rebuilt_by_the_pass_own_renderers_part(self):
         """A late pass reads materials through the carried catalog, then its own renderers part
