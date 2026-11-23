@@ -25,13 +25,14 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image
 import feature_client_smoke as semantics
-from unity_main_tid import select_unity_main_tid, proc_stat_starttime
+from unity_main_tid import select_unity_main_tid
 from native_mv_focus import HOME_LIVE_PATH, HOME_BASIC_LIVE_PATH, actionable_nodes, typed_scroll_target
 
 TARGET = int(os.environ.get('MV_EXPORT_LIVE', '12035'))
 EXPORT_SECONDS = int(os.environ.get('MV_EXPORT_SECONDS', '9000'))
 NAVIGATION_SECONDS = int(os.environ.get('MV_NAVIGATION_SECONDS', '1500'))
 FOV_ACTIVITY = 'com.klab.lovelive.allstars.fovmod.FovSettingsActivity'
+EXPORT_SIZE = tuple(int(v) for v in os.environ.get('MV_EXPORT_SIZE', '1280x720').split('x'))
 EXPORT_DIRS = ('/sdcard/Download/sukusuta/MV', '/sdcard/Download', '/data/data/{pkg}/files', '/sdcard/Android/data/{pkg}/files')
 
 
@@ -53,6 +54,55 @@ def emit_shot(name, png, width=400):
 
 def signature(png):
     return Image.open(io.BytesIO(png)).convert('L').resize((32, 18)).tobytes()
+
+
+def mv_profile_plan(nodes, state):
+    """FovSettingsActivity plan for the MP4-export clients.
+
+    Replaces native_profile_plan, which expects the b22 screen and drags both
+    aspect sliders to an extreme. The authored camera must stay at the
+    client's default FOV, so the sliders are never touched. Orientation stays
+    portrait by default because the toolkit's OCR startup was only proven in
+    portrait; the MP4 exporter renders to its own surface at the requested
+    size. Returns the same plan shapes the toolkit loop already handles.
+    """
+    from feature_client_smoke import control_fully_visible
+    usable = [n for n in nodes if n.get('enabled') and control_fully_visible(n)]
+    texts = [n.get('text') or n.get('label') for n in nodes if (n.get('text') or n.get('label'))]
+    if texts != state.get('last_texts'):
+        log('FOVUI', {'texts': texts[:80]})
+        state['last_texts'] = texts
+    if not state.get('language'):
+        english = [n for n in usable if n.get('clickable') and (n.get('text') or '').strip() == 'English']
+        state['language'] = True
+        if english:
+            return {'kind': 'language', 'node': english[0]}
+    if not state.get('orientation'):
+        wanted = os.environ.get('MV_FOV_ORIENTATION', 'portrait').casefold()
+        choice = [n for n in usable if (n.get('text') or '').strip().casefold() == wanted
+                  and (n.get('clickable') or n.get('class', '').endswith(('RadioButton', 'Button')))]
+        if choice:
+            return {'kind': 'orientation', 'node': choice[0], 'needs_tap': not choice[0].get('checked')}
+    if not state.get('intro'):
+        checks = [n for n in usable if n.get('class') == 'android.widget.CheckBox']
+        if len(checks) == 1:
+            return {'kind': 'intro', 'node': checks[0], 'needs_tap': not checks[0].get('checked')}
+    launch = [n for n in usable if n.get('clickable') and
+              re.fullmatch(r'(?:start game|save and start|save & start)', (n.get('text') or '').strip(), re.I)]
+    if launch:
+        if not state.get('orientation'):
+            log('WARN', {'fov_settings': 'no orientation control seen before Start game'})
+        return {'kind': 'launch', 'node': launch[0]}
+    state['scrolls'] = state.get('scrolls', 0) + 1
+    if state['scrolls'] > 8:
+        state['orientation'] = state['intro'] = True
+    scrolls = [n for n in nodes if n.get('scrollable') and n['bounds']['bottom'] - n['bounds']['top'] > 40]
+    if scrolls:
+        return {'kind': 'scroll', 'node': max(scrolls, key=lambda n: n['bounds']['bottom'] - n['bounds']['top'])}
+    right = max((n['bounds']['right'] for n in nodes), default=720)
+    bottom = max((n['bounds']['bottom'] for n in nodes), default=1280)
+    return {'kind': 'scroll', 'node': {'bounds': {'left': 0, 'top': 0, 'right': right, 'bottom': bottom},
+                                       'center': {'x': right // 2, 'y': bottom // 2}}}
 
 
 def unity_build_id(backtrace):
@@ -123,6 +173,22 @@ def run_mv_focus(context):
                 tap(node['x'], node['y'], reason + ':' + pattern, node['text'] or node['desc'])
                 return True
         return False
+
+    def set_field(nodes, label, value):
+        labels = [n for n in nodes if re.search(label, n['text'] or n['desc'] or '', re.I) and n['class'] != 'EditText']
+        fields = [n for n in nodes if n['class'] == 'EditText' and n['enabled']]
+        if not labels or not fields:
+            log('WARN', {'field': label, 'labels': len(labels), 'fields': len(fields)})
+            return False
+        anchor = labels[0]['bounds']
+        # The nearest edit box at or below the label, preferring the same column.
+        field = min(fields, key=lambda n: (n['bounds'][1] < anchor[1] - 5, abs(n['bounds'][1] - anchor[3]) + abs(n['x'] - (anchor[0] + anchor[2]) // 2) / 4))
+        tap(field['x'], field['y'], 'field:' + label, field['text'])
+        device.shell('input', 'keyevent', 'KEYCODE_MOVE_END')
+        device.shell('input', 'keyevent', *(['KEYCODE_DEL'] * 12))
+        device.shell('input', 'text', str(value))
+        log('STEP', {'field': label, 'value': value, 'was': field['text']})
+        return True
 
     started = time.monotonic()
     from native_download_driver import reach_settled_home
@@ -301,19 +367,38 @@ def run_mv_focus(context):
         created = [path for path in list_exports(device, package) if path not in before]
         if created and phase in ('rendering', 'started'):
             log('STEP', {'new_files': created[:5]})
-        if phase in ('open', 'menu'):
-            if tap_native(nodes, [r'^Export MP4$', r'^MP4 export$', r'^MV export$', r'Export MP4'], 'open-export'):
-                phase = 'menu'
+        if phase == 'open':
+            if tap_native(nodes, [r'^(?:Export MP4|MP4 export|MV export|Export MP4…)$'], 'open-export', cooldown=20):
+                phase = 'dialog'
                 time.sleep(3)
                 continue
-            if tap_native(nodes, [r'^30 FPS$'], 'fps-30', cooldown=60):
+            if state.setdefault('export_scrolls', 0) < 6:
+                state['export_scrolls'] += 1
+                height = max((n['bounds'][3] for n in nodes), default=1280)
+                width = max((n['bounds'][2] for n in nodes), default=720)
+                device.shell('input', 'swipe', str(width // 2), str(int(height * .8)), str(width // 2), str(int(height * .35)), '600')
+                time.sleep(2)
+                continue
+        elif phase == 'dialog':
+            if not state.get('fields_set'):
+                for label, value in ((r'^Width', EXPORT_SIZE[0]), (r'^Height', EXPORT_SIZE[1])):
+                    set_field(nodes, label, value)
+                state['fields_set'] = True
                 time.sleep(1)
-            if tap_native(nodes, [r'^H\.264'], 'codec-h264', cooldown=60):
+                continue
+            if tap_native(nodes, [r'^30 FPS$'], 'fps-30', cooldown=600):
                 time.sleep(1)
-            if tap_native(nodes, [r'^Export$', r'^Export one MP4$', r'^Export MP4…?$', r'^Start$', r'^OK$'], 'start-export'):
+                continue
+            if tap_native(nodes, [r'^H\.264'], 'codec-h264', cooldown=600):
+                time.sleep(1)
+                continue
+            if tap_native(nodes, [r'^Export$', r'^Export one MP4$', r'^Start export$', r'^Start$', r'^OK$'], 'start-export', cooldown=20):
                 phase = 'started'
                 time.sleep(5)
                 continue
+            state['dialog_waits'] = state.get('dialog_waits', 0) + 1
+            if state['dialog_waits'] > 4:
+                phase, state['dialog_waits'] = 'open', 0
         if phase in ('started', 'rendering') and not texts:
             screen('export-wait')
         time.sleep(15)

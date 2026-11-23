@@ -168,6 +168,12 @@ jobs:
           # disagreeing pairs aborted the 2026-11-23 r8 rerun before any input.
           sed -i 's/if pair_failures\[kind\]>=3:/if pair_failures[kind]>=12:/' toolkit/qa/native_ocr_control.py
           grep -n "pair_failures\[kind\]>=12" toolkit/qa/native_ocr_control.py
+          # The MP4-export client's FOV screen differs from b22, and the MV must
+          # keep the default FOV in landscape: use the export plan instead.
+          sed -i "s/plan=semantics.native_profile_plan(nodes,state,'portrait',True)/plan=mv_profile_plan(nodes,state)/" toolkit/qa/native_ocr_control.py
+          sed -i 's/^import feature_client_smoke as semantics$/import feature_client_smoke as semantics\nfrom mv_export_focus import mv_profile_plan/' toolkit/qa/native_ocr_control.py
+          grep -n "mv_profile_plan" toolkit/qa/native_ocr_control.py
+          test "$(grep -c mv_profile_plan toolkit/qa/native_ocr_control.py)" = 2
           "$RUNNER_TEMP/qa-venv/bin/python" -m py_compile toolkit/qa/mv_export_focus.py
 
       - name: Run the real client to an exported MV
