@@ -36,6 +36,15 @@ from unity_main_tid import select_unity_main_tid
 from native_mv_focus import HOME_LIVE_PATH, HOME_BASIC_LIVE_PATH, actionable_nodes, typed_scroll_target
 
 TARGET = int(os.environ.get('MV_EXPORT_LIVE', '12035'))
+# The LiveMusicSelect list is a circular carousel sorted by m_live.display_order (run 6: the rows
+# above 10001 were Liella 13xxx). Nijigasaki solos such as 12035 sit a few rows above the start,
+# so the search goes backward (finger down, revealing the rows above) unless told otherwise.
+SEARCH_DIRECTION = os.environ.get('MV_EXPORT_SEARCH_DIRECTION', 'backward').strip() or 'backward'
+# Used once when TARGET is locked (IsPlayable false; e.g. a member-story unlock) or not listed.
+FALLBACK_TARGET = int(os.environ['MV_EXPORT_FALLBACK_LIVE']) if os.environ.get('MV_EXPORT_FALLBACK_LIVE', '').strip() else None
+# Drag length as a share of the list height (about 3 rows at 720 px), the step cap, and how many
+# steps in a row may add no new liveMasterId before the circular list counts as fully seen.
+SEARCH_STEP_FRACTION, SEARCH_MAX_STEPS, SEARCH_STALE_STEPS = 0.45, 90, 6
 EXPORT_SECONDS = int(os.environ.get('MV_EXPORT_SECONDS', '9000'))
 NAVIGATION_SECONDS = int(os.environ.get('MV_NAVIGATION_SECONDS', '1500'))
 FOV_ACTIVITY = 'com.klab.lovelive.allstars.fovmod.FovSettingsActivity'
@@ -1176,8 +1185,45 @@ def run_mv_focus(context):
         return result
 
     # ----------------------------------------------------------- navigation
-    scrolls, direction, playing = 0, 'forward', False
+    playing = False
+    search = {'seen': set(), 'steps': 0, 'stale': 0, 'pending': False, 'tried': [TARGET], 'log': []}
     song_tapped, song_taps, unqualified_picks, deck_waits = 0.0, 0, 0, 0
+
+    def list_drag(start, end):
+        """Drag the song list with a hold before release, so the ScrollRect keeps no release
+        velocity (no fling): the list moves by the drag length and snaps to the nearest cell.
+        Falls back to a slow 1500 ms swipe when `input` has no motionevent."""
+        (sx, sy), (ex, ey) = start, end
+        if not input_motionevent():
+            device.shell('input', 'swipe', str(sx), str(sy), str(ex), str(ey), '1500')
+            return 'swipe-1500'
+        try:
+            device.shell('input', 'motionevent', 'DOWN', str(sx), str(sy))
+            for k in (1, 2, 3):
+                device.shell('input', 'motionevent', 'MOVE', str(int(sx + (ex - sx) * k / 3)), str(int(sy + (ey - sy) * k / 3)))
+            time.sleep(0.4)
+        finally:
+            device.shell('input', 'motionevent', 'UP', str(ex), str(ey))
+        return 'motionevent-hold'
+
+    def switch_target(reason):
+        """Move to FALLBACK_TARGET once. Every TARGET check (song gate, deck gate, measurement)
+        reads the module global, so they all follow the switch."""
+        global TARGET
+        nonlocal song_taps, unqualified_picks
+        if FALLBACK_TARGET is None or FALLBACK_TARGET in search['tried']:
+            return False
+        song_taps, unqualified_picks = 0, 0
+        entry = {'from': TARGET, 'to': FALLBACK_TARGET, 'reason': reason, 'seen': len(search['seen']),
+                 'steps': search['steps'], 't': round(time.monotonic() - started, 1)}
+        TARGET = FALLBACK_TARGET
+        search['tried'].append(TARGET)
+        search['stale'] = 0
+        result['target_live'] = TARGET
+        result.setdefault('target_switches', []).append(entry)
+        log('SONG', dict(entry, step='target-switch'))
+        save()
+        return True
     snapshot_failures, rebinds = 0, 0
     deadline = time.monotonic() + NAVIGATION_SECONDS
     index = 0
@@ -1249,6 +1295,18 @@ def run_mv_focus(context):
                 time.sleep(4)
                 continue
         elif scene == 'LiveMusicSelect':
+            # Every liveMasterId the agent saw in the active (recycled) cells, visible or cached off
+            # screen. A search step that adds none counts as stale; a run of stale steps means the
+            # circular list has been fully seen.
+            row_ids = {r.get('liveMasterId') for r in rows if isinstance(r.get('liveMasterId'), int)}
+            fresh_ids = row_ids - search['seen']
+            search['seen'] |= row_ids
+            if search['pending']:
+                search['pending'] = False
+                search['stale'] = 0 if fresh_ids else search['stale'] + 1
+                log('SEARCH', {'step': search['steps'], 'direction': SEARCH_DIRECTION, 'rows': len(row_ids),
+                               'new': sorted(fresh_ids)[:24], 'seen': len(search['seen']), 'stale': search['stale'],
+                               'target': TARGET, 'target_in_rows': TARGET in row_ids})
             selection = music_selection_state(mv)
             if selection != state.get('last_selection'):
                 log('SONG', dict(selection, i=index, target=TARGET, taps=song_taps))
@@ -1314,28 +1372,59 @@ def run_mv_focus(context):
                 song_taps, song_tapped, unqualified_picks = song_taps + 1, time.monotonic(), 0
                 time.sleep(3)
                 continue
-            elif not (row and target.get('visible')) and scrolls < 60:
-                # Scroll only while the song is off screen; a visible but covered row leaves the
-                # dialog on top to the generic confirm below.
+            elif row and row.get('isPlayable') is not True:
+                # Listed but not playable for this account (e.g. unlock_pattern 4, a member-story
+                # unlock such as 12035): never tap it; use the fallback song or stop now.
+                reason = f'Song {TARGET} is listed but not playable (IsPlayable={row.get("isPlayable")!r})'
+                if switch_target(reason):
+                    continue
+                result['blocked_reason'] = reason
+                log('WARN', {'music_selection': reason, 'seen': len(search['seen']), 'tried': search['tried']})
+                break
+            elif not (row and target.get('visible')):
+                # Search while the song is off screen; a visible but covered row leaves the dialog on
+                # top to the generic confirm below.
+                if search['stale'] >= SEARCH_STALE_STEPS or search['steps'] >= SEARCH_MAX_STEPS:
+                    reason = (f'Song {TARGET} not in the song list after {search["steps"]} search steps '
+                              f'({len(search["seen"])} songs seen, {search["stale"]} steps without a new one)')
+                    result['song_search'] = {'seen': sorted(search['seen']), 'steps': search['steps'], 'tried': list(search['tried'])}
+                    log('SEARCH', {'step': 'exhausted', 'reason': reason, 'seen_ids': sorted(search['seen'])})
+                    if switch_target(reason):
+                        continue
+                    result['blocked_reason'] = reason
+                    break
                 try:
                     scroll = typed_scroll_target(tree, 'music')
                     b = scroll.get('visibleBounds') or scroll['bounds']
-                    x, y = int((b['left'] + b['right']) / 2), int((b['top'] + b['bottom']) / 2)
-                    if scroll['scroll'].get('vertical'):
-                        start, end = [x, int(b['top'] + (b['bottom'] - b['top']) * .8)], [x, int(b['top'] + (b['bottom'] - b['top']) * .25)]
+                    vertical = bool(scroll['scroll'].get('vertical'))
+                    lo, hi = (b['top'], b['bottom']) if vertical else (b['left'], b['right'])
+                    mid_cross = int((b['left'] + b['right']) / 2) if vertical else int((b['top'] + b['bottom']) / 2)
+                    way = SEARCH_DIRECTION
+                    # A cached off-screen cell of the target says which way it is.
+                    where = target.get('center')
+                    if isinstance(where, dict):
+                        pos = where.get('y' if vertical else 'x')
+                    elif isinstance(where, (list, tuple)) and len(where) >= 2:
+                        pos = where[1 if vertical else 0]
                     else:
-                        start, end = [int(b['left'] + (b['right'] - b['left']) * .8), y], [int(b['left'] + (b['right'] - b['left']) * .25), y]
-                    if direction == 'backward':
-                        start, end = end, start
-                    device.shell('input', 'swipe', *map(str, (*start, *end)), '450')
-                    scrolls += 1
-                    if scrolls == 30:
-                        direction = 'backward'
-                    log('STEP', {'scroll': scrolls, 'direction': direction})
-                    time.sleep(2)
+                        pos = None
+                    if row and isinstance(pos, (int, float)):
+                        way = 'backward' if pos < lo else 'forward' if pos > hi else way
+                    span = (hi - lo) * SEARCH_STEP_FRACTION
+                    a, z = int(lo + (hi - lo) * .5 + span / 2), int(lo + (hi - lo) * .5 - span / 2)
+                    # forward: finger moves up/left (rows below come in); backward: the reverse.
+                    first, last = (a, z) if way == 'forward' else (z, a)
+                    start, end = ((mid_cross, first), (mid_cross, last)) if vertical else ((first, mid_cross), (last, mid_cross))
+                    method = list_drag(start, end)
+                    search['steps'] += 1
+                    search['pending'] = True
+                    log('STEP', {'search_drag': search['steps'], 'direction': way, 'method': method,
+                                 'from': list(start), 'to': list(end), 'target_cached': bool(row)})
+                    time.sleep(1.5)
                     continue
                 except Exception as error:
-                    log('WARN', {'scroll': type(error).__name__, 'message': str(error)[:200]})
+                    log('WARN', {'search_drag': type(error).__name__, 'message': str(error)[:200]})
+                    time.sleep(2)
         elif scene == 'LiveMvDeckSelect':
             deck = record_deck(index, tree, mv)
             deck_live = mv.get('liveMasterId')

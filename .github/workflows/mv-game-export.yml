@@ -36,6 +36,11 @@ jobs:
       MV_FOV_ORIENTATION: portrait
       MV_EXPORT_LANDSCAPE: "1"
       MV_EXPORT_STAGE: Special Stage
+      # The song list is circular and sorted by display order; 12035 sits a few rows above the start.
+      MV_EXPORT_SEARCH_DIRECTION: backward
+      # 12035 unlocks through a member story (unlock_pattern 4). If this synthetic account cannot
+      # play it, export 12038 instead: always open, and it has editor baselines too.
+      MV_EXPORT_FALLBACK_LIVE: "12038"
     steps:
       - uses: actions/checkout@v4
         with:
