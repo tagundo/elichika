@@ -263,6 +263,22 @@ class TestIntegration(SamplerCase):
         self.assertEqual(summary.get('windows', [2, 2]), [2, 2])
         self.assert_world_clean()
 
+    def test_window_root_that_find_misses_is_found_by_root_name(self):
+        """GameObject.Find returning the timeline's "<prefab> [Timeline]" instance is unproven on a device:
+        when it misses, the window run still samples the systems through their root name."""
+        out, rec, c, clock = self.run_node(normal_mv(), clock=FakeClock(rtt=0.3), world={'findMissesTimeline': True})
+        doc = self.evidence_doc(c)
+        self.assertEqual(codec.validate(doc), [])
+        self.assertEqual(out['status'], 'RUNTIME_DUMPED', out.get('runtime_dump'))
+        runs = doc['trailer']['windows']['runs']
+        self.assertEqual(runs[0]['found'], [{'path': '/fx_flo_so2035_02 [Timeline]', 'found': True, 'via': 'ParticleSystem root name', 'systems': 2}])
+        self.assertEqual(runs[0]['particles'], 2)
+        self.assertEqual(runs[1]['found'], [{'path': '/fx_par_so2035_03 [Timeline]', 'found': False}])
+        window = next(r for r in doc['records'] if r.get('pass') == mvdump_sampler.WINDOW_PASS_BASE)
+        self.assertEqual(window['scan']['matched'], 2)
+        self.assertFalse(window['scan']['truncated'])
+        self.assert_world_clean()
+
     def test_real_extension_with_round_trip_at_the_interval(self):
         """The real extension in the fake world at rtt 0.5 s (= the frame interval) and 0.7 s."""
         for rtt in (0.5, 0.7):

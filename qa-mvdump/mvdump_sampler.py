@@ -21,7 +21,8 @@ r8 cached dispatcher; host RPC timeout 12 s > the dispatcher's 10 s ticket timeo
   - particle windows: the timeline part lists the CustomControl/Control clips with their prefab;
     while a clip's window is open (start + 0.25 s .. end - 0.1 s) and it was not sampled yet, a
     window run (pass 10+n, part particles with options.roots = ["<prefab> [Timeline]"]) takes the
-    chunk slots ahead of the current pass;
+    chunk slots ahead of the current pass; a root the agent's path lookup misses is found through
+    one ParticleSystem enumeration by the systems' root name (roots[].via, record.scan);
   - faces: the members part's skinned renderers with blend shapes (per member, up to 4) are sent
     with every frame (options.faces), so CombineFace channel weights are sampled per frame;
   - budgets: MV_RUNTIME_DUMP_FRAME_BUDGET_MS (60/150) and MV_RUNTIME_DUMP_FULL_BUDGET_MS

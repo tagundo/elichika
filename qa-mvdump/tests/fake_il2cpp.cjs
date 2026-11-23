@@ -452,6 +452,9 @@ function createWorld(opts = {}) {
   function nameOfObj(addr) { const d = data(addr); return d.name !== undefined ? d.name : data(goOf(addr)).name; }
   function find(path) {
     const parts = path.replace(/^\//, '').split('/');
+    // opts.findMissesTimeline: GameObject.Find does not return the timeline's "<prefab> [Timeline]" instances
+    // (unproven on a device; the 12035 dump saw them only through FindObjectsOfTypeAll).
+    if (opts.findMissesTimeline && / \[Timeline\]$/.test(parts[0])) return 0;
     const roots = unityObjects.filter(a => objs.get(a).klass === C['UnityEngine.GameObject'] && !data(data(a).transform).parent && data(a).name === parts[0] && activeInHierarchy(a));
     if (!roots.length) return 0;
     let tr = data(roots[0]).transform;

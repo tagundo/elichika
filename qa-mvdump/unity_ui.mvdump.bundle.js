@@ -6658,27 +6658,61 @@ function splashFadeRGBA(splash) {
   }
   // Window mode (options.roots): only the systems under the named scene roots, e.g. the
   // "<prefab> [Timeline]" instances a CustomControl/Control clip creates while its window is open.
+  // Resumable from {afterInstanceId}.
   function windowParticles(ctx, options, klass, visit) {
-    var cursor = cursorOf(options), start = Number(cursor.index) || 0, list = [], seen = {}, roots = [], inactive = 0;
+    var cursor = cursorOf(options), after = typeof cursor.afterInstanceId === "number" ? cursor.afterInstanceId : null;
+    var list = [], seen = {}, roots = [], missing = {}, inactive = 0, scan = null;
+    function add(ps) {
+      var id = isObj(ps) ? iid(ps) : null;
+      if (id !== null && !seen[id]) { seen[id] = true; list.push({ o: ps, id: id }); }
+    }
     options.roots.slice(0, 8).forEach(function (name) {
-      var path = "/" + String(name).replace(/^\//, ""), tr = null;
+      var path = "/" + String(name).replace(/^\//, ""), tr = null, entry = { path: path, found: false };
       try { tr = resolvePath(ctx, path); } catch (error) { ctx.err("particles.roots", error); }
-      roots.push({ path: path, found: !!tr });
-      if (!tr) return;
-      componentsInChildren(ctx, tr, klass, CAPS.particles).forEach(function (ps) {
-        var id = isObj(ps) ? iid(ps) : null;
-        if (id !== null && !seen[id]) { seen[id] = true; list.push({ o: ps, id: id }); }
-      });
+      roots.push(entry);
+      if (!tr) { missing[path.slice(1)] = entry; return; }
+      entry.found = true;
+      componentsInChildren(ctx, tr, klass, CAPS.particles).forEach(add);
     });
+    if (Object.keys(missing).length) {
+      try { scan = particlesByRootName(ctx, klass, missing, add); } catch (error) { ctx.err("particles.rootScan", error); }
+    }
     list.sort(function (a, b) { return a.id - b.id; });
-    var out = [], i;
-    for (i = start; i < list.length && out.length < CAPS.particleChunk; i++) {
+    var out = [], last = after, i;
+    for (i = 0; i < list.length && out.length < CAPS.particleChunk; i++) {
+      if (after !== null && list[i].id <= after) continue;
       if (out.length && ctx.pastSoft()) { ctx.cut("objects"); break; }
+      last = list[i].id;
       ctx.objects++;
       if (!activeGo(ctx, list[i].o)) { inactive++; continue; }
       try { out.push(visit(list[i].o, list[i].id, out.length)); } catch (error) { ctx.err("object:" + list[i].id, error); }
     }
-    return { particles: out, roots: roots, systems: list.length, inactive: inactive, next: i < list.length ? { index: i } : null };
+    var body = { particles: out, roots: roots, systems: list.length, inactive: inactive, next: i < list.length ? { afterInstanceId: last } : null };
+    if (scan) body.scan = scan;
+    return body;
+  }
+  // A root that resolvePath misses (GameObject.Find returning a timeline's "<prefab> [Timeline]" instance is
+  // unproven on a device; the 12035 dump saw those systems only by enumeration): one ParticleSystem
+  // enumeration, keeping the active systems outside the deferred subtrees whose root name (pathInfo, raw or
+  // with (Clone) stripped) is a wanted one. Inactive systems are skipped before their path is read.
+  function particlesByRootName(ctx, klass, wanted, add) {
+    var d = deferral(ctx, klass), out = { by: "ParticleSystem root name", systems: 0, active: 0, matched: 0, truncated: false };
+    var objects = instances(ctx, klass, CAPS.enumerate);
+    for (var i = 0; i < objects.length; i++) {
+      if (i > 0 && ctx.pastHard()) { out.truncated = true; ctx.cut("particles.rootScan"); break; }
+      var ps = objects[i], id = iid(ps);
+      out.systems++;
+      if (id === null || d.ids[id] || !activeGo(ctx, ps)) continue;
+      out.active++;
+      var info = pathInfo(ctx, ps), rawRoot = typeof info.rawPath === "string" ? info.rawPath.split("/")[1] : null;
+      var entry = (rawRoot !== null && wanted.hasOwnProperty(rawRoot) ? wanted[rawRoot] : null) ||
+        (wanted.hasOwnProperty(info.segments[0]) ? wanted[info.segments[0]] : null);
+      if (!entry) continue;
+      entry.found = true; entry.via = "ParticleSystem root name"; entry.systems = (entry.systems || 0) + 1;
+      out.matched++;
+      add(ps);
+    }
+    return out;
   }
   // ------------------------------------------------------------------ post effects
   // LiveCoreCamera.postProcess (LiveCoreCameraPostProcess: behaviour, profile, flares[], enablePostEffect)

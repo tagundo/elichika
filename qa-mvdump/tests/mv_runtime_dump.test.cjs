@@ -561,7 +561,34 @@ test('particles window mode: only the systems under the named "<prefab> [Timelin
   assert.deepEqual(rec.particles.map(p => p.key).sort(), ['particles:/fx_flo_so2035_02 [Timeline]/root/flower_01', 'particles:/fx_flo_so2035_02 [Timeline]/root/flower_02']);
   assert.equal(rec.systems, 2);
   assert.equal(rec.next, null);
-  assert.ok(!h.world.findAllTypes.includes('UnityEngine.ParticleSystem'), 'no FindObjectsOfTypeAll(ParticleSystem) in window mode');
+  // The missing fx_par root costs one ParticleSystem enumeration (the root-name fallback), which finds nothing.
+  assert.deepEqual(rec.scan, { by: 'ParticleSystem root name', systems: rec.scan.systems, active: rec.scan.active, matched: 0, truncated: false });
+  assert.equal(h.world.findAllTypes.filter(n => n === 'UnityEngine.ParticleSystem').length, 1);
+  const before = h.world.findAllTypes.length;
+  const only = await h.rpc('mvruntime', { part: 'particles', roots: ['fx_flo_so2035_02 [Timeline]'], cursor: {} });
+  assert.equal(only.particles.length, 2);
+  assert.equal(only.scan, undefined);
+  assert.ok(!h.world.findAllTypes.slice(before).includes('UnityEngine.ParticleSystem'), 'no FindObjectsOfTypeAll(ParticleSystem) when every root resolves');
+});
+
+test('particles window mode: a root GameObject.Find misses is found by the systems\' root name, resumable', async () => {
+  const h = await bound({ findMissesTimeline: true });
+  const rec = await h.rpc('mvruntime', { part: 'particles', roots: ['fx_flo_so2035_02 [Timeline]', 'fx_par_so2035_03 [Timeline]'], cursor: {} });
+  assertClean(h.world);
+  assert.deepEqual(rec.roots, [{ path: '/fx_flo_so2035_02 [Timeline]', found: true, via: 'ParticleSystem root name', systems: 2 },
+    { path: '/fx_par_so2035_03 [Timeline]', found: false }]);
+  assert.deepEqual(rec.particles.map(p => p.key).sort(), ['particles:/fx_flo_so2035_02 [Timeline]/root/flower_01', 'particles:/fx_flo_so2035_02 [Timeline]/root/flower_02']);
+  assert.equal(rec.scan.matched, 2);
+  assert.equal(rec.scan.truncated, false);
+  assert.ok(rec.scan.active < rec.scan.systems, 'deferred (skill cut-in) and inactive systems are skipped before their path is read');
+  assert.equal(h.world.findAllTypes.filter(n => n === 'UnityEngine.ParticleSystem').length, 1, 'one enumeration per chunk');
+  // The skill cut-in systems are never path-read by the scan (deferred subtree).
+  assert.ok(!rec.particles.some(p => p.path.startsWith('/EntryPoint/SkillCutin/')));
+  // Resume after the first system: only the second one.
+  const ids = rec.particles.map(p => p.instanceId).sort((a, b) => a - b);
+  const next = await h.rpc('mvruntime', { part: 'particles', roots: ['fx_flo_so2035_02 [Timeline]'], cursor: { afterInstanceId: ids[0] } });
+  assert.deepEqual(next.particles.map(p => p.instanceId), [ids[1]]);
+  assert.equal(next.next, null);
 });
 
 test('frame faces: the host-sent face renderers give per-channel weights every frame (names read once)', async () => {
