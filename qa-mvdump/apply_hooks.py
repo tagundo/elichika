@@ -66,6 +66,11 @@ OCR_EDITS = (
     ('\nimport feature_client_smoke as semantics\n', '\nimport feature_client_smoke as semantics\nfrom mv_export_focus import mv_profile_plan\n'),
     ("    return 0 if report['status'] in ('PARTIAL_NATIVE_STARTUP_PROGRESS',",
      "    return 0 if report['status'] in ('RUNTIME_DUMPED','PARTIAL_NATIVE_STARTUP_PROGRESS',"),
+    # Live 3D quality pre-seed (mvdump_prefs.py): after the verified install, before the first launch.
+    ("        assert device.shell('sha256sum',installed).split()[0]==client['sha256']\n",
+     "        assert device.shell('sha256sum',installed).split()[0]==client['sha256']\n"
+     "        if os.environ.get('MV_PRESEED_QUALITY'):\n"
+     "            import mvdump_prefs;mvdump_prefs.preseed(device,package,int(os.environ['MV_PRESEED_QUALITY']),args.evidence)\n"),
 )
 
 

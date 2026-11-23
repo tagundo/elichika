@@ -10,6 +10,10 @@ on:
     paths: [.github/workflows/mv-runtime-dump.yml, qa-mvdump/**]
   workflow_dispatch:
     inputs:
+      quality:
+        description: Live 3D quality to pre-seed (10 Max, 20 High, 30 Middle, 40 Low; empty = 10)
+        required: false
+        default: '10'
       frame_interval:
         description: Seconds between frame records
         default: '0.5'
@@ -75,6 +79,10 @@ jobs:
       # for the pixel comparison with the editor. No MP4 export: Redroid's encoders cannot start.
       MV_RUNTIME_DUMP_SHOT_INTERVAL: "2.0"
       MV_RUNTIME_DUMP_SHOTS: "60"
+      # Live 3D quality written to the client's PlayerPrefs before its first launch. Run 2 got the
+      # auto default Low 3D (40) because no recommend_graphic rule matches Redroid's software GPU;
+      # 10 = Max 3D turns every stage/member feature on. The dump header shows what was applied.
+      MV_PRESEED_QUALITY: ${{ inputs.quality || '10' }}
       MV_RUNTIME_DUMP_LOG_CAP: "3500000"
       MV_RUNTIME_DUMP_KEYS: qa/mvdump-keys-12035.json
     steps:
@@ -225,11 +233,12 @@ jobs:
           set -euo pipefail
           # Unchanged copy of the navigation module; the hook is applied to this copy only.
           cp self/qa-mv/mv_export_focus.py toolkit/qa/
-          cp self/qa-mvdump/mvdump_sampler.py self/qa-mvdump/rtdump_codec.py self/qa-mvdump/keys/mvdump-keys-12035.json toolkit/qa/
+          cp self/qa-mvdump/mvdump_sampler.py self/qa-mvdump/rtdump_codec.py self/qa-mvdump/mvdump_prefs.py self/qa-mvdump/keys/mvdump-keys-12035.json toolkit/qa/
           # Exactly the four mv-game-export.yml edits plus RUNTIME_DUMPED; every anchor must occur once.
           python3 self/qa-mvdump/apply_hooks.py --qa toolkit/qa --evidence toolkit/evidence
           "$RUNNER_TEMP/qa-venv/bin/python" -m py_compile toolkit/qa/mv_export_focus.py toolkit/qa/native_ocr_control.py \
-            toolkit/qa/mvdump_sampler.py toolkit/qa/rtdump_codec.py
+            toolkit/qa/mvdump_sampler.py toolkit/qa/rtdump_codec.py toolkit/qa/mvdump_prefs.py
+          grep -n "mvdump_prefs.preseed" toolkit/qa/native_ocr_control.py
           grep -n "mvdump_sampler.run_dump" toolkit/qa/mv_export_focus.py
           sha256sum toolkit/qa/unity_ui.bundle.js toolkit/qa/unity_ui.mvdump.bundle.js toolkit/qa/mv_export_focus.py
 

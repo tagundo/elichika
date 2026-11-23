@@ -1050,6 +1050,12 @@ class Dumper:
             self.load_keys()
             self.header_reads = self.host_fov_reads('dump-start')
             self.screen_reads = self.host_screen_reads()
+            try:
+                import mvdump_prefs
+                self.screen_reads['playerPrefs'] = mvdump_prefs.read_quality_prefs(self.c['sh'], self.c['package'])
+                self.log('RTPREFS', {'lines': self.screen_reads['playerPrefs']})
+            except Exception as error:
+                self.screen_reads['playerPrefsError'] = f'{type(error).__name__}: {str(error)[:120]}'
             self.run_probe()
             self.loop()
         except AssertionError as error:

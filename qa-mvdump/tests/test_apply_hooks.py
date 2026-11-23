@@ -61,7 +61,7 @@ class TestHooks(unittest.TestCase):
         self.assertEqual(ocr.count('mv_profile_plan'), 2)
         receipt = json.loads((Path(self.tmp.name) / 'ev' / 'mvdump-hooks.json').read_text())
         self.assertEqual(receipt['mv_export_focus.py']['count'], 1)
-        self.assertEqual(receipt['native_ocr_control.py']['edits'], 5)
+        self.assertEqual(receipt['native_ocr_control.py']['edits'], 6)  # 4 sed edits + RUNTIME_DUMPED + quality pre-seed
         self.assertNotEqual(receipt['mv_export_focus.py']['beforeSha256'], receipt['mv_export_focus.py']['afterSha256'])
 
     def test_missing_anchor_fails_loudly(self):
@@ -120,3 +120,20 @@ class TestHooks(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestPrefs(unittest.TestCase):
+    def test_merge_inserts_or_replaces_the_quality_key(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        import mvdump_prefs
+        fresh = mvdump_prefs.merged('', 10)
+        self.assertIn('<int name="LiveSettingQualityMode" value="10" />', fresh)
+        self.assertTrue(fresh.startswith("<?xml"))
+        existing = ("<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n"
+                    '    <int name="TutorialFlag" value="1" />\n    <int name="LiveSettingQualityMode" value="40" />\n</map>\n')
+        out = mvdump_prefs.merged(existing, 10)
+        self.assertEqual(out.count('LiveSettingQualityMode'), 1)
+        self.assertIn('value="10"', out)
+        self.assertIn('TutorialFlag', out)
+        self.assertIn('<int name="LiveSettingQualityMode" value="20" />',
+                      mvdump_prefs.merged("<?xml version='1.0' ?>\n<map />\n", 20))
