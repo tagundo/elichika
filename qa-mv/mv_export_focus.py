@@ -1175,25 +1175,50 @@ def run_mv_focus(context):
         the Light initial download the song's assets ('Download Song' on DecideBtn) and its MV
         ('Download' above the greyed Video button) are text labels, not buttons, and EnableMvBtn is
         covered (hit NoteBg/Bg3). The download confirmations are popups for the generic confirm."""
-        for path, text, reason in ((DOWNLOAD_SONG_PATH, 'Download Song', 'download-song-assets'),):
-            node = text_control(tree, path, text)
-            if node:
-                if time.monotonic() - state['seen'].get(reason, -1e9) < 15:
-                    return False  # let the generic confirm accept its popup meanwhile
-                state['seen'][reason] = time.monotonic()
-                try:
-                    return pick_tap({'kind': 'text', 'id': node['id'], 'path': path, 'text': text, 'requireHitTest': True},
-                                    reason, path)
-                except Exception as error:
-                    log('WARN', {'pick': path, 'error': type(error).__name__, 'message': str(error)[:200]})
-                    return False
+        # Song assets first. Run 9: the 'Download Song' label sits under DecideBtn's own graphic, so
+        # the label itself is never the raycast hit; the control is DecideBtn. DecideBtn is tapped
+        # only while its own label reads 'Download Song' (once the song is downloaded it starts a
+        # live, never wanted here). Until then the Video button stays greyed and its 'Download'
+        # label does nothing (run 9 tapped it 45 times).
+        # active (not visible): the agent may mark the label clipped under DecideBtn's graphic.
+        song_label = [n for n in tree.get('nodes', []) if n.get('kind') == 'text' and n.get('active') is True
+                      and str(n.get('text') or '').strip() == 'Download Song' and '/DecideBtn/' in str(n.get('path') or '')]
+        if song_label:
+            if time.monotonic() - state['seen'].get('download-song-assets', -1e9) < 15:
+                return False  # let the generic confirm accept its popup meanwhile
+            owner = str(song_label[0]['path']).split('/DecideBtn/')[0] + '/DecideBtn'
+            decide = [n for n in actionable_nodes(tree) if n.get('path') == owner]
+            label = text_control(tree, DOWNLOAD_SONG_PATH, 'Download Song')
+            # One GameObject, several component nodes (ProductButton, ButtonTransition, ...): one path.
+            if len({n.get('path') for n in decide}) != 1 and not label:
+                log('SONG', {'step': 'song-download-control-missing', 'owner': owner, 'decide': len(decide),
+                             'label_hit': song_label[0].get('hit')})
+                return False
+            state['seen']['download-song-assets'] = time.monotonic()
+            try:
+                if len({n.get('path') for n in decide}) == 1:
+                    return pick_tap({'id': decide[0]['id'], 'requireHitTest': True}, 'download-song-assets:DecideBtn', owner)
+                return pick_tap({'kind': 'text', 'id': label['id'], 'path': DOWNLOAD_SONG_PATH, 'text': 'Download Song',
+                                 'requireHitTest': True}, 'download-song-assets:label', DOWNLOAD_SONG_PATH)
+            except Exception as error:
+                log('WARN', {'pick': owner, 'error': type(error).__name__, 'message': str(error)[:200]})
+                return False
         if choose(tree, [r'^EnableMvBtn$', r'^MvBtnDownload$'], 'open-music-video'):
             return True
         node = text_control(tree, MV_DOWNLOAD_LABEL_PATH, 'Download')
         if node:
             if time.monotonic() - state['seen'].get('download-music-video', -1e9) < 15:
                 return False
+            taps = state.setdefault('mv_label_taps', {}).get(TARGET, 0)
+            if taps >= 3:
+                if taps == 3:
+                    state['mv_label_taps'][TARGET] = 4
+                    log('SONG', {'step': 'mv-download-label-unresponsive', 'target': TARGET, 'taps': 3,
+                                 'texts': tree_texts(tree, 40)})
+                result['blocked_reason'] = f'Song {TARGET}: the MV Download label did not respond to 3 taps'
+                return False
             state['seen']['download-music-video'] = time.monotonic()
+            state['mv_label_taps'][TARGET] = taps + 1
             try:
                 return pick_tap({'kind': 'text', 'id': node['id'], 'path': MV_DOWNLOAD_LABEL_PATH, 'text': 'Download',
                                  'requireHitTest': True}, 'download-music-video', MV_DOWNLOAD_LABEL_PATH)
