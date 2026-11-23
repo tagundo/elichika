@@ -72,7 +72,7 @@ FACE_RENDERERS = 4         # skinned renderers with blend shapes sent per member
 CAPS = {'directors': 8, 'cameras': 16, 'camerasDetailed': 8, 'correctors': 8, 'cameraWork': 4, 'lights': 16, 'globals': 20,
         'anchors': 8, 'censusNodes': 400, 'censusDepth': 6, 'censusChunk': 80, 'components': 12, 'renderers': 400,
         'rendererChunk': 24, 'materials': 256, 'materialChunk': 8, 'properties': 48, 'keywords': 16, 'bonesPerMember': 24,
-        'blendShapesInspected': 64, 'blendShapes': 24, 'swingBones': 64, 'stageNodes': 256, 'stageChunk': 64,
+        'blendShapesInspected': 64, 'swingBones': 64, 'stageNodes': 256, 'stageChunk': 64,
         'particles': 160, 'particleChunk': 40, 'fields': 48, 'fieldDepth': 2, 'arrayItems': 8, 'stringChars': 120}
 MAX_CHUNKS_PER_PART = 48
 MAX_PART_ERRORS = 3

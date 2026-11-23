@@ -4991,7 +4991,7 @@ function splashFadeRGBA(splash) {
   var CAPS = { directors: 8, cameras: 16, camerasDetailed: 8, correctors: 8, cameraWork: 4, lights: 16, globals: 20,
     anchors: 8, members: 9, censusNodes: 400, censusDepth: 6, censusChunk: 80, components: 12, renderers: 400,
     rendererChunk: 24, materials: 256, materialChunk: 8, properties: 48, keywords: 16, bonesPerMember: 24,
-    blendShapesInspected: 64, blendShapes: 24, swingBones: 64, stageNodes: 256, stageChunk: 64, stageDepth: 12,
+    blendShapesInspected: 64, swingBones: 64, stageNodes: 256, stageChunk: 64, stageDepth: 12,
     particles: 160, particleChunk: 40, fields: 48, fieldDepth: 2, arrayItems: 8, stringChars: 120, enumerate: 8192,
     errors: 24, holders: 8, lightingPerClass: 16, slots: 8, faceRenderers: 4, timelineTracks: 256, timelineChunk: 24,
     timelineClips: 64, flareSettings: 8, spotLights: 12 };

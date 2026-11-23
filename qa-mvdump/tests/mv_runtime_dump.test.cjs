@@ -701,3 +701,15 @@ test('census without the decoy root: one root, same self-check', async () => {
   assert.equal(self.findReturnedOtherRoot, false);
   assert.deepEqual(records[0].census.roots.map(r => r.source), ['LiveDirector']);
 });
+
+test('caps: the sampler records exactly the agent caps it shares (no stale blendShapes cap)', async () => {
+  const h = await bound();
+  const caps = h.ctx.QA_MVDUMP_EXT.caps;
+  const py = spawnSync('python3', ['-B', '-c', 'import json, sys; sys.path.insert(0, sys.argv[1]); import mvdump_sampler; print(json.dumps(mvdump_sampler.CAPS))',
+    path.join(__dirname, '..')], { encoding: 'utf8' });
+  assert.equal(py.status, 0, py.stderr);
+  const sampler = JSON.parse(py.stdout);
+  for (const [key, value] of Object.entries(sampler)) assert.equal(caps[key], value, key);
+  assert.ok(!('blendShapes' in caps) && !('blendShapes' in sampler), 'members record every channel; blendShapesInspected bounds the names per mesh');
+  assert.equal(caps.blendShapesInspected, 64);
+});
