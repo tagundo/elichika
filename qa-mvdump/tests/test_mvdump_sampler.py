@@ -192,6 +192,72 @@ class TestIntegration(SamplerCase):
         self.assertTrue(rec['saves'])
         self.assert_world_clean()
 
+    def test_schedule_windows_late_passes_faces_and_census_root(self):
+        """The 12035 Max 3D findings on the real extension: CustomControl clip windows get their own
+        particle runs, late passes read members/materials before renderers (values reach the end),
+        faces ride on every frame once the members part ran, the census walks the live root."""
+        out, rec, c, clock = self.run_node(normal_mv(), clock=FakeClock(rtt=0.3))
+        doc = self.evidence_doc(c)
+        self.assertEqual(codec.validate(doc), [])
+        self.assertEqual(out['status'], 'RUNTIME_DUMPED', out.get('runtime_dump'))
+        trailer = doc['trailer']
+        # Windows from the timeline part: fx_flo_so2035_02 36.9-45.1 s, fx_par_so2035_03 73.9-78.8 s.
+        clips = trailer['windows']['clips']
+        self.assertEqual([(w['start'], w['prefab']) for w in clips], [(36.9, 'fx_flo_so2035_02'), (73.9, 'fx_par_so2035_03')])
+        self.assertTrue(all(w['sampled'] for w in clips))
+        runs = trailer['windows']['runs']
+        self.assertEqual([r['pass'] for r in runs], [10, 11])
+        flo = runs[0]
+        self.assertTrue(36.9 + mvdump_sampler.WINDOW_LEAD_S <= flo['startedAt'] < 45.1, flo)
+        self.assertEqual(flo['found'], [{'path': '/fx_flo_so2035_02 [Timeline]', 'found': True}])
+        self.assertEqual(flo['particles'], 2)
+        self.assertTrue(flo['complete'])
+        window_recs = [r for r in doc['records'] if r.get('pass') == 10]
+        self.assertEqual([r['id'] for r in window_recs], ['p10-particles-00'])
+        t = window_recs[0]['clock']['directorTime']
+        self.assertTrue(36.9 <= t < 45.1, t)
+        self.assertEqual(sorted(p['key'] for p in window_recs[0]['particles']),
+                         ['particles:/fx_flo_so2035_02 [Timeline]/root/flower_01', 'particles:/fx_flo_so2035_02 [Timeline]/root/flower_02'])
+        self.assertEqual(runs[1]['found'], [{'path': '/fx_par_so2035_03 [Timeline]', 'found': False}], 'a missing instance is recorded')
+        # Pass order: members first; in the late passes materials (carried catalog) before renderers.
+        fulls = [r for r in doc['records'] if r['kind'] == 'full' and r['pass'] < mvdump_sampler.WINDOW_PASS_BASE]
+        for k in (0, 1, 2, 3, 4):
+            order = []
+            for r in fulls:
+                if r['pass'] == k and r['part'] not in order:
+                    order.append(r['part'])
+            expected = [p for p in mvdump_sampler.PASS_PARTS[k] if p in order]
+            self.assertEqual(order, expected, k)
+        late = [r for r in fulls if r['pass'] == 3 and r['part'] == 'materials']
+        self.assertTrue(late and all(r.get('materialSource') == 'pass 2 renderers' for r in late), [r.get('materialSource') for r in late])
+        self.assertTrue(all(m['resolvedBy'] == 'renderer' for r in late for m in r['materials']))
+        coverage = trailer['partCoverage']
+        for part in ('members', 'materials', 'post'):
+            self.assertGreaterEqual(coverage[part]['last'], 107.3 - 8, (part, coverage[part]))
+        self.assertEqual(coverage['particles:window']['records'], 2)
+        # Faces: the members part's CombineFace (+ Body) renderers ride on every later frame.
+        self.assertEqual([f['key'].rsplit('/', 1)[1] for f in trailer['faces']], ['CombineFace', 'Body'])
+        members_seq = min(r['seq'] for r in fulls if r['part'] == 'members')
+        later = [r for r in doc['records'] if r['kind'] == 'frame' and r['seq'] > members_seq]
+        self.assertTrue(later and all(r.get('faces') for r in later))
+        face = next(f for f in later[-1]['faces'] if f['rendererKey'].endswith('/CombineFace'))
+        self.assertEqual(face['weights']['EyeBlendShape.eye_facial_002'], 100)
+        self.assertTrue(all(r.get('post', {}).get('dof', {}).get('focusDistance') == 4.25 for r in later))
+        # Census: the live root first (self-check ok), the PopupView root after it; SkillCutin not walked.
+        census = [r for r in fulls if r['part'] == 'census']
+        self.assertTrue(census[0]['census']['selfCheck']['ok'], census[0]['census']['selfCheck'])
+        nodes = [n for r in census if r['pass'] == 0 for n in r['census']['nodes']]
+        self.assertIn('/EntryPoint/Live/Stages/MainStage/Effect/dis_01/main_01', [n['path'] for n in nodes])
+        self.assertEqual(sorted(n['path'] for n in nodes if n['path'].startswith('/EntryPoint#')), ['/EntryPoint#0', '/EntryPoint#1'])
+        self.assertFalse(any(n['path'].startswith('/EntryPoint/SkillCutin/') for n in nodes))
+        renderers = [x for r in fulls if r['part'] == 'renderers' for x in r['renderers']]
+        self.assertFalse(any(x['path'].startswith('/EntryPoint/SkillCutin/') for x in renderers))
+        stage = [n for r in fulls if r['part'] == 'stageNodes' for n in r['stageNodes']]
+        self.assertIn(False, [n.get('missing', False) for n in stage], 'stage bindings resolve under the live root')
+        summary = self.summary_line(rec)
+        self.assertEqual(summary.get('windows', [2, 2]), [2, 2])
+        self.assert_world_clean()
+
     def test_real_extension_with_round_trip_at_the_interval(self):
         """The real extension in the fake world at rtt 0.5 s (= the frame interval) and 0.7 s."""
         for rtt in (0.5, 0.7):
@@ -720,3 +786,98 @@ class TestEmission(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestScheduling(unittest.TestCase):
+    """Window, face and census helpers of the Dumper, without an agent."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        clock = FakeClock()
+        with mock.patch.dict(os.environ, sampler_env(), clear=True):
+            self.d = mvdump_sampler.Dumper(make_context(self.tmp.name, clock, lambda label: ScriptedAgent(clock, normal_mv())),
+                                           mvdump_sampler.Config())
+
+    def timeline(self, tracks):
+        return {'timeline': {'tracks': tracks}}
+
+    def test_windows_from_control_tracks_only(self):
+        d = self.d
+        d.learn_windows(self.timeline([
+            {'class': 'LLAS.Components.Timeline.CustomControlTrack', 'name': 'fx', 'muted': False,
+             'clips': [{'start': 36.9, 'duration': 8.2, 'prefab': 'fx_flo_so2035_02'}, {'start': 4.18, 'duration': 3.2, 'prefab': 'fx_dis_par_so2035_03'},
+                       {'start': 50.0, 'duration': 0, 'prefab': 'zero'}, {'start': 60.0, 'duration': 2.0}]},
+            {'class': 'UnityEngine.Timeline.ControlTrack', 'name': 'ctl', 'clips': [{'start': 10.0, 'duration': 1.0, 'prefab': 'fx_ctl'}]},
+            {'class': 'LLAS.Components.Timeline.CustomControlTrack', 'name': 'muted', 'muted': True, 'clips': [{'start': 1.0, 'duration': 9.0, 'prefab': 'm'}]},
+            {'class': 'UnityEngine.Timeline.ActivationTrack', 'name': 'act', 'clips': [{'start': 0.0, 'duration': 30.0, 'prefab': 'never'}]}]))
+        self.assertEqual([(w['start'], w['prefab'], w['root']) for w in d.windows],
+                         [(4.18, 'fx_dis_par_so2035_03', 'fx_dis_par_so2035_03 [Timeline]'), (10.0, 'fx_ctl', 'fx_ctl [Timeline]'),
+                          (36.9, 'fx_flo_so2035_02', 'fx_flo_so2035_02 [Timeline]')])
+        d.learn_windows(self.timeline([{'class': 'X.CustomControlTrack', 'clips': [{'start': 36.9, 'duration': 8.2, 'prefab': 'fx_flo_so2035_02'}]}]))
+        self.assertEqual(len(d.windows), 3, 'a clip seen in two timeline chunks is one window')
+
+    def test_window_run_only_inside_an_open_unsampled_window(self):
+        d = self.d
+        d.learn_windows(self.timeline([{'class': 'A.CustomControlTrack', 'clips': [
+            {'start': 4.18, 'duration': 3.2, 'prefab': 'a'}, {'start': 5.0, 'duration': 1.0, 'prefab': 'b'}]}]))
+        d.check_windows(4.2, True)
+        self.assertIsNone(d.window_run, 'not before start + lead')
+        d.check_windows(5.5, False)
+        self.assertIsNone(d.window_run, 'not while the director is not active')
+        d.check_windows(5.5, True)
+        self.assertEqual(d.window_run['roots'], ['a [Timeline]', 'b [Timeline]'], 'overlapping open windows share one run')
+        self.assertEqual(d.window_run['pass'], mvdump_sampler.WINDOW_PASS_BASE)
+        d.close_window(True, None)
+        d.check_windows(6.0, True)
+        self.assertIsNone(d.window_run, 'each window is sampled once')
+        self.assertEqual(d.window_runs[0]['clips'], [{'start': 4.18, 'end': 7.38, 'prefab': 'a'}, {'start': 5.0, 'end': 6.0, 'prefab': 'b'}])
+        d.learn_windows(self.timeline([{'class': 'A.CustomControlTrack', 'clips': [{'start': 7.0, 'duration': 3.0, 'prefab': 'c'}]}]))
+        d.check_windows(9.95, True)
+        self.assertIsNone(d.window_run, 'not in the last tail seconds of a window')
+
+    def test_window_runs_are_capped(self):
+        d = self.d
+        d.learn_windows(self.timeline([{'class': 'A.CustomControlTrack', 'clips': [
+            {'start': float(i), 'duration': 0.9, 'prefab': f'p{i}'} for i in range(mvdump_sampler.MAX_WINDOW_RUNS + 5)]}]))
+        for i in range(mvdump_sampler.MAX_WINDOW_RUNS + 5):
+            d.check_windows(i + 0.5, True)
+            if d.window_run:
+                d.close_window(True, None)
+        self.assertEqual(len(d.window_runs), mvdump_sampler.MAX_WINDOW_RUNS)
+
+    def test_faces_per_member_most_channels_first(self):
+        d = self.d
+        d.learn_faces({'members': [{'slot': 2, 'blendShapes': [
+            {'rendererKey': 'renderer:/m2/LeftEyeWhiteLine', 'count': 3, 'rawPath': '/m2(Clone)/LeftEyeWhiteLine'},
+            {'rendererKey': 'renderer:/m2/Hair', 'count': 0, 'path': '/m2/Hair'},
+            {'rendererKey': 'renderer:/m2/CombineFace', 'count': 27, 'path': '/m2/CombineFace'}]}]})
+        d.learn_faces({'members': [{'slot': 1, 'blendShapes': [{'rendererKey': 'renderer:/m1/CombineFace', 'count': 27, 'path': '/m1/CombineFace'}]}]})
+        self.assertEqual([(f['slot'], f['key']) for f in d.faces],
+                         [(1, 'renderer:/m1/CombineFace'), (2, 'renderer:/m2/CombineFace'), (2, 'renderer:/m2/LeftEyeWhiteLine')])
+        self.assertEqual(d.faces[2]['path'], '/m2(Clone)/LeftEyeWhiteLine', 'raw path for Transform.Find')
+        self.assertEqual(d.frame_options()['faces'], d.faces)
+
+    def test_census_collisions_order_same_name_roots_by_root_index(self):
+        d = self.d
+        d.records = [{'part': 'census', 'pass': 0, 'census': {'nodes': [
+            {'path': '/EntryPoint', 'index': 0, 'rootIndex': 1}, {'path': '/EntryPoint', 'index': 0},
+            {'path': '/EntryPoint/Live', 'index': 0}]}}]
+        d.mark_census_collisions()
+        nodes = d.records[0]['census']['nodes']
+        self.assertEqual([(n['path'], n.get('rootIndex')) for n in nodes], [('/EntryPoint#1', 1), ('/EntryPoint#0', None), ('/EntryPoint/Live', None)])
+
+    def test_late_pass_seeds_materials_from_the_last_renderers_part(self):
+        d = self.d
+        d.material_catalog = {'order': [-10], 'users': {'-10': ['renderer:/a#0']}, 'refs': {'-10': [{'path': '/a', 'slot': 0, 'rendererId': -3}]},
+                              'source': 'pass 2 renderers'}
+        d.start_pass(3, 80.0, 'test')
+        self.assertEqual(d.current['parts'][:2], ['members', 'materials'])
+        self.assertEqual(d.current['materialOrder'], [-10])
+        self.assertEqual(d.current['materialRefs'], {-10: [{'path': '/a', 'slot': 0, 'rendererId': -3}]})
+        options = d.part_options('materials', d.current)
+        self.assertEqual(options['materials'], [{'instanceId': -10, 'usedBy': ['renderer:/a#0'], 'resolve': [{'path': '/a', 'slot': 0, 'rendererId': -3}]}])
+        d.close_pass(False, 'test')
+        d.material_catalog = None
+        d.start_pass(4, 99.0, 'test')
+        self.assertEqual(d.current['materialOrder'], [], 'no catalog: the materials part has nothing to read')
