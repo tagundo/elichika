@@ -45,6 +45,10 @@ FALLBACK_TARGET = int(os.environ['MV_EXPORT_FALLBACK_LIVE']) if os.environ.get('
 # Drag length as a share of the list height (about 3 rows at 720 px), the step cap, and how many
 # steps in a row may add no new liveMasterId before the circular list counts as fully seen.
 SEARCH_STEP_FRACTION, SEARCH_MAX_STEPS, SEARCH_STALE_STEPS = 0.45, 90, 6
+# LiveMusicSelect text labels that are the only song/MV download controls after the Light initial
+# download (r8 native_music_selection.DOWNLOAD_SONG_PATH, native_mv_focus.MV_DOWNLOAD_LABEL_PATH).
+DOWNLOAD_SONG_PATH = 'EntryPoint/Canvas/SafeArea/RightArea/Info/ButtonContainer/DecideButtonGameObjectSwitcher/DecideBtn/DownloadLabel'
+MV_DOWNLOAD_LABEL_PATH = 'EntryPoint/Canvas/SafeArea/RightArea/Info/ButtonContainer/MvBtnDownload/MvBtnDownloadLabel'
 EXPORT_SECONDS = int(os.environ.get('MV_EXPORT_SECONDS', '9000'))
 NAVIGATION_SECONDS = int(os.environ.get('MV_NAVIGATION_SECONDS', '1500'))
 FOV_ACTIVITY = 'com.klab.lovelive.allstars.fovmod.FovSettingsActivity'
@@ -614,8 +618,8 @@ def run_mv_focus(context):
         """Fresh dumps until pick(nodes) finds its target; between dumps scroll the single
         scrollable game ScrollView from a plain text line. still(nodes) must hold throughout.
         activity_state() (two dumpsys calls) is read only when giving up, never on every miss."""
-        nodes = []
-        for scroll in range(max_scrolls + 1):
+        nodes, scroll, failed = [], 0, 0
+        while failed <= 4:  # failed dumps do not use up the scroll budget
             nodes, info = dump_ui()
             target = pick(nodes) if nodes else None
             if target:
@@ -626,7 +630,8 @@ def run_mv_focus(context):
             views = [n for n in nodes if n.get('class') == 'android.widget.ScrollView' and n.get('scrollable')
                      and n.get('package') == package and n['bounds']['bottom'] > n['bounds']['top']]
             if not nodes:
-                ui_log(tag, attempt, route, step, {}, nodes, 'retry-dump-failed', dump=info)
+                failed += 1
+                ui_log(tag, attempt, route, step, {}, nodes, 'retry-dump-failed', dump=info, failed=failed)
                 time.sleep(1)
                 continue
             if scroll == max_scrolls or len(views) != 1:
@@ -637,6 +642,7 @@ def run_mv_focus(context):
                 ui_log(tag, attempt, route, step, activity_state(), nodes, 'give-up-no-plain-text-swipe-start', dump=info)
                 return None, nodes
             ui_log(tag, attempt, route, step, {}, nodes, {'scroll': action}, dump=info)
+            scroll += 1
             time.sleep(1)
         ui_log(tag, attempt, route, step, activity_state(), nodes, 'give-up-dumps-failed')
         return None, nodes
@@ -681,10 +687,11 @@ def run_mv_focus(context):
             t_down = time.monotonic()  # the floor counts from the DOWN command's return, not its start
             try:
                 if geometry['down'] == 'ok':
-                    for wait_until in (HOLD_SECONDS + .7, HOLD_SECONDS + 3.5):
+                    for n_held, wait_until in enumerate((HOLD_SECONDS + .7, HOLD_SECONDS + 3.5)):
                         time.sleep(max(0, t_down + wait_until - time.monotonic()))
-                        held_nodes, held = dump_ui(f'{tag.lower()}-{attempt:02d}-held')
+                        held_nodes, held = dump_ui(f'{tag.lower()}-{attempt:02d}-held-{n_held}')
                         held['panel'] = fov_panel(held_nodes)
+                        geometry.setdefault('held_dumps', []).append(dict(held))
                         if held['panel']:
                             break
             finally:
@@ -702,6 +709,10 @@ def run_mv_focus(context):
         geometry['held_s'] = round(time.monotonic() - t_down, 2)
         result['actions'].append({'t': round(time.monotonic() - started, 1), 'reason': 'hold-fov-corner:' + method,
                                   'target': tag, 'xy': [x, y]})
+        if held.get('panel'):
+            # Seen open while still held; the callers re-check fov_panel on their own fresh dump.
+            ui_log(tag, attempt, 'panel', 'hold', {}, held_nodes, method, geometry=geometry, held_dump=held, opened=True)
+            return True, held_nodes
         time.sleep(.8)
         nodes, info = dump_ui(f'{tag.lower()}-{attempt:02d}-after-hold')
         redumps = []
@@ -1018,8 +1029,15 @@ def run_mv_focus(context):
     signal.setitimer(signal.ITIMER_REAL, 0)
     log('STEP', {'home': 'settled', 'elapsed': round(time.monotonic() - started)})
     screen('home', force=True)
+    save()
     if os.environ.get('MV_EXPORT_LANDSCAPE', '1') == '1':
-        switch_to_landscape()
+        try:
+            switch_to_landscape()
+        except Exception as error:
+            # Keep the landscape attempts in the toolkit's report before the toolkit records the failure.
+            result.update(status='LANDSCAPE_FAILED', error=f'{type(error).__name__}: {error}'[:300])
+            save()
+            raise
 
     identity = lifetime_check(None, 'after-home')
     pid = str(identity['pid'])
@@ -1141,6 +1159,53 @@ def run_mv_focus(context):
         except Exception as error:
             log('WARN', {'pick': node.get('path'), 'error': type(error).__name__, 'message': str(error)[:200]})
             return False
+
+    def text_control(tree, path, text):
+        """The unique hittable Unity text node at `path` reading `text` (the r8 toolkit's own
+        download_song_target / mv_download_text_target conditions), or None."""
+        found = [n for n in tree.get('nodes', []) if n.get('kind') == 'text' and n.get('path') == path
+                 and str(n.get('text') or '').strip() == text
+                 and all(n.get(k) is True for k in ('active', 'visible', 'enabled'))
+                 and n.get('groupsInteractable', True) is not False and n.get('blocksRaycasts', True) is not False
+                 and (n.get('hit') or {}).get('available') is True and (n.get('hit') or {}).get('hittable') is True]
+        return found[0] if len({n.get('id') for n in found}) == 1 else None
+
+    def open_or_download_mv(tree):
+        """Open the selected song's MV, in the r8 toolkit's order (native_mv_focus.py:687-710): after
+        the Light initial download the song's assets ('Download Song' on DecideBtn) and its MV
+        ('Download' above the greyed Video button) are text labels, not buttons, and EnableMvBtn is
+        covered (hit NoteBg/Bg3). The download confirmations are popups for the generic confirm."""
+        for path, text, reason in ((DOWNLOAD_SONG_PATH, 'Download Song', 'download-song-assets'),):
+            node = text_control(tree, path, text)
+            if node:
+                if time.monotonic() - state['seen'].get(reason, -1e9) < 15:
+                    return False  # let the generic confirm accept its popup meanwhile
+                state['seen'][reason] = time.monotonic()
+                try:
+                    return pick_tap({'kind': 'text', 'id': node['id'], 'path': path, 'text': text, 'requireHitTest': True},
+                                    reason, path)
+                except Exception as error:
+                    log('WARN', {'pick': path, 'error': type(error).__name__, 'message': str(error)[:200]})
+                    return False
+        if choose(tree, [r'^EnableMvBtn$', r'^MvBtnDownload$'], 'open-music-video'):
+            return True
+        node = text_control(tree, MV_DOWNLOAD_LABEL_PATH, 'Download')
+        if node:
+            if time.monotonic() - state['seen'].get('download-music-video', -1e9) < 15:
+                return False
+            state['seen']['download-music-video'] = time.monotonic()
+            try:
+                return pick_tap({'kind': 'text', 'id': node['id'], 'path': MV_DOWNLOAD_LABEL_PATH, 'text': 'Download',
+                                 'requireHitTest': True}, 'download-music-video', MV_DOWNLOAD_LABEL_PATH)
+            except Exception as error:
+                log('WARN', {'pick': MV_DOWNLOAD_LABEL_PATH, 'error': type(error).__name__, 'message': str(error)[:200]})
+                return False
+        state['mv_control_misses'] = state.get('mv_control_misses', 0) + 1
+        if state['mv_control_misses'] % 10 == 1:
+            log('SONG', {'step': 'no-mv-control', 'misses': state['mv_control_misses'], 'target': TARGET,
+                         'texts': tree_texts(tree, 40)})
+        result['blocked_reason'] = f'Song {TARGET} selected but no hittable MV or download control ({state["mv_control_misses"]} loops)'
+        return False
 
     def tree_texts(tree, limit=120):
         """Every distinct visible text/label of a Unity snapshot, in tree order."""
@@ -1319,7 +1384,7 @@ def run_mv_focus(context):
             if selection['current'] == TARGET and selection['blocker'] is not True and since_tap >= 3:
                 # The controller's own current CellVO is the song; open its MV only now.
                 result['mv_selection']['music'] = dict(selection, verified=True, t=round(time.monotonic() - started))
-                if choose(tree, [r'^EnableMvBtn$', r'^MvBtnDownload$'], 'open-music-video'):
+                if open_or_download_mv(tree):
                     time.sleep(6)
                     continue
             elif selection['controllers'] == 0 and song_taps and since_tap >= 3:
@@ -1329,7 +1394,7 @@ def run_mv_focus(context):
                                  'errors': compact_mv(mv)['errors']})
                     state['unverified_music_logged'] = True
                 result['mv_selection']['music'] = dict(selection, verified=False, t=round(time.monotonic() - started))
-                if choose(tree, [r'^EnableMvBtn$', r'^MvBtnDownload$'], 'open-music-video'):
+                if open_or_download_mv(tree):
                     time.sleep(6)
                     continue
             elif (selection['current'] == TARGET or selection['blocker'] is True or since_tap < 6) and settled_for < 30:
@@ -1426,6 +1491,8 @@ def run_mv_focus(context):
                     log('WARN', {'search_drag': type(error).__name__, 'message': str(error)[:200]})
                     time.sleep(2)
         elif scene == 'LiveMvDeckSelect':
+            if str(result.get('blocked_reason') or '').startswith(f'Song {TARGET} selected but no hittable MV'):
+                result['blocked_reason'] = None  # the MV control was found after all
             deck = record_deck(index, tree, mv)
             deck_live = mv.get('liveMasterId')
             if deck_live is not None and deck_live != TARGET:
@@ -1453,7 +1520,11 @@ def run_mv_focus(context):
                 write_json('mv-deck-select-play.json', tree)
                 time.sleep(8)
                 continue
-        if choose(tree, [r'^ButtonPositive[MLS]?$', r'^(?:OK|Ok|Yes|Close|Confirm|Download|Start|Skip|Next)$', r'^CloseButton$', r'^ButtonClose$'],
+        # On Home only modal popups count: Home's own Daily Theater entry is a ButtonPositiveS and
+        # leaves Home with no route back. Other scenes keep the whole tree.
+        scoped = tree if scene != 'Home' else {'nodes': [n for n in tree.get('nodes', [])
+                                                         if str(n.get('path') or '').startswith('EntryPoint/PopupView/')]}
+        if choose(scoped, [r'^ButtonPositive[MLS]?$', r'^(?:OK|Ok|Yes|Close|Confirm|Download|Start|Skip|Next)$', r'^CloseButton$', r'^ButtonClose$'],
                   'generic-confirm', cooldown=12):
             time.sleep(4)
             continue
@@ -1627,6 +1698,18 @@ def run_mv_focus(context):
                 phase = 'complete'
                 break
             error_panel = 'mp4 export' in lowered and buttons(nodes, 'OK')
+            if error_panel and observing:
+                # The client reports 'MP4 finished but ...' (e.g. scene restoration failed) after it
+                # renamed the MP4 and wrote the render report: a new non-empty MP4 is a finished
+                # export, not a failure. Device read only; no input.
+                done = sorted(p for p in (list_exports(device, package) or []) if p not in before and p.endswith('.mp4'))
+                if done:
+                    result['post_export_error'] = joined[:800]
+                    log('WARN', {'render_complete': 'new non-empty MP4 listed; client error after it', 'files': done,
+                                 'error': joined[:300]})
+                    mvclock('complete', by='file-with-error')
+                    phase = 'complete'
+                    break
             if error_panel:
                 since = mvclock('error', phase=phase, text=joined[:200])
                 result['export_error'] = joined[:800]
