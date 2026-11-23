@@ -164,6 +164,10 @@ jobs:
           cp self/qa-mv/mv_export_focus.py toolkit/qa/
           sed -i 's/from native_mv_focus import run_mv_focus/from mv_export_focus import run_mv_focus/' toolkit/qa/native_ocr_control.py
           grep -n "from mv_export_focus import run_mv_focus" toolkit/qa/native_ocr_control.py
+          # The Title caption blinks, so a fresh OCR pair often misses it. Three
+          # disagreeing pairs aborted the 2026-11-23 r8 rerun before any input.
+          sed -i 's/if pair_failures\[kind\]>=3:/if pair_failures[kind]>=12:/' toolkit/qa/native_ocr_control.py
+          grep -n "pair_failures\[kind\]>=12" toolkit/qa/native_ocr_control.py
           "$RUNNER_TEMP/qa-venv/bin/python" -m py_compile toolkit/qa/mv_export_focus.py
 
       - name: Run the real client to an exported MV
