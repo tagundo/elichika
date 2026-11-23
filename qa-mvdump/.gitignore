@@ -1,0 +1,5 @@
+# The repository root ignores *.json and *.txt; the dump stage ships its keys, manifests and fixtures.
+!*.json
+!*.txt
+__pycache__/
+*.pyc

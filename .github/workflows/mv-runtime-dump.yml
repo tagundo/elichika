@@ -1,0 +1,304 @@
+name: MV runtime value dump (real GL client, Redroid)
+
+# Same device, client, toolkit and navigation as mv-game-export.yml. Instead of the MP4 export it
+# samples read-only Unity runtime values of the playing MV in landscape (sifas-mv-runtime-dump/1),
+# for the per-asset-type editor comparison (modtools tests/mv_runtime_compare.py).
+# Disjoint trigger paths and its own concurrency group: it never cancels an mv-game-export run.
+on:
+  push:
+    branches: [ccr-110b9f74-r8cj0y]
+    paths: [.github/workflows/mv-runtime-dump.yml, qa-mvdump/**]
+  workflow_dispatch:
+    inputs:
+      frame_interval:
+        description: Seconds between frame records
+        default: '0.5'
+      wall_seconds:
+        description: Absolute dump wall ceiling in seconds from the scene (at most 900); the dump normally stops 30 s after first Playing frame + MV duration
+        default: '900'
+      discovery_seconds:
+        description: Seconds after the scene with no playing director before the separate discovery pass (-1) runs
+        default: '90'
+      frame_budget_ms:
+        description: Frame action budget, soft/hard milliseconds
+        default: '60/150'
+      full_budget_ms:
+        description: Full-part action budget, soft/hard milliseconds
+        default: '80/200'
+      arrays:
+        description: Read vector-array globals (_Colors), 0 or 1
+        default: '0'
+      parts_per_interval:
+        description: Full-part chunks between two frame records
+        default: '1'
+
+permissions:
+  # Required to read this repository's unpublished draft release assets.
+  # No release is created or changed.
+  contents: write
+  actions: read
+
+concurrency:
+  group: mv-runtime-dump
+  cancel-in-progress: true
+
+jobs:
+  dump:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 200
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      QA_REGION: GL
+      OMP_THREAD_LIMIT: "1"
+      TOOLKIT_REF: codex/android-client-qa-gl-native-hit-20261114-r8
+      EXPORT_RELEASE_ID: "449172870"
+      MV_EXPORT_LIVE: "12035"
+      MV_NAVIGATION_SECONDS: "1500"
+      MV_FOV_ORIENTATION: portrait
+      MV_EXPORT_LANDSCAPE: "1"
+      MV_EXPORT_STAGE: Special Stage
+      # The song list is circular and sorted by display order; 12035 sits a few rows above the start.
+      MV_EXPORT_SEARCH_DIRECTION: backward
+      # No MV_EXPORT_FALLBACK_LIVE: the stage bindings and shader keys below are 12035's. A run that
+      # cannot open 12035 ends BLOCKED_BEFORE_MV; the sampler also withholds song keys on a mismatch.
+      MV_RUNTIME_DUMP: "1"
+      MV_RUNTIME_DUMP_INTERVAL: ${{ inputs.frame_interval || '0.5' }}
+      MV_RUNTIME_DUMP_SECONDS: ${{ inputs.wall_seconds || '900' }}
+      MV_RUNTIME_DUMP_DISCOVERY_SECONDS: ${{ inputs.discovery_seconds || '90' }}
+      MV_RUNTIME_DUMP_FRAME_BUDGET_MS: ${{ inputs.frame_budget_ms || '60/150' }}
+      MV_RUNTIME_DUMP_FULL_BUDGET_MS: ${{ inputs.full_budget_ms || '80/200' }}
+      MV_RUNTIME_DUMP_ARRAYS: ${{ inputs.arrays || '0' }}
+      MV_RUNTIME_DUMP_PARTS_PER_INTERVAL: ${{ inputs.parts_per_interval || '1' }}
+      MV_RUNTIME_DUMP_REBINDS: "2"
+      # Screencaps during playback, each between two frame records (director time before/after),
+      # for the pixel comparison with the editor. No MP4 export: Redroid's encoders cannot start.
+      MV_RUNTIME_DUMP_SHOT_INTERVAL: "2.0"
+      MV_RUNTIME_DUMP_SHOTS: "60"
+      MV_RUNTIME_DUMP_LOG_CAP: "3500000"
+      MV_RUNTIME_DUMP_KEYS: qa/mvdump-keys-12035.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: self
+          persist-credentials: false
+
+      - name: Checkout the r8 native download toolkit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TOOLKIT_REF }}
+          path: toolkit
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+
+      - name: Build the dump agent and run the offline dump tests (fail fast, before Android)
+        run: |
+          set -euo pipefail
+          mkdir -p toolkit/evidence
+          # Every toolkit hash and anchor is checked; the toolkit's own bundle is never written.
+          python3 self/qa-mvdump/build_mvdump_agent.py --qa toolkit/qa --extension self/qa-mvdump/mv_runtime_dump.js \
+            --out toolkit/qa/unity_ui.mvdump.bundle.js --evidence toolkit/evidence \
+            --expect self/qa-mvdump/unity_ui.mvdump.bundle.manifest.json
+          cmp toolkit/qa/unity_ui.mvdump.bundle.js self/qa-mvdump/unity_ui.mvdump.bundle.js
+          node --check toolkit/qa/unity_ui.mvdump.bundle.js
+          export R8_QA_DIR="$PWD/toolkit/qa" MVDUMP_BUNDLE="$PWD/toolkit/qa/unity_ui.mvdump.bundle.js" QA_MV_DIR="$PWD/self/qa-mv"
+          node --test self/qa-mvdump/tests/*.test.cjs
+          python3 -m unittest discover -s self/qa-mvdump/tests -p 'test_*.py' -v
+
+      - name: Read the toolkit's pinned server source
+        id: fixture
+        working-directory: toolkit
+        run: |
+          python3 -c "import json;m=json.load(open('qa/frozen-fixtures.json'))['server'];print('server_ref='+m['source_commit'])" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22.12'
+
+      - name: Checkout pinned Go server and recursive assets
+        uses: actions/checkout@v4
+        with:
+          repository: tagundo/elichika
+          ref: ${{ steps.fixture.outputs.server_ref }}
+          path: toolkit/server-source
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Pin the MP4-export GL client from its draft release
+        working-directory: toolkit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 - <<'PY'
+          import hashlib,json,os,re,urllib.request
+          from pathlib import Path
+          token=os.environ['GITHUB_TOKEN'];release=os.environ['EXPORT_RELEASE_ID']
+          def get(url,accept='application/vnd.github+json'):
+              request=urllib.request.Request(url,headers={'Authorization':'Bearer '+token,'Accept':accept,'X-GitHub-Api-Version':'2022-11-28'})
+              return urllib.request.urlopen(request,timeout=120)
+          assets=json.load(get(f'https://api.github.com/repos/tagundo/elichika/releases/{release}/assets?per_page=100'))
+          print('draft assets:',[(a['id'],a['name'],a['size']) for a in assets])
+          apks=[a for a in assets if a['name'].lower().endswith('.apk')]
+          gl=[a for a in apks if re.search(r'gl|global',a['name'],re.I) and not re.search(r'jp',a['name'],re.I)] or apks
+          assert gl,'No APK in the selected draft release'
+          asset=gl[0]
+          # GitHub's own asset digest; download_fixtures.py downloads and re-verifies it.
+          assert str(asset.get('digest','')).startswith('sha256:'),'The draft asset has no SHA-256 digest'
+          sha=asset['digest'].split(':',1)[1]
+          manifest=json.loads(Path('qa/frozen-fixtures.json').read_text())
+          manifest['clients']['GL'].update({'release_id':int(release),'asset_id':asset['id'],'name':asset['name'],'bytes':asset['size'],'sha256':sha})
+          Path('qa/frozen-fixtures.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print('pinned GL client:',asset['name'],asset['size'],sha)
+          PY
+          python3 qa/download_fixtures.py --manifest qa/frozen-fixtures.json --region "$QA_REGION" \
+            --destination "$RUNNER_TEMP/client-qa-fixtures" --evidence evidence --skip-server-apk
+          xz -d "$RUNNER_TEMP/client-qa-fixtures/frida-server.xz"
+          git -C server-source rev-parse HEAD > evidence/server-source-commit.txt
+
+      - name: Prepare disposable native ARM64 Android host
+        working-directory: toolkit
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb apksigner aapt python3-venv ffmpeg tesseract-ocr tesseract-ocr-eng
+          python3 -m venv "$RUNNER_TEMP/qa-venv"
+          "$RUNNER_TEMP/qa-venv/bin/pip" install --disable-pip-version-check 'Pillow==11.0.0' 'frida==16.6.6'
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          df -h / | tail -1
+          mkdir -p "$RUNNER_TEMP/android-data"
+          docker pull --platform linux/arm64 redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+          docker run --detach --privileged --name original-client-qa \
+            --publish 127.0.0.1:5555:5555 --volume "$RUNNER_TEMP/android-data:/data" \
+            redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa \
+            androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest \
+            androidboot.redroid_width=1280 androidboot.redroid_height=720 \
+            androidboot.redroid_fps=15 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          test "$(adb -s 127.0.0.1:5555 shell getprop ro.product.cpu.abi | tr -d '\r')" = arm64-v8a
+          adb -s 127.0.0.1:5555 shell 'echo disposable-private-client-qa > /data/local/tmp/CODEX_DISPOSABLE_CLIENT_QA'
+          printf '%s\n' '_ --use-gl=angle --use-angle=vulkan' > "$RUNNER_TEMP/webview-command-line"
+          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/webview-command-line" /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell chmod 644 /data/local/tmp/webview-command-line
+          adb -s 127.0.0.1:5555 shell settings --user 0 put secure immersive_mode_confirmations confirmed
+          adb -s 127.0.0.1:5555 shell 'cmd media.codec list 2>/dev/null | grep -iE "avc|aac" | head -10' || true
+
+      - name: Prepare official language OCR models
+        working-directory: toolkit
+        run: |
+          python3 qa/prepare_ocr_languages.py --destination "$RUNNER_TEMP/native-ocr-languages" --evidence evidence
+          echo "TESSDATA_PREFIX=$RUNNER_TEMP/native-ocr-languages" >> "$GITHUB_ENV"
+
+      - name: Record client identity
+        working-directory: toolkit
+        run: |
+          set -euo pipefail
+          apksigner verify --print-certs "$RUNNER_TEMP/client-qa-fixtures/client.apk" | tee evidence/client-signature.txt | grep -i "SHA-256" || true
+          aapt dump badging "$RUNNER_TEMP/client-qa-fixtures/client.apk" | grep -E "^package:|launchable-activity|native-code" | tee evidence/client-badging.txt
+          grep -q "name='com.klab.lovelive.allstars.global'" evidence/client-badging.txt
+
+      - name: Build pinned Go server fixture and create one synthetic account
+        working-directory: toolkit
+        run: |
+          set -euo pipefail
+          python3 qa/build_host_go_fixture.py \
+            --source-root "$GITHUB_WORKSPACE/toolkit/server-source" \
+            --source-sha "${{ steps.fixture.outputs.server_ref }}" \
+            --output "$RUNNER_TEMP/host-go-fixture"
+
+      - name: Install the MV runtime dump stage (exact-anchor hooks on CI-time copies)
+        run: |
+          set -euo pipefail
+          # Unchanged copy of the navigation module; the hook is applied to this copy only.
+          cp self/qa-mv/mv_export_focus.py toolkit/qa/
+          cp self/qa-mvdump/mvdump_sampler.py self/qa-mvdump/rtdump_codec.py self/qa-mvdump/keys/mvdump-keys-12035.json toolkit/qa/
+          # Exactly the four mv-game-export.yml edits plus RUNTIME_DUMPED; every anchor must occur once.
+          python3 self/qa-mvdump/apply_hooks.py --qa toolkit/qa --evidence toolkit/evidence
+          "$RUNNER_TEMP/qa-venv/bin/python" -m py_compile toolkit/qa/mv_export_focus.py toolkit/qa/native_ocr_control.py \
+            toolkit/qa/mvdump_sampler.py toolkit/qa/rtdump_codec.py
+          grep -n "mvdump_sampler.run_dump" toolkit/qa/mv_export_focus.py
+          sha256sum toolkit/qa/unity_ui.bundle.js toolkit/qa/unity_ui.mvdump.bundle.js toolkit/qa/mv_export_focus.py
+
+      - name: Run the real client to a playing MV and dump runtime values
+        working-directory: toolkit
+        run: |
+          set -euo pipefail
+          qa_exit=0
+          timeout --signal=TERM --kill-after=30s 9000s "$RUNNER_TEMP/qa-venv/bin/python" -u qa/native_ocr_control.py \
+            --fixtures qa/frozen-fixtures.json \
+            --host-server-root "$GITHUB_WORKSPACE/toolkit/server-source" \
+            --host-server-receipt "$RUNNER_TEMP/host-go-fixture/host-go-fixture.json" \
+            --client-apk "$RUNNER_TEMP/client-qa-fixtures/client.apk" \
+            --server-source server-source --evidence evidence \
+            --mv-focus --unity-agent qa/unity_ui.mvdump.bundle.js \
+            --frida-server "$RUNNER_TEMP/client-qa-fixtures/frida-server" --max-seconds 2400 \
+            --one-native-download-retry || qa_exit=$?
+          ls -la evidence | grep -iE "rtdump|runtime|report|probe|hooks" || true
+          exit "$qa_exit"
+
+      - name: Redact the synthetic fixture credential
+        if: always()
+        working-directory: toolkit
+        run: |
+          python3 - <<'PY'
+          import gzip,json,os
+          from pathlib import Path
+          credential=Path(os.environ['RUNNER_TEMP'])/'host-go-fixture/synthetic-account.private.json'
+          if credential.is_file():
+              password=json.loads(credential.read_text())['password'].encode()
+              for path in Path('evidence').rglob('*'):
+                  if path.is_file() and path.suffix in ('.json','.xml','.txt','.log'):
+                      data=path.read_bytes()
+                      if password in data:path.write_bytes(data.replace(password,b'[redacted synthetic password]'))
+                  elif path.is_file() and path.name.endswith('.json.gz'):
+                      data=gzip.decompress(path.read_bytes())
+                      if password in data:path.write_bytes(gzip.compress(data.replace(password,b'[redacted synthetic password]'),mtime=0))
+          PY
+
+      - name: Print client diagnostics and the dump summary
+        if: always()
+        working-directory: toolkit
+        timeout-minutes: 5
+        run: |
+          timeout 20 adb -s 127.0.0.1:5555 logcat -b crash -d 2>/dev/null | tail -30 || true
+          timeout 20 adb -s 127.0.0.1:5555 logcat -d -v threadtime -s SIFAS-FOV:V SIFAS-FoV:V SIFAS-MV:V 2>/dev/null | tail -60 || true
+          cat evidence/mv-runtime-dump.summary.json 2>/dev/null || echo "no dump summary"
+          python3 ../self/qa-mvdump/rtdump_codec.py verify evidence/mv-runtime-dump.json.gz || true
+          python3 - <<'PY' || true
+          import json
+          from pathlib import Path
+          for name in ('mv-focus-report.json','native-only-control-report.json'):
+              path=Path('evidence')/name
+              if path.is_file():
+                  report=json.loads(path.read_text())
+                  print(name, json.dumps({k:report.get(k) for k in ('status','blocked_reason','error','mv_flow_failure')},default=str)[:3000])
+                  print('traceback:', str(report.get('traceback'))[-3000:])
+                  mv=report.get('mv_export') or {}
+                  print('mv_export', json.dumps({k:mv.get(k) for k in ('status','blocked_reason','scenes','mv_selection','observer_rebinds','runtime_dump')},default=str)[:4000])
+          PY
+
+      - name: Upload dump evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mv-runtime-dump-evidence
+          path: toolkit/evidence/
+          retention-days: 7
+
+      - name: Stop disposable Android
+        if: always()
+        run: docker rm -f original-client-qa || true
