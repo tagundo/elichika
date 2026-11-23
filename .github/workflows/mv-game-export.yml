@@ -33,6 +33,8 @@ jobs:
       MV_EXPORT_LIVE: "12035"
       MV_EXPORT_SECONDS: "9000"
       MV_NAVIGATION_SECONDS: "1500"
+      MV_FOV_ORIENTATION: portrait
+      MV_EXPORT_LANDSCAPE: "1"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -169,11 +171,14 @@ jobs:
           sed -i 's/if pair_failures\[kind\]>=3:/if pair_failures[kind]>=12:/' toolkit/qa/native_ocr_control.py
           grep -n "pair_failures\[kind\]>=12" toolkit/qa/native_ocr_control.py
           # The MP4-export client's FOV screen differs from b22, and the MV must
-          # keep the default FOV in landscape: use the export plan instead.
+          # keep the client's default FOV: use the export plan (MV_FOV_ORIENTATION).
           sed -i "s/plan=semantics.native_profile_plan(nodes,state,'portrait',True)/plan=mv_profile_plan(nodes,state)/" toolkit/qa/native_ocr_control.py
           sed -i 's/^import feature_client_smoke as semantics$/import feature_client_smoke as semantics\nfrom mv_export_focus import mv_profile_plan/' toolkit/qa/native_ocr_control.py
           grep -n "mv_profile_plan" toolkit/qa/native_ocr_control.py
           test "$(grep -c mv_profile_plan toolkit/qa/native_ocr_control.py)" = 2
+          # The toolkit exits non-zero for any status it does not know; a finished export is a success.
+          sed -i "s/    return 0 if report\['status'\] in ('PARTIAL_NATIVE_STARTUP_PROGRESS',/    return 0 if report['status'] in ('MP4_EXPORTED','PARTIAL_NATIVE_STARTUP_PROGRESS',/" toolkit/qa/native_ocr_control.py
+          test "$(grep -c "('MP4_EXPORTED','PARTIAL_NATIVE_STARTUP_PROGRESS'" toolkit/qa/native_ocr_control.py)" = 1
           "$RUNNER_TEMP/qa-venv/bin/python" -m py_compile toolkit/qa/mv_export_focus.py
 
       - name: Run the real client to an exported MV
@@ -215,7 +220,7 @@ jobs:
         timeout-minutes: 5
         run: |
           timeout 20 adb -s 127.0.0.1:5555 logcat -b crash -d 2>/dev/null | tail -30 || true
-          timeout 20 adb -s 127.0.0.1:5555 logcat -d -s SIFAS-MV:* SIFAS:MVExport:* SIFAS-FOV:* 2>/dev/null | tail -80 || true
+          timeout 20 adb -s 127.0.0.1:5555 logcat -d -v threadtime -s SIFAS-MV:V SIFAS-FoV:V SIFAS-FOV:V SIFAS-Material:V 2>/dev/null | tail -80 || true
           python3 - <<'PY' || true
           import json
           from pathlib import Path
