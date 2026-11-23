@@ -35,6 +35,7 @@ jobs:
       MV_NAVIGATION_SECONDS: "1500"
       MV_FOV_ORIENTATION: portrait
       MV_EXPORT_LANDSCAPE: "1"
+      MV_EXPORT_STAGE: Special Stage
     steps:
       - uses: actions/checkout@v4
         with:
@@ -232,6 +233,19 @@ jobs:
                   print('traceback:', str(report.get('traceback'))[-3000:])
                   print('mv_export', json.dumps(report.get('mv_export'),default=str)[:4000])
           PY
+
+      - name: Copy the client's export folder as a backstop
+        if: always()
+        working-directory: toolkit
+        run: |
+          exports="$RUNNER_TEMP/android-data/data/com.klab.lovelive.allstars.global/files/MVExports"
+          sudo ls -la "$exports" 2>/dev/null || echo "no MVExports folder on the device volume"
+          if sudo test -d "$exports"; then
+            mkdir -p evidence/device-MVExports
+            sudo cp -a "$exports/." evidence/device-MVExports/ || true
+            sudo chown -R "$(id -u):$(id -g)" evidence/device-MVExports || true
+            (cd evidence/device-MVExports && find . -type f -exec sha256sum {} + || true)
+          fi
 
       - name: Upload export evidence
         if: always()
