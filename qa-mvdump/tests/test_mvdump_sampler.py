@@ -29,6 +29,16 @@ BASE_ENV = {'MV_RUNTIME_DUMP_KEYS': KEYS, 'MV_RUNTIME_DUMP_INTERVAL': '0.5', 'MV
             'RUNNER_TEMP': '', 'MV_RUNTIME_DUMP_REBIND_SETTLE': '10'}
 
 
+def sampler_env(extra=None):
+    """The process env without any MV_RUNTIME_DUMP_* / MV_EXPORT_* the CI job sets (they would
+    leak into the defaults these tests check), plus BASE_ENV and the test's own values."""
+    clean = {k: v for k, v in os.environ.items() if not k.startswith(('MV_RUNTIME_DUMP_', 'MV_EXPORT_'))}
+    out = dict(clean)
+    out.update(BASE_ENV)
+    out.update(extra or {})
+    return out
+
+
 class SamplerCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -62,7 +72,7 @@ class SamplerCase(unittest.TestCase):
             self.agents.append(agent)
             return agent
         c = make_context(self.tmp.name, clock, factory, rec)
-        with mock.patch.dict(os.environ, dict(BASE_ENV, **(env or {}))):
+        with mock.patch.dict(os.environ, sampler_env(env), clear=True):
             out = mvdump_sampler.run_dump(c)
         return out, rec, c, clock
 
@@ -261,7 +271,7 @@ class TestIntegration(SamplerCase):
             self.agents.append(agent)
             return agent
         c = make_context(self.tmp.name, clock, factory, rec)
-        with mock.patch.dict(os.environ, BASE_ENV):
+        with mock.patch.dict(os.environ, sampler_env(), clear=True):
             out = mvdump_sampler.run_dump(c)
         doc = self.evidence_doc(c)
         self.assertEqual(doc['trailer']['stopReason'], 'observer-lost')
@@ -319,7 +329,7 @@ class TestScripted(SamplerCase):
         c = make_context(self.tmp.name, clock, factory, rec)
         if prepare:
             prepare(c)
-        with mock.patch.dict(os.environ, dict(BASE_ENV, **(env or {}))):
+        with mock.patch.dict(os.environ, sampler_env(env), clear=True):
             out = mvdump_sampler.run_dump(c)
         return out, rec, c, agents
 
@@ -332,7 +342,7 @@ class TestScripted(SamplerCase):
         rec['lifetime_hook'] = lifetime_hook
         clock = FakeClock()
         c = make_context(self.tmp.name, clock, lambda label: ScriptedAgent(clock, normal_mv()), rec)
-        with mock.patch.dict(os.environ, BASE_ENV):
+        with mock.patch.dict(os.environ, sampler_env(), clear=True):
             with self.assertRaises(AssertionError):
                 mvdump_sampler.run_dump(c)
         doc = self.evidence_doc(c)
