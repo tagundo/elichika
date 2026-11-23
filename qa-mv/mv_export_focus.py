@@ -1279,6 +1279,7 @@ def run_mv_focus(context):
         if FALLBACK_TARGET is None or FALLBACK_TARGET in search['tried']:
             return False
         song_taps, unqualified_picks = 0, 0
+        state['center_drags'] = state['recover_drags'] = 0
         entry = {'from': TARGET, 'to': FALLBACK_TARGET, 'reason': reason, 'seen': len(search['seen']),
                  'steps': search['steps'], 't': round(time.monotonic() - started, 1)}
         TARGET = FALLBACK_TARGET
@@ -1289,6 +1290,34 @@ def run_mv_focus(context):
         log('SONG', dict(entry, step='target-switch'))
         save()
         return True
+
+    def center_row(tree, rows, row_target, why, nudge=False):
+        """Select a song the way the search already does: drag the list (no fling) so that the row
+        sits on the list's centre line, where the carousel selects it on snap. Run 8 tapped a
+        row above the centre instead: the list centred 12035 but the controller stayed on its
+        neighbour 12054 with its input blocker stuck for 23 minutes. nudge=True moves one row
+        instead (recovery from such a stuck selection)."""
+        scroll = typed_scroll_target(tree, 'music')
+        b = scroll.get('visibleBounds') or scroll['bounds']
+        if not scroll['scroll'].get('vertical'):
+            raise ValueError('music list is not vertical')
+        lo, hi = b['top'], b['bottom']
+        x, y_c = int((b['left'] + b['right']) / 2), (lo + hi) / 2
+        ys = sorted(c[1] for c in (semantics.center((r.get('target') or {})) for r in rows
+                                   if (r.get('target') or {}).get('visible') and (r.get('target') or {}).get('center')))
+        gaps = sorted(b2 - a2 for a2, b2 in zip(ys, ys[1:]) if b2 - a2 > 20)
+        row_h = gaps[len(gaps) // 2] if gaps else 105
+        if nudge:
+            d = row_h
+        else:
+            d = y_c - semantics.center(row_target)[1]  # > 0: finger moves down, rows above come to the centre
+        half = abs(d) / 2
+        a, z = max(lo + 12, y_c - half), min(hi - 12, y_c + half)
+        start, end = ((x, int(a)), (x, int(z))) if d > 0 else ((x, int(z)), (x, int(a)))
+        method = list_drag(start, end) if abs(d) >= 8 else 'none-already-centred'
+        log('STEP', {'song_center': why, 'target': TARGET, 'offset': round(d, 1), 'row_h': row_h, 'from': list(start),
+                     'to': list(end), 'method': method, 'nudge': nudge})
+        return method
     snapshot_failures, rebinds = 0, 0
     deadline = time.monotonic() + NAVIGATION_SECONDS
     index = 0
@@ -1407,7 +1436,28 @@ def run_mv_focus(context):
                     state['wait_capped'] = state.get('selection_changed')
                     log('SONG', dict(selection, i=index, step='wait-capped', waited=round(settled_for, 1),
                                      reason='selection unchanged for 30 s; trying the generic confirm'))
+                elif selection['blocker'] is True and state.get('recover_drags', 0) < 3 and settled_for >= 45:
+                    # Still stuck 15 s later and no dialog was confirmed: move the list one row so the
+                    # carousel selects again (run 8: blocker stuck after a desynced selection).
+                    state['recover_drags'] = state.get('recover_drags', 0) + 1
+                    try:
+                        center_row(tree, rows, target, f'recover-stuck-selection-{state["recover_drags"]}', nudge=True)
+                        song_tapped = time.monotonic()
+                        time.sleep(2)
+                        continue
+                    except Exception as error:
+                        log('WARN', {'song_center': 'recover', 'error': type(error).__name__, 'message': str(error)[:200]})
+            elif row and row.get('isPlayable') is True and target.get('visible') and state.get('center_drags', 0) < 4:
+                state['center_drags'] = state.get('center_drags', 0) + 1
+                try:
+                    center_row(tree, rows, target, f'select-target-song-{state["center_drags"]}')
+                    song_tapped = time.monotonic()
+                    time.sleep(2)
+                    continue
+                except Exception as error:
+                    log('WARN', {'song_center': type(error).__name__, 'message': str(error)[:200]})
             elif row and row.get('isPlayable') is True and target.get('visible') and (target.get('hit') or {}).get('hittable') is not False:
+                # Four centring drags did not select it: the tap route as before.
                 if song_taps >= 8:
                     result['blocked_reason'] = f'Song {TARGET} was not the selected song after {song_taps} taps'
                     log('WARN', {'music_selection': result['blocked_reason'], 'selection': selection})
