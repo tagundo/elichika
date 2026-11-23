@@ -25,7 +25,12 @@ const ALLOWED = new Set([
   'UnityEngine.Application::get_targetFrameRate', 'UnityEngine.Object::GetInstanceID', 'UnityEngine.Object::get_name',
   'UnityEngine.Component::get_gameObject', 'UnityEngine.Component::get_transform', 'UnityEngine.Component::GetComponents', 'UnityEngine.Component::GetComponent',
   'UnityEngine.GameObject::get_activeSelf', 'UnityEngine.GameObject::get_activeInHierarchy', 'UnityEngine.GameObject::get_transform',
-  'UnityEngine.GameObject::get_layer',
+  'UnityEngine.GameObject::get_layer', 'UnityEngine.GameObject::GetComponents', 'UnityEngine.GameObject::GetComponentsInChildren',
+  // Engine icalls of stripped managed wrappers (resolved by name, getters only).
+  ...['get_fog', 'get_fogMode', 'get_fogColor_Injected', 'get_fogDensity', 'get_fogStartDistance', 'get_fogEndDistance', 'get_ambientMode',
+    'get_ambientSkyColor_Injected', 'get_ambientEquatorColor_Injected', 'get_ambientGroundColor_Injected', 'get_ambientIntensity',
+    'get_ambientLight_Injected', 'get_reflectionIntensity'].map(n => 'UnityEngine.RenderSettings::' + n),
+  'UnityEngine.Renderer::HasPropertyBlock',
   'UnityEngine.Behaviour::get_enabled', 'UnityEngine.Behaviour::get_isActiveAndEnabled',
   ...['get_position', 'get_rotation', 'get_lossyScale', 'get_localPosition', 'get_localRotation', 'get_localScale', 'get_parent', 'get_childCount', 'GetChild', 'Find',
     'GetSiblingIndex'].map(n => 'UnityEngine.Transform::' + n),
@@ -40,9 +45,10 @@ const ALLOWED = new Set([
   ...['get_shader', 'get_renderQueue', 'get_shaderKeywords', 'HasProperty', 'GetFloat', 'GetColor', 'GetVector', 'GetTexture', 'GetTextureScale',
     'GetTextureOffset'].map(n => 'UnityEngine.Material::' + n),
   ...['get_type', 'get_color', 'get_intensity', 'get_range', 'get_spotAngle', 'get_shadows', 'get_cullingMask'].map(n => 'UnityEngine.Light::' + n),
-  ...['get_isPlaying', 'get_isEmitting', 'get_isPaused', 'get_particleCount', 'get_time', 'get_randomSeed', 'get_useAutoRandomSeed'].map(n => 'UnityEngine.ParticleSystem::' + n)
+  ...['get_isPlaying', 'get_isEmitting', 'get_isPaused', 'get_particleCount', 'get_time', 'get_randomSeed', 'get_useAutoRandomSeed',
+    'get_isStopped', 'get_duration', 'get_playbackSpeed', 'get_automaticCullingEnabled'].map(n => 'UnityEngine.ParticleSystem::' + n)
 ]);
-const FULL_PARTS = ['census', 'quality', 'fovmodNative', 'renderers', 'materials', 'lightingRefs', 'members', 'springs', 'stageNodes', 'particles', 'post'];
+const FULL_PARTS = ['timeline', 'census', 'quality', 'fovmodNative', 'renderers', 'materials', 'lightingRefs', 'members', 'springs', 'stageNodes', 'particles', 'post'];
 
 async function bound(opts) {
   const h = boot(Object.assign({ bundle: BUNDLE }, opts || {}));
@@ -125,9 +131,17 @@ test('probe: metadata only, classes found/missing, column-major layout self-chec
   }
   const classes = chunks.flatMap(c => c.classes);
   const found = classes.filter(c => c.found).map(c => c.key), missing = classes.filter(c => !c.found).map(c => c.key);
-  for (const key of ['Camera', 'PlayableDirector', 'LiveDirector', 'CameraAspectCorrector', 'LiveCoreCameraWork', 'LiveMusicMachine', 'BodyPartManager', 'SwingBoneManager', 'LiveQualitySettingVO'])
+  for (const key of ['Camera', 'PlayableDirector', 'LiveDirector', 'CameraAspectCorrector', 'LiveCoreCameraWork', 'LiveMusicMachine', 'BodyPartManager', 'SwingBoneManager',
+    'LiveQualitySettingVO', 'MemberSpotLightShaft', 'LiveCoreCameraPostProcess', 'LiveCoreCameraPostProcessFlare'])
     assert.ok(found.includes(key), key + ' found');
-  for (const key of ['LiveSplitScreenEffect', 'MemberSpotLightShaft', 'LiveMvScene']) assert.ok(missing.includes(key), key + ' missing');
+  assert.equal(classes.find(c => c.key === 'MemberSpotLightShaft').fullName, 'LLAS.Scene.Live.Components.LiveCoreMemberSpotLightShaft');
+  for (const key of ['LiveSplitScreenEffect', 'LiveMvScene', 'Light']) assert.ok(missing.includes(key), key + ' missing');
+  assert.equal(chunks.length, classes.length > 0 ? Math.ceil(h.ctx.QA_MVDUMP_EXT.classTable.length / 8) : 0, 'the sampler probes every class within PROBE_CHUNKS');
+  assert.ok(chunks.length <= 6);
+  // Icall names are resolved (not called) in chunk 0.
+  assert.equal(chunks[0].icalls['UnityEngine.RenderSettings::get_fog'], false, 'not registered in the GL client');
+  assert.equal(chunks[0].icalls['UnityEngine.Renderer::HasPropertyBlock'], false);
+  assert.ok(!h.world.invocations.some(i => i.icall), 'the probe resolves icall names without calling them');
   const corrector = classes.find(c => c.key === 'CameraAspectCorrector');
   assert.ok(corrector.fields.some(f => f.name === '<Correction>k__BackingField' && f.type === 'System.Single'));
   assert.equal(corrector.unityObject, true);
@@ -202,8 +216,28 @@ test('frame record: one callback, H180 camera values, correctors, cameraWork, gl
   const keys = rec.anchors.map(a => a.key);
   for (const k of ['anchor:member1:Hips', 'anchor:member1:Head', 'anchor:member1:LeftHand', 'anchor:member1:RightHand', 'anchor:stageOrigin']) assert.ok(keys.includes(k), k);
   assert.equal(rec.anchors.find(a => a.key === 'anchor:member1:Head').source, 'BodyPartManager.head');
-  assert.equal(rec.renderSettings.fogMode.n, 'ExponentialSquared');
-  assert.equal(rec.lights.length, 1);
+  // The stage origin anchor resolves although GameObject.Find("/EntryPoint") returns the PopupView root.
+  close(rec.anchors.find(a => a.key === 'anchor:stageOrigin').position, [0, 0, 0], 1e-9, 'stage origin');
+  // GL 3.12.0: RenderSettings and Light are stripped and their engine icalls are not registered: both
+  // are reported unavailable once, without a call and without per-getter errors.
+  assert.equal(rec.renderSettings, null);
+  assert.match(rec.unavailable.renderSettings, /RenderSettings: engine icall not registered/);
+  assert.equal(rec.lights, null);
+  assert.match(rec.unavailable.lights, /UnityEngine\.Light .*stripped/);
+  assert.ok(!h.world.invocations.some(i => i.icall), 'no icall is called when none resolves');
+  // Post values per frame: LiveCoreCamera.postProcess -> PostProcessingBehaviour.profile.
+  assert.equal(rec.post.key, 'post:/EntryPoint/Live/Cameras/MainCamera');
+  assert.equal(rec.post.enablePostEffect, true);
+  assert.deepEqual(rec.post.dof, { enabled: true, focusDistance: 4.25, aperture: 35, focalLength: 50, useCameraFov: false, kernelSize: 1, antiAura: true });
+  assert.equal(rec.post.bloom.enabled, true);
+  close([rec.post.bloom.intensity, rec.post.bloom.threshold, rec.post.bloom.lensDirtIntensity], [0.6, 0.9, 0.25], 1e-6, 'bloom');
+  assert.equal(rec.post.bloom.lensDirtTexture, 'lens_dirt');
+  assert.equal(rec.post.flare.enabled, false);
+  assert.equal(rec.post.flare.settings.length, 2);
+  close(rec.post.flare.settings[1].center, [0.5, 0.6], 1e-6, 'flare center');
+  assert.equal(rec.post.flare.settings[1].rounded, true);
+  assert.deepEqual(rec.post.flares.map(f => [f.index, f.enablePostEffect, f.enabled, f.flare.enabled]), [[0, true, true, true]]);
+  assert.equal(rec.faces, undefined, 'no face renderers until the host sends them');
   assert.equal(rec.cost.truncated, false);
   assert.deepEqual(rec.nonFinite, []);
   assert.equal(rec.errors, undefined, JSON.stringify(rec.errors));
@@ -239,7 +273,34 @@ test('every full part terminates, stays read-only and keeps no object across cal
     out[part] = await runPart(h, part, extra);
   }
   assertClean(h.world);
+  // Timeline: CustomControl clip windows with their prefabs; the grouped activation track; others counted only.
+  const tl = out.timeline[0].timeline;
+  assert.equal(tl.asset, 'so2035_timeline');
+  assert.equal(tl.trackCount, 4);
+  const cc = tl.tracks.find(t => t.class === 'LLAS.Components.Timeline.CustomControlTrack');
+  assert.deepEqual(cc.clips.map(c => [c.start, c.duration, c.prefab, c.assetClass]),
+    [[36.9, 8.2, 'fx_flo_so2035_02', 'LLAS.Components.Timeline.CustomControlClip'], [73.9, 4.9, 'fx_par_so2035_03', 'LLAS.Components.Timeline.CustomControlClip']]);
+  const act = tl.tracks.find(t => t.class === 'UnityEngine.Timeline.ActivationTrack');
+  assert.deepEqual([act.name, act.depth, act.clips[0].name], ['main_01_act', 1, 'Active']);
+  assert.ok(!tl.tracks.some(t => /AnimationTrack|GroupTrack/.test(t.class)));
+  // Census: the live root (the LiveDirector's), not the PopupView root GameObject.Find returns; self-check ok.
+  const self = out.census[0].census.selfCheck;
+  assert.equal(self.ok, true, JSON.stringify(self));
+  assert.equal(self.live.inLiveDirectorRoot, true);
+  assert.equal(self.live.holdsLiveDirector, true);
+  assert.equal(self.live.isLiveDirector, false, 'the fake LiveDirector sits on /EntryPoint/Live/Director');
+  assert.equal(self.findReturnedOtherRoot, true);
+  assert.deepEqual(self.roots.map(r => r.source), ['LiveDirector', 'GameObject.Find']);
+  assert.equal(self.liveDirector, '/EntryPoint/Live/Director');
   const census = out.census.flatMap(r => r.census.nodes);
+  assert.equal(census[0].path, '/EntryPoint');
+  assert.equal(census[1].path, '/EntryPoint/Live', 'the live root is walked first');
+  assert.ok(census.some(n => n.path === '/EntryPoint/PopupView' && n.rootIndex === 1), 'the other same-name root is listed after it');
+  const skill = census.find(n => n.path === '/EntryPoint/SkillCutin');
+  assert.equal(skill.skipped, 'no skill cut-in playing');
+  assert.ok(!census.some(n => n.path.startsWith('/EntryPoint/SkillCutin/')), 'no node below the skipped cut-in subtree');
+  assert.deepEqual(census.find(n => n.path === '/Directional Light' || n.path === '/EntryPoint/Directional Light').components,
+    ['UnityEngine.Transform', 'UnityEngine.Behaviour'], 'a stripped component class shows as its kept base class');
   assert.ok(census.some(n => n.path === '/EntryPoint/Live/Cameras/MainCamera/Camera' && n.components.includes('UnityEngine.Camera')));
   assert.equal(census.filter(n => n.path === '/EntryPoint/Live/Cameras/Flare').length, 2, 'same-name siblings are both listed');
   assert.ok(census.every(n => n.depth <= 6));
@@ -265,6 +326,11 @@ test('every full part terminates, stays read-only and keeps no object across cal
   const ids = renderers.map(r => r.instanceId);
   assert.deepEqual(ids, [...ids].sort((a, b) => a - b), 'sorted by instanceId across chunks');
   assert.equal(new Set(ids).size, ids.length, 'no renderer twice');
+  assert.ok(!renderers.some(r => r.path.startsWith('/EntryPoint/SkillCutin/')), 'cut-in renderers skipped while no cut-in plays');
+  assert.deepEqual(out.renderers[0].deferred, { roots: ['/EntryPoint/SkillCutin'], components: 3, skipped: true, reason: 'no skill cut-in playing',
+    cutin: ['cutinOverlayCamera:off', '/EntryPoint/SkillCutin camera:off'] });
+  assert.ok(!('hasPropertyBlock' in ground), 'HasPropertyBlock is not registered in the GL client');
+  assert.match(out.renderers[0].unavailable.hasPropertyBlock, /HasPropertyBlock: engine icall not registered/);
   const materials = out.materials.flatMap(r => r.materials);
   const bodyMat = materials.find(m => m.name === 'ch0212_co0001_body');
   assert.deepEqual(bodyMat.properties._TintColor, { t: 'color', v: [0.4989, 0.5149, 0.649, 1] });
@@ -281,6 +347,15 @@ test('every full part terminates, stays read-only and keeps no object across cal
   assert.equal(member.bones.length, keys.member.bones.length);
   assert.ok(member.bones.every(b => !b.missing && b.key.startsWith('member:1:')));
   assert.deepEqual(member.blendShapes[0].weights, { eye_close: 12.5 });
+  const combine = member.blendShapes.find(b => /\/CombineFace$/.test(b.rendererKey));
+  assert.equal(combine.count, 4);
+  assert.deepEqual(Object.keys(combine.channels), ['EyeBlendShape.eye_facial_002', 'EyeBlendShape.eye_facial_003_006_011', 'MouthBlendShape.mouth_facial_004', 'MouthBlendShape.mouth_facial_001'],
+    'every CombineFace channel, zeros included');
+  assert.equal(combine.channels['MouthBlendShape.mouth_facial_001'], 0);
+  assert.ok(!('MouthBlendShape.mouth_facial_001' in combine.weights), 'weights keeps the non-zero ones');
+  close([combine.weights['MouthBlendShape.mouth_facial_004']], [35.8], 1e-5, 'mouth 004');
+  assert.ok(/\(Clone\)/.test(combine.rawPath), 'raw path for the frame face reads');
+  assert.deepEqual(out.members[0].spotLights.map(s => [s.class, s.fields.currentDrawIndex.v]), [['LLAS.Scene.Live.Components.LiveCoreMemberSpotLightShaft', 1]]);
   const spring = out.springs[0].springs[0];
   assert.equal(spring.boneField, 'swingBones');
   assert.equal(spring.bones.length, 2);
@@ -290,10 +365,22 @@ test('every full part terminates, stays read-only and keeps no object across cal
   assert.ok(nodes.some(n => n.binding.endsWith('/dis_01/main_01') && n.relPath === '' && n.activeSelf === false), 'inactive binding still found (Transform.Find)');
   assert.ok(nodes.some(n => n.missing && n.binding.endsWith('/fx_stg_so2035_02/root')));
   const particles = out.particles.flatMap(r => r.particles);
-  assert.deepEqual(particles.map(p => [p.key, p.particleCount, p.rendererEnabled]), [['particles:/EntryPoint/Live/Stages/MainStage/Effect/fx_par_so2035_01/par_01', 37, true]]);
+  assert.deepEqual(particles.map(p => [p.key, p.particleCount, p.rendererEnabled]).sort(), [
+    ['particles:/EntryPoint/Live/Stages/MainStage/Effect/fx_par_so2035_01/par_01', 37, true],
+    ['particles:/fx_flo_so2035_02 [Timeline]/root/flower_01', 37, true],
+    ['particles:/fx_flo_so2035_02 [Timeline]/root/flower_02', 37, true]]);
+  assert.deepEqual(Object.keys(particles[0]).filter(k => ['isStopped', 'duration', 'simulationSpeed', 'automaticCullingEnabled', 'rendererVisible'].includes(k)).length, 5);
+  assert.equal(particles[0].duration, 5);
+  assert.equal(out.particles[0].deferred.skipped, true);
   const post = out.post[0].post;
-  assert.equal(post.enablePostEffect, false);
-  assert.ok(post.holders.some(x => x.class.endsWith('LiveCoreCamera')));
+  assert.equal(post.enablePostEffect, true, 'LiveCoreCameraPostProcess.enablePostEffect');
+  assert.equal(post.dof.focusDistance, 4.25);
+  assert.equal(post.source, 'post:/EntryPoint/Live/Cameras/MainCamera');
+  const holder = post.holders.find(x => x.class.endsWith('LiveCoreCamera'));
+  assert.equal(holder.postProcess.profile.source, 'PostProcessingBehaviour.profile');
+  assert.equal(holder.postProcess.profile.sameAsPostProcessProfile, true);
+  assert.equal(holder.postProcess.behaviour.Enabled, true);
+  assert.ok(post.holders.some(x => x.class === 'UnityEngine.PostProcessing.PostProcessingBehaviour'), 'camera components through GameObject.GetComponents');
   for (const recs of Object.values(out)) for (const r of recs) {
     assert.ok(r.clock && r.clockEnd, 'every full chunk carries clock and clockEnd');
     assert.equal(r.errors, undefined, JSON.stringify(r.errors));
@@ -430,4 +517,129 @@ test('materials: a renderer slot that no longer resolves falls back to one Mater
   assert.ok(rec.materials.slice(1).every(m => m.resolvedBy === 'renderer'));
   assert.equal(h.world.findAllTypes.slice(before).filter(n => n === 'UnityEngine.Material').length, 1, 'one scan per chunk at most');
   assert.deepEqual(rec.resolution, { renderer: wanted.length - 1, scan: 1, missing: 0 });
+});
+
+test('skill cut-in playing: its subtree is kept, sorted after the stage (phase 1), and the census descends into it', async () => {
+  const h = await bound({ cutinPlaying: true });
+  const renderers = await runPart(h, 'renderers', {});
+  assertClean(h.world);
+  const all = renderers.flatMap(r => r.renderers);
+  const firstSkill = all.findIndex(r => r.path.startsWith('/EntryPoint/SkillCutin/'));
+  assert.ok(firstSkill > 0, 'cut-in renderers are listed');
+  assert.ok(all.slice(firstSkill).every(r => r.path.startsWith('/EntryPoint/SkillCutin/')), 'and only after every other renderer');
+  assert.equal(renderers[0].deferred.skipped, false);
+  assert.equal(renderers[0].deferred.reason, 'sorted last');
+  assert.deepEqual(renderers[0].deferred.cutin, ['cutinOverlayCamera:on', '/EntryPoint/SkillCutin camera:on']);
+  const census = (await runPart(h, 'census', {})).flatMap(r => r.census.nodes);
+  assert.ok(census.some(n => n.path === '/EntryPoint/SkillCutin/Player'), 'census descends while a cut-in plays');
+  assert.equal(census.find(n => n.path === '/EntryPoint/SkillCutin').skipped, undefined);
+  const particles = (await runPart(h, 'particles', {})).flatMap(r => r.particles);
+  assert.equal(particles.filter(p => p.path.startsWith('/EntryPoint/SkillCutin/')).length, 3);
+  assert.ok(particles.findIndex(p => p.path.startsWith('/EntryPoint/SkillCutin/')) >= 3, 'cut-in systems last');
+});
+
+test('without a camera manager (no cut-in evidence) the deferred subtree is kept, sorted last', async () => {
+  const h = await bound();
+  // No cut-in camera to look at (manager field and the cut-in Camera destroyed): kept, sorted last.
+  h.world.destroy(h.world.objects.cutinOverlay);
+  h.world.destroy(h.world.objects.cutCamera);
+  const records = await runPart(h, 'particles', {});
+  assertClean(h.world);
+  assert.equal(records[0].deferred.skipped, false);
+  assert.equal(records.flatMap(r => r.particles).filter(p => p.path.startsWith('/EntryPoint/SkillCutin/')).length, 3);
+});
+
+test('particles window mode: only the systems under the named "<prefab> [Timeline]" roots, with cursor', async () => {
+  const h = await bound();
+  const rec = await h.rpc('mvruntime', { part: 'particles', roots: ['fx_flo_so2035_02 [Timeline]', 'fx_par_so2035_03 [Timeline]'], cursor: {} });
+  assertClean(h.world);
+  assert.deepEqual(rec.roots, [{ path: '/fx_flo_so2035_02 [Timeline]', found: true }, { path: '/fx_par_so2035_03 [Timeline]', found: false }]);
+  assert.deepEqual(rec.particles.map(p => p.key).sort(), ['particles:/fx_flo_so2035_02 [Timeline]/root/flower_01', 'particles:/fx_flo_so2035_02 [Timeline]/root/flower_02']);
+  assert.equal(rec.systems, 2);
+  assert.equal(rec.next, null);
+  assert.ok(!h.world.findAllTypes.includes('UnityEngine.ParticleSystem'), 'no FindObjectsOfTypeAll(ParticleSystem) in window mode');
+});
+
+test('frame faces: the host-sent face renderers give per-channel weights every frame (names read once)', async () => {
+  const h = await bound();
+  const members = await runPart(h, 'members', { keys: { member: h.world.keys.member } });
+  const faces = members[0].members[0].blendShapes.filter(b => b.count > 0).map(b => ({ slot: 1, key: b.rendererKey, path: b.rawPath || b.path }));
+  assert.equal(faces.length, 2);
+  const first = await h.rpc('mvruntime', { part: 'frame', faces });
+  const namesBefore = h.world.invocations.filter(i => i.name === 'GetBlendShapeName').length;
+  const second = await h.rpc('mvruntime', { part: 'frame', faces });
+  assertClean(h.world);
+  assert.equal(h.world.invocations.filter(i => i.name === 'GetBlendShapeName').length, namesBefore, 'blend shape names are cached per mesh');
+  for (const rec of [first, second]) {
+    const face = rec.faces.find(f => /CombineFace$/.test(f.rendererKey));
+    assert.equal(face.count, 4);
+    assert.deepEqual(Object.keys(face.weights), ['EyeBlendShape.eye_facial_002', 'EyeBlendShape.eye_facial_003_006_011', 'MouthBlendShape.mouth_facial_004']);
+    assert.equal(face.enabled, true);
+  }
+  const gone = await h.rpc('mvruntime', { part: 'frame', faces: [{ slot: 1, key: 'renderer:/x', path: '/EntryPoint/Live/Members/Member9/Face' }] });
+  assert.deepEqual(gone.faces, [{ slot: 1, rendererKey: 'renderer:/x', missing: true }]);
+});
+
+test('frame post follows the DOF track: focus distance read per frame', async () => {
+  const h = await bound();
+  const a = await h.rpc('mvruntime', { part: 'frame' });
+  h.world.setDof(9.5);
+  const b = await h.rpc('mvruntime', { part: 'frame' });
+  assert.equal(a.post.dof.focusDistance, 4.25);
+  assert.equal(b.post.dof.focusDistance, 9.5);
+  assertClean(h.world);
+});
+
+test('a client that registers the icalls: RenderSettings and HasPropertyBlock are read through them', async () => {
+  const h = await bound({ icallsRegistered: true });
+  const rec = await h.rpc('mvruntime', { part: 'frame' });
+  assertClean(h.world);
+  assert.equal(rec.renderSettings.source, 'icall');
+  assert.equal(rec.renderSettings.fogMode.n, 'ExponentialSquared');
+  assert.equal(rec.renderSettings.fog, false);
+  close(rec.renderSettings.ambientEquatorColor, [0.11, 0.13, 0.13, 1], 1e-6, 'ambientEquatorColor');
+  assert.equal(rec.renderSettings.ambientIntensity, 1);
+  assert.equal(rec.unavailable.renderSettings, undefined);
+  const renderers = (await runPart(h, 'renderers', {})).flatMap(r => r.renderers);
+  assert.equal(renderers.find(r => /\/ground$/.test(r.path)).hasPropertyBlock, true);
+  assert.equal(renderers.find(r => r.mesh === 'Body').hasPropertyBlock, false);
+  assert.equal(h.world.invocations.filter(i => i.icall && i.name === 'HasPropertyBlock').length, renderers.length, 'one icall per listed renderer');
+  assertClean(h.world);
+});
+
+test('icalls: allowlisted getters only, resolved by name; an unregistered one is recorded, never called', async () => {
+  const h = await bound({ icallsRegistered: true, icallsMissing: ['UnityEngine.RenderSettings::get_fogDensity'] });
+  const ext = h.ctx.QA_MVDUMP_EXT, deny = new RegExp(ext.deny);
+  for (const name of Object.keys(ext.icalls)) {
+    const method = name.split('::')[1];
+    assert.match(method, /^get_|^Has[A-Z]/, name);
+    assert.ok(!deny.test(method), name + ' not denied');
+    assert.ok(ALLOWED.has(name), name + ' in the plan allowlist');
+  }
+  const rec = await h.rpc('mvruntime', { part: 'frame' });
+  assertClean(h.world);
+  assert.equal(rec.renderSettings.fogDensity, null);
+  assert.ok(rec.errors.some(e => /MVDUMP_ICALL_UNAVAILABLE:UnityEngine.RenderSettings::get_fogDensity/.test(e.error)), JSON.stringify(rec.errors));
+  assert.equal(rec.renderSettings.fogEndDistance, 300, 'the other getters still read');
+  assert.ok(!h.world.invocations.some(i => i.icall && /^set_/.test(i.name)));
+});
+
+
+test('a client that keeps UnityEngine.Light: lights are read, no unavailable note', async () => {
+  const h = await bound({ lightClass: true });
+  const rec = await h.rpc('mvruntime', { part: 'frame' });
+  assertClean(h.world);
+  assert.equal(rec.lights.length, 1);
+  assert.equal(rec.lights[0].key, 'light:/EntryPoint/Directional Light');
+  assert.equal(rec.unavailable.lights, undefined);
+});
+
+test('census without the decoy root: one root, same self-check', async () => {
+  const h = await bound({ decoyRoot: false });
+  const records = await runPart(h, 'census', {});
+  assertClean(h.world);
+  const self = records[0].census.selfCheck;
+  assert.equal(self.ok, true);
+  assert.equal(self.findReturnedOtherRoot, false);
+  assert.deepEqual(records[0].census.roots.map(r => r.source), ['LiveDirector']);
 });
