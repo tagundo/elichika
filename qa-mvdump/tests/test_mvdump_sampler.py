@@ -867,15 +867,21 @@ class TestWorkflow(unittest.TestCase):
 
     def test_env_and_inputs(self):
         text = self.text
-        self.assertIsNone(re.search(r'^\s+MV_EXPORT_FALLBACK_LIVE:', text, re.M), 'the 12035 keys must not meet a 12038 fallback')
-        self.assertIn('MV_EXPORT_SEARCH_DIRECTION: backward', text)
-        self.assertIn('MV_RUNTIME_DUMP_KEYS: qa/mvdump-keys-12035.json', text)
-        self.assertIn('MV_EXPORT_LIVE: "12035"', text)
+        # One song per run: live_id picks it, its key file must exist, a fallback is opt-in and gets its own keys.
+        self.assertIn("MV_EXPORT_LIVE: ${{ inputs.live_id || '12035' }}", text)
+        self.assertIn("MV_EXPORT_FALLBACK_LIVE: ${{ inputs.fallback_live || '' }}", text)
+        self.assertIn("MV_EXPORT_SEARCH_DIRECTION: ${{ inputs.search_direction || 'backward' }}", text)
+        self.assertIn('MV_RUNTIME_DUMP_KEYS: qa/mvdump-keys-{live}.json', text)
+        self.assertIn("MV_RUNTIME_DUMP_FRAME_CLOCK: ${{ inputs.frame_clock || '1' }}", text)
+        self.assertIn('self/qa-mvdump/keys/mvdump-keys-*.json toolkit/qa/', text)
+        self.assertIn("group: mv-runtime-dump-${{ inputs.live_id || '12035' }}", text, 'a dump of one song never cancels another')
+        self.assertIn('test -f "self/qa-mvdump/keys/mvdump-keys-$live.json"', text)
         for name, default in (('MV_RUNTIME_DUMP_FRAME_BUDGET_MS', "inputs.frame_budget_ms || '60/150'"),
                               ('MV_RUNTIME_DUMP_FULL_BUDGET_MS', "inputs.full_budget_ms || '80/200'"),
                               ('MV_RUNTIME_DUMP_SECONDS', "inputs.wall_seconds || '900'")):
             self.assertIn(f'{name}: ${{{{ {default} }}}}', text)
-        for name in ('frame_budget_ms', 'full_budget_ms', 'wall_seconds', 'discovery_seconds'):
+        for name in ('frame_budget_ms', 'full_budget_ms', 'wall_seconds', 'discovery_seconds', 'live_id', 'fallback_live',
+                     'search_direction', 'frame_clock'):
             self.assertIn(f'      {name}:\n', text)
         try:
             import yaml  # noqa: F401  (optional on the runner)
@@ -887,14 +893,18 @@ class TestWorkflow(unittest.TestCase):
         self.assertEqual(inputs['frame_budget_ms']['default'], '60/150')
         self.assertEqual(inputs['full_budget_ms']['default'], '80/200')
         self.assertEqual(inputs['wall_seconds']['default'], '900')
+        self.assertEqual(inputs['live_id']['default'], '12035')
+        self.assertEqual(inputs['fallback_live']['default'], '')
+        self.assertEqual(inputs['frame_clock']['default'], '1')
         env = doc['jobs']['dump']['env']
-        self.assertNotIn('MV_EXPORT_FALLBACK_LIVE', env)
         export = HERE.parent.parent / '.github' / 'workflows' / 'mv-game-export.yml'
         if export.is_file():
             export_env = yaml.safe_load(export.read_text())['jobs']['export']['env']
-            for key in ('MV_EXPORT_LIVE', 'MV_NAVIGATION_SECONDS', 'MV_FOV_ORIENTATION', 'MV_EXPORT_LANDSCAPE', 'MV_EXPORT_STAGE',
-                        'MV_EXPORT_SEARCH_DIRECTION', 'TOOLKIT_REF', 'EXPORT_RELEASE_ID'):
+            for key in ('MV_NAVIGATION_SECONDS', 'MV_FOV_ORIENTATION', 'MV_EXPORT_LANDSCAPE', 'MV_EXPORT_STAGE', 'TOOLKIT_REF', 'EXPORT_RELEASE_ID'):
                 self.assertEqual(env.get(key), export_env.get(key), key)
+            # The defaults are the export run's navigation (without its 12038 fallback: no 12038 key file).
+            self.assertEqual(inputs['live_id']['default'], export_env['MV_EXPORT_LIVE'])
+            self.assertEqual(inputs['search_direction']['default'], export_env['MV_EXPORT_SEARCH_DIRECTION'])
 
     def test_every_key_file_names_its_song(self):
         files = sorted((HERE.parent / 'keys').glob('mvdump-keys-*.json'))
