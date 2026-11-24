@@ -21,6 +21,13 @@ class TestValidate(unittest.TestCase):
     def test_accepts_the_schema_example(self):
         self.assertEqual(codec.validate(EXAMPLE), [])
 
+    def test_example_caps_are_caps_the_sampler_still_records(self):
+        """header.limits.caps is a free dict (not validated): the example lists only current caps."""
+        import mvdump_sampler
+        caps = EXAMPLE['header']['limits']['caps']
+        self.assertNotIn('blendShapes', caps, 'members record every channel; no 24-weight cap')
+        self.assertEqual({k: mvdump_sampler.CAPS.get(k) for k in caps}, caps)
+
     def test_rejects_unknown_schema_and_missing_envelope(self):
         doc = copy.deepcopy(EXAMPLE)
         doc['schema'] = 'sifas-mv-runtime-dump/2'
