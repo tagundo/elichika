@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import struct
 import tempfile
@@ -700,6 +701,7 @@ class UpdateTests(StudioCase):
                            (query(master, "SELECT jacket_asset_path FROM m_live WHERE live_id=93000")[0][0],))[0][0]
         old_version = query(self.gl / "asset_a_en.db", "SELECT version FROM m_asset_package WHERE "
                                                        "package_key='live:9300001'")[0][0]
+        files_before = self.static_files()
         result = self.update(93000, title="Renamed", timelines={"android": timeline("a2"), "ios": manage.KEEP},
                              jacket=png(400, 400)[:-12] + png(400, 400)[-12:] + b"", audio=manage.KEEP,
                              fingerprints={"android": "fa2"})
@@ -733,12 +735,16 @@ class UpdateTests(StudioCase):
         for language in LANGUAGES["gl"]:
             self.assertEqual(query(self.gl / f"dictionary_{language}_k.db", "SELECT message FROM m_dictionary WHERE "
                                    "id='elichika_mv_studio_93000'"), [("Renamed",)])
-        # The backup holds only the databases this update touched, in the restorable layout.
+        # The backup holds the region's whole MV Studio state in the restorable layout: every database MV
+        # Studio writes for the region, the songs' stage files and the hidden manifest of the packs it names.
         saved = sorted(str(path.relative_to(folder)) for path in folder.rglob("*") if path.is_file())
         self.assertEqual(saved, sorted([f"assets/db/gl/{name}.lz4" for name in
                                         ["masterdata.db"] + [f"dictionary_{l}_k.db" for l in LANGUAGES["gl"]]
                                         + [f"asset_{p}_{l}.db" for l in LANGUAGES["gl"] for p in "ai"]]
-                                       + [f"static/{old_android}"]))
+                                       + [f"static/{old_android}", "assets/stages/93000301.json.lz4",
+                                          ".mv-studio-backup.json"]))
+        manifest = json.loads((folder / ".mv-studio-backup.json").read_text())
+        self.assertEqual(manifest, {"format": 1, "region": "gl", "packs": sorted(files_before)})
 
         jacket_key = query(master, "SELECT jacket_asset_path FROM m_live WHERE live_id=93000")[0][0]
         result = self.update(93000, jacket=jpeg(400, 400), audio=audio("music_93000", tag="#2"))
@@ -1175,6 +1181,186 @@ class RemoveTests(StudioCase):
         self.assertEqual(manage.prune_mv_studio_backups(self.root, keep=1), names[1:3])
         self.assertEqual(self.backups(), names[3:])
         self.assertEqual(list(quarantine.iterdir()), [])
+
+
+class BackupChainTests(StudioCase):
+    """Every kept MV Studio backup restores alone and complete, whichever later operations dropped its packs."""
+
+    def setUp(self):
+        super().setUp()
+        self.published = {}
+
+    def moment(self):
+        """What restoring a backup taken now must bring back: the GL databases and the songs' stage files."""
+        for name in self.static_files():
+            self.published.setdefault(name, (self.root / "static" / name).read_bytes())
+        return {"databases": {path.name: dump(path) for path in region_paths(self.root, "gl")},
+                "stages": {path.name: path.read_bytes() for path in self.stages.glob("93*.json")}}
+
+    def keep_state(self):
+        holder = tempfile.TemporaryDirectory(prefix="mv-studio-state-")
+        self.addCleanup(holder.cleanup)
+        saved = Path(holder.name)
+        shutil.copytree(self.root / "assets", saved / "assets")
+        shutil.copytree(self.root / "static", saved / "static")
+        shutil.copy2(self.root / "userdata.db", saved / "userdata.db")
+        return saved
+
+    def put_state(self, saved):
+        for name in ("assets", "static"):
+            shutil.rmtree(self.root / name)
+            shutil.copytree(saved / name, self.root / name)
+        shutil.copy2(saved / "userdata.db", self.root / "userdata.db")
+
+    def assert_restores_alone(self, folder, moment):
+        """The stock restore tool alone brings back that moment, and every pack the catalogs name is in static/."""
+        self.assertEqual(restore(self.root, folder)["failed"], [])
+        self.assertEqual({path.name: dump(path) for path in region_paths(self.root, "gl")}, moment["databases"])
+        for name, data in moment["stages"].items():
+            self.assertEqual((self.stages / name).read_bytes(), data, name)
+        named = named_packs(self.catalogs())
+        for name in named:
+            self.assertTrue((self.root / "static" / name).is_file(), name)
+            self.assertEqual((self.root / "static" / name).read_bytes(), self.published[name], name)
+        # The manifest is backup bookkeeping, not a game file.
+        self.assertFalse((self.root / ".mv-studio-backup.json").exists())
+        return named
+
+    def kept_packs(self, folder):
+        static = Path(folder) / "static"
+        return {path.name for path in static.iterdir()} if static.is_dir() else set()
+
+    def test_register_update_update_remove_every_backup_restores_alone_and_in_turn(self):
+        self.register(timelines={"android": timeline("a1"), "ios": timeline("i1")}, audio=audio("music_93000"),
+                      jacket=png(400, 400), credit="c1")
+        steps = (lambda: self.update(93000, audio=audio("music_93000", tag="#2")),
+                 lambda: self.update(93000, title="Renamed", jacket=jpeg(400, 400),
+                                     timelines={"android": timeline("a2"), "ios": manage.KEEP}),
+                 lambda: self.remove(93000))
+        moments, folders = [], []
+        for step in steps:
+            moments.append(self.moment())
+            result = step()
+            self.assertTrue(result["quarantined"])
+            folders.append(Path(result["backup"]))
+        self.assertEqual(sorted(self.backups()), sorted(folder.name for folder in folders))
+        self.assertEqual(self.static_files(), [])
+        self.assertFalse((self.stages / "93000301.json").exists())
+        for folder in folders:
+            manifest = json.loads((folder / ".mv-studio-backup.json").read_text())
+            # A backup gets exactly the dropped packs its own catalogs name, nothing published after it.
+            self.assertTrue(self.kept_packs(folder))
+            self.assertLessEqual(self.kept_packs(folder), set(manifest["packs"]))
+        # The first update's backup names the old jacket and Android timeline that the second update dropped,
+        # and the iOS timeline the removal dropped: each is a hard link to the later operation's copy.
+        first, second, removal = (self.kept_packs(folder) for folder in folders)
+        self.assertTrue(first & second and first & removal)
+        for name in first & second:
+            self.assertEqual(os.stat(folders[0] / "static" / name).st_ino, os.stat(folders[1] / "static" / name).st_ino)
+        final = self.keep_state()
+        expected = [("새 MV", 1), ("새 MV", 2), ("Renamed", 3)]
+        for folder, moment, (title, revision) in zip(folders, moments, expected):
+            with self.subTest(alone=folder.name):
+                self.put_state(final)
+                self.assertTrue(self.assert_restores_alone(folder, moment))
+                song = manage.describe_mv_song(self.root, region="gl", live_id=93000)
+                self.assertEqual((song["title"], song["revision"], song["credit"]), (title, revision, "c1"))
+                self.assertTrue((self.stages / "93000301.json").is_file())
+        self.put_state(final)
+        for folder, moment in zip(folders, moments):
+            with self.subTest(in_turn=folder.name):
+                self.assert_restores_alone(folder, moment)
+        for folder, moment in zip(reversed(folders), reversed(moments)):
+            with self.subTest(newest_first=folder.name):
+                self.assert_restores_alone(folder, moment)
+
+    def test_an_older_backup_keeps_the_packs_a_later_change_of_another_song_drops(self):
+        self.register(jacket=png(400, 400))
+        self.register(jacket=png(400, 400), title="second")
+        moment = self.moment()
+        first = self.update(93000, jacket=jpeg(400, 400))
+        second = self.update(93001, jacket=jpeg(400, 400))
+        dropped, = second["quarantined"]
+        self.assertEqual(os.stat(Path(first["backup"]) / "static" / dropped).st_ino,
+                         os.stat(Path(second["backup"]) / "static" / dropped).st_ino)
+        self.put_state(self.keep_state())
+        self.assertEqual(len(self.assert_restores_alone(first["backup"], moment)), 2)
+
+    def test_an_update_without_backup_still_gives_older_backups_their_packs(self):
+        self.register(jacket=png(400, 400), audio=audio("music_93000"))
+        moment = self.moment()
+        first = self.update(93000, audio=audio("music_93000", tag="#2"))
+        second = self.update(93000, jacket=jpeg(400, 400), backup=False)
+        jacket, = second["quarantined"]
+        quarantine, = (self.root / "static/.elichika-quarantine").iterdir()
+        self.assertEqual(os.stat(Path(first["backup"]) / "static" / jacket).st_ino, os.stat(quarantine / jacket).st_ino)
+        self.assert_restores_alone(first["backup"], moment)
+
+    def test_pruning_runs_first_and_leaves_every_kept_backup_complete(self):
+        self.register(timelines={"android": timeline("a1")}, jacket=png(400, 400), audio=audio("music_93000"))
+        names = [f"2026-11-2{index}_10-00-00_mv-studio-update-93000" for index in range(4)]
+        changes = (dict(jacket=jpeg(400, 400)), dict(audio=audio("music_93000", tag="#2")),
+                   dict(jacket=png(400, 400)), dict(timelines={"android": timeline("a2")}))
+        linked, real = [], manage._link_file
+
+        def link(source, target):
+            linked.append((target.parent.parent.name, target.name))
+            return real(source, target)
+
+        moments = []
+        with patch.object(manage, "_link_file", side_effect=link):
+            for index, change in enumerate(changes):
+                moments.append(self.moment())
+                linked.clear()
+                with patch.object(manage, "datetime") as clock:
+                    clock.now.return_value.strftime.return_value = f"2026-11-2{index}_10-00-00"
+                    result = self.update(93000, **change)
+        self.assertEqual(self.backups(), names[1:])
+        # The last update dropped the registered Android timeline, which every earlier backup names. Retention
+        # deleted the oldest backup first, so only the two kept older backups received it.
+        dropped, = result["quarantined"]
+        self.assertEqual(sorted(linked), [(names[1], dropped), (names[2], dropped)])
+        self.assertEqual(self.kept_packs(self.root / "backup_db" / names[3]), {dropped})
+        final = self.keep_state()
+        for name, moment in zip(names[1:], moments[1:]):
+            with self.subTest(name=name):
+                self.put_state(final)
+                self.assert_restores_alone(self.root / "backup_db" / name, moment)
+        # Pruning a kept backup later never takes a pack another kept backup needs.
+        self.put_state(final)
+        self.assertEqual(manage.prune_mv_studio_backups(self.root, keep=1), names[1:3])
+        self.assert_restores_alone(self.root / "backup_db" / names[3], moments[3])
+
+    def test_a_pack_an_older_backup_cannot_receive_stays_in_place(self):
+        self.register(jacket=png(400, 400), audio=audio("music_93000"))
+        moments = [self.moment()]
+        first = self.update(93000, audio=audio("music_93000", tag="#2"))
+        moments.append(self.moment())
+        with patch.object(manage, "_link_file", side_effect=OSError("disk full")):
+            second = self.update(93000, jacket=jpeg(400, 400))
+        # The change is saved. The old jacket, which the first backup names, stays in static/ instead of moving.
+        self.assertEqual((second["changed"], second["quarantined"], second["warnings"]),
+                         (True, [], [manage.FILES_NOT_CLEANED]))
+        self.assertEqual(self.kept_packs(second["backup"]), set())
+        self.assertEqual(self.kept_packs(first["backup"]), set(first["quarantined"]))
+        self.assert_restores_alone(first["backup"], moments[0])
+        self.assert_restores_alone(second["backup"], moments[1])
+
+    def test_backups_on_another_file_system_get_durable_copies(self):
+        self.register(jacket=png(400, 400), audio=audio("music_93000"))
+        moment = self.moment()
+        first = self.update(93000, audio=audio("music_93000", tag="#2"))
+        with patch.object(manage.os, "link", side_effect=OSError(errno.EXDEV, "Invalid cross-device link")):
+            second = self.update(93000, jacket=jpeg(400, 400))
+        jacket, = second["quarantined"]
+        kept, moved = Path(first["backup"]) / "static" / jacket, Path(second["backup"]) / "static" / jacket
+        self.assertNotEqual(os.stat(kept).st_ino, os.stat(moved).st_ino)
+        self.assertEqual(kept.read_bytes(), moved.read_bytes())
+        self.assertEqual([path.name for path in kept.parent.iterdir() if path.name.startswith(".")], [])
+        # A copy an interrupted run left behind is hidden, and the restore tool leaves it in the backup.
+        (kept.parent / f".{jacket}.partial").write_bytes(b"half")
+        self.assert_restores_alone(first["backup"], moment)
+        self.assertEqual([path.name for path in (self.root / "static").iterdir() if path.name.startswith(".")], [])
 
 
 class MessageTests(unittest.TestCase):

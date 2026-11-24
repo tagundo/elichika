@@ -10,13 +10,16 @@ caller; this module asserts that it is held.
 
 Write order: packs are published durably first, then one ``BEGIN IMMEDIATE``
 transaction covers masterdata, dictionaries and every asset catalog of the region,
-then stage files. Update and remove take restorable backups in the
+then stage files. Update, remove and chart attach take restorable backups in the
 ``database_backup`` layout; a new registration takes none because removing it undoes
-it exactly. Packs dropped by update or remove are never deleted: with a backup they
-move into it as ``static/<pack>``, so the stock restore tool brings back the catalogs
-and the packs they name together; without one they move to
+it exactly. Each backup restores alone and complete with the stock restore tool: it
+holds the region's whole MV Studio state (every database MV Studio writes for the
+region and the stage files of its MV Studio songs), and every pack its catalogs name
+that a later operation drops is put into it as ``static/<pack>`` (a hard link where
+the file system allows) before the pack leaves the pack root. Dropped packs are never
+deleted: they move into the operation's own backup or, without one, to
 ``<pack root>/.elichika-quarantine/<operation>/``. The newest three MV Studio backups
-are kept together with their quarantine folders.
+and quarantine folders are kept.
 """
 
 from contextlib import closing, contextmanager
@@ -72,6 +75,8 @@ _MUSIC_SHEET = re.compile(r"music_([0-9]{4,8})\Z")
 _PACK_NAME = re.compile(r"mvstudio_[0-9a-f]{16}_[0-9a-f]{12}\Z")
 _BACKUP_NAME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}_mv-studio-[a-z]+-[0-9]+(?:-[0-9]+)?\Z")
 _QUARANTINE = ".elichika-quarantine"
+# Hidden, so database_restore leaves it in the backup: the MV Studio packs the backup's catalogs name.
+_MANIFEST = ".mv-studio-backup.json"
 # Tables keyed only by a difficulty id: a placeholder is an exact copy of a working stock difficulty.
 DIFFICULTY_TABLES = (
     ("m_live_difficulty_mission", "live_difficulty_master_id"),
@@ -1066,9 +1071,47 @@ def _store(source, target, frame):
         shutil.copyfile(source, target)
 
 
-def _backup(repo_root, name, databases, files=()):
-    """Snapshot databases (SQLite backup API, inside the held write lock) in the restorable database_backup layout."""
+def _studio_packs_named(database, region):
+    """Every MV Studio pack the region's asset catalogs name (any pack column, m_asset_pack included)."""
+    found = set()
+    for schema in _asset_schemas(region):
+        for table, column in _pack_columns(database, schema) + [("m_asset_pack", "pack_name")]:
+            found.update(row[0] for row in database.execute(
+                f"SELECT DISTINCT {_quote(column)} FROM {schema}.{_quote(table)} WHERE {_quote(column)} "
+                "GLOB 'mvstudio_*'"))
+    return sorted(name for name in found if isinstance(name, str) and _PACK_NAME.fullmatch(name))
+
+
+def _studio_stage_files(database, repo_root):
+    """The stage files of every MV Studio song (v1 included) in this region's masterdata."""
+    songs = sorted(_song_ids(database))
+    if not songs:
+        return []
+    stages = _stages_dir(repo_root)
+    paths = (stages / f"{row[0]}.json" for row in database.execute(
+        f"SELECT live_difficulty_id FROM m_live_difficulty WHERE live_id IN ({_marks(songs)}) "
+        "ORDER BY live_difficulty_id", tuple(songs)))
+    return [path for path in paths if path.is_file()]
+
+
+def _backup(repo_root, name, region, database, *, userdata=False):
+    """Snapshot the region's whole MV Studio state, so this backup restores alone and complete.
+
+    The backup holds every database MV Studio writes for the region (masterdata, the
+    dictionaries and every asset catalog; ``userdata.db`` too for a removal), taken with the
+    SQLite backup API inside the held write lock, and the stage files of the region's MV Studio
+    songs, all in the restorable database_backup layout. Restoring an older backup after later
+    operations therefore never mixes databases from different moments. The hidden manifest
+    lists the MV Studio packs these catalogs name; whichever later operation drops one of
+    them first gives this backup its own copy (see ``_quarantine``).
+    """
     repo = Path(repo_root).resolve()
+    databases = list(_paths(_regional_root(repo_root, region), region, True).values())
+    user = repo / "userdata.db"
+    if userdata and user.is_file():
+        databases.append(user)
+    files = _studio_stage_files(database, repo_root)
+    manifest = {"format": 1, "region": region, "packs": _studio_packs_named(database, region)}
     folder = _backup_root(repo_root) / name
     folder.mkdir(parents=True)
     frame = _lz4_frame()
@@ -1081,12 +1124,29 @@ def _backup(repo_root, name, databases, files=()):
                 _store(snapshot, folder / Path(path).relative_to(repo), frame)
                 snapshot.unlink()
             for path in files:
-                if Path(path).is_file():
-                    _store(path, folder / Path(path).relative_to(repo), frame)
+                _store(path, folder / Path(path).relative_to(repo), frame)
+        (folder / _MANIFEST).write_text(json.dumps(manifest, separators=(",", ":")), encoding="utf-8")
     except BaseException:
         shutil.rmtree(folder, ignore_errors=True)
         raise
     return folder
+
+
+def _manifest_packs(folder):
+    """The MV Studio packs a backup's catalogs name, or None when it has no readable manifest (it may name any)."""
+    try:
+        packs = json.loads((folder / _MANIFEST).read_text(encoding="utf-8")).get("packs")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return {pack for pack in packs if isinstance(pack, str)} if isinstance(packs, list) else None
+
+
+def _studio_backups(repo_root):
+    root = _backup_root(repo_root)
+    if not root.is_dir():
+        return []
+    return sorted(entry for entry in root.iterdir()
+                  if _BACKUP_NAME.fullmatch(entry.name) and entry.is_dir() and not entry.is_symlink())
 
 
 def _pack_roots(repo_root):
@@ -1114,6 +1174,21 @@ def _packs_named(repo_root, names):
     return found
 
 
+def _copy_file(source, target):
+    """Copy durably. A crash leaves only a hidden partial copy, never a truncated pack under its name."""
+    partial = target.with_name(f".{target.name}.partial")
+    try:
+        with open(source, "rb") as reader, open(partial, "wb") as writer:
+            shutil.copyfileobj(reader, writer, 1024 * 1024)
+            writer.flush()
+            os.fsync(writer.fileno())
+        os.replace(partial, target)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    _fsync_dir(target.parent)
+
+
 def _move_file(source, target):
     """Move a file durably. Across file systems (a backup root on shared storage) copy, fsync, then unlink."""
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1122,55 +1197,81 @@ def _move_file(source, target):
     except OSError as error:
         if error.errno != errno.EXDEV:
             raise
-        # A crash leaves only a hidden partial copy; the restore tool never sees a truncated pack under its name.
-        partial = target.with_name(f".{target.name}.partial")
-        try:
-            with open(source, "rb") as reader, open(partial, "wb") as writer:
-                shutil.copyfileobj(reader, writer, 1024 * 1024)
-                writer.flush()
-                os.fsync(writer.fileno())
-            os.replace(partial, target)
-        except BaseException:
-            partial.unlink(missing_ok=True)
-            raise
-        _fsync_dir(target.parent)
+        _copy_file(source, target)
         os.unlink(source)
     _fsync_dir(target.parent)
     _fsync_dir(source.parent)
 
 
-def _quarantine(repo_root, packs, name, folder=None):
-    """Move MV Studio packs that no catalog of either region names any more. Returns (moved names, any failed).
+def _link_file(source, target):
+    """Give a backup its own name for a pack: a hard link costs no space; otherwise a durable copy."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(source, target)
+    except OSError:
+        # Another file system (a backup root on shared storage) or one without hard links.
+        _copy_file(source, target)
+    else:
+        _fsync_dir(target.parent)
 
-    ``folder`` is the operation's backup: each pack goes to ``<backup>/static/<pack>``, the
-    relative layout ``database_restore`` copies back to ``./static/`` next to the catalogs that
-    name it (the server finds a pack in static/ whatever ``cdn_cache_dir`` is). Without a backup a
-    pack goes to ``<pack root>/.elichika-quarantine/<name>/``. Retention deletes both kinds
-    together, by operation name. A pack that cannot be moved stays where it is: nothing names
-    it, and a restore still finds it in place.
-    """
+
+def _droppable(repo_root, packs):
+    """(name, path) of each MV Studio pack that no catalog of either region names any more, where it lies."""
     candidates = {pack for pack in packs if _PACK_NAME.fullmatch(pack)}
-    moved, failed = [], False
+    found = []
     for pack in sorted(candidates - _packs_named(repo_root, candidates)):
         for root in _pack_roots(repo_root):
             path = root / pack
-            if path.is_symlink() or not path.is_file():
-                continue
-            target = Path(folder) / "static" / pack if folder is not None else root / _QUARANTINE / name / pack
-            try:
-                _move_file(path, target)
-            except OSError:
-                failed = True
-            # A failure after the rename (a directory fsync) still moved the pack.
-            if target.is_file() and not path.exists():
-                moved.append(pack)
-            break
+            if path.is_file() and not path.is_symlink():
+                found.append((pack, path))
+                break
+    return found
+
+
+def _quarantine(repo_root, packs, name, folder=None):
+    """Move dropped packs out of the pack roots, keeping every backup complete. Returns (moved names, any failed).
+
+    ``packs`` are ``_droppable`` pairs. First every other MV Studio backup whose catalogs name a
+    pack gets its own ``<backup>/static/<pack>`` (a hard link where it can), the relative layout
+    ``database_restore`` copies back to ``./static/`` with the catalogs; the server finds a pack in
+    static/ whatever ``cdn_cache_dir`` is. So any kept backup, not only the newest, restores alone
+    and complete, whichever later operation dropped the pack and with or without its own backup.
+    Then the pack moves into this operation's backup (``folder``) the same way, or without one to
+    ``<pack root>/.elichika-quarantine/<name>/``. A pack that a backup could not get, or that cannot
+    move, stays where it is: nothing names it now, and a restore finds it in place.
+    """
+    own = Path(folder).name if folder is not None else None
+    backups = [(entry, _manifest_packs(entry)) for entry in _studio_backups(repo_root) if entry.name != own]
+    moved, failed = [], False
+    for pack, path in packs:
+        complete = True
+        for entry, named in backups:
+            copy = entry / "static" / pack
+            if (named is None or pack in named) and not copy.is_file():
+                try:
+                    _link_file(path, copy)
+                except OSError:
+                    failed = True
+                # A failure after the link or rename (a directory fsync) still gave the backup its pack.
+                complete = complete and copy.is_file()
+        if not complete:
+            continue
+        target = Path(folder) / "static" / pack if folder is not None else path.parent / _QUARANTINE / name / pack
+        try:
+            _move_file(path, target)
+        except OSError:
+            failed = True
+        if target.is_file() and not path.exists():
+            moved.append(pack)
     return moved, failed
 
 
 def _after_commit(repo_root, warnings, packs=(), name=None, folder=None, stage_files=()):
-    """Clean-up once the catalogs committed: a failure here must not report the saved change as failed."""
-    quarantined, failed = [], False
+    """Clean-up once the catalogs committed: a failure here must not report the saved change as failed.
+
+    Retention runs before dropped packs move, so only backups that are kept receive copies of them.
+    """
+    quarantined, droppable, failed, pruned = [], [], False, True
     stages = _stages_dir(repo_root)
     for stage in stage_files:
         try:
@@ -1184,22 +1285,35 @@ def _after_commit(repo_root, warnings, packs=(), name=None, folder=None, stage_f
         failed = True
     if packs:
         try:
-            quarantined, failed_moves = _quarantine(repo_root, packs, name, folder)
+            droppable = _droppable(repo_root, packs)
+        except (OSError, sqlite3.Error):
+            failed = True
+    try:
+        # The quarantine folder this operation is about to fill counts toward the kept folders.
+        prune_mv_studio_backups(repo_root, pending=(name,) if droppable and folder is None else ())
+    except OSError:
+        pruned = False
+    if droppable:
+        try:
+            quarantined, failed_moves = _quarantine(repo_root, droppable, name, folder)
             failed = failed or failed_moves
         except (OSError, sqlite3.Error):
             failed = True
     if failed:
         warnings.append(FILES_NOT_CLEANED)
-    try:
-        prune_mv_studio_backups(repo_root)
-    except OSError:
+    if not pruned:
         warnings.append(BACKUPS_NOT_PRUNED)
     return quarantined
 
 
-def prune_mv_studio_backups(repo_root, keep=BACKUPS_KEPT):
-    """Keep the newest MV Studio backups; delete older ones together with their quarantined packs."""
-    folders = {}
+def prune_mv_studio_backups(repo_root, keep=BACKUPS_KEPT, *, pending=()):
+    """Keep the newest MV Studio backups and quarantine folders; delete older ones.
+
+    Every backup holds its own copy of each pack its catalogs name that a later operation
+    dropped, so deleting a folder never takes a file that a kept backup needs. ``pending`` names
+    folders the running operation is about to create; they count toward ``keep``.
+    """
+    folders = {name: [] for name in pending if isinstance(name, str) and _BACKUP_NAME.fullmatch(name)}
     for root in [_backup_root(repo_root)] + [root / _QUARANTINE for root in _pack_roots(repo_root)]:
         if not root.is_dir():
             continue
@@ -1210,7 +1324,8 @@ def prune_mv_studio_backups(repo_root, keep=BACKUPS_KEPT):
     for name in sorted(folders, reverse=True)[keep:]:
         for entry in folders[name]:
             shutil.rmtree(entry)
-        removed.append(name)
+        if folders[name]:
+            removed.append(name)
     return sorted(removed)
 
 
@@ -1368,19 +1483,6 @@ def register_mv_song(repo_root, *, region, live_id, template_live_id, template_a
 
 # ---------------------------------------------------------------- update
 
-def _touched(parts):
-    return {"masterdata"} | ({"dictionaries"} if parts & {"title", "credit"} else set()) | (
-        {"catalogs"} if parts & {"timeline", "audio", "jacket"} else set())
-
-
-def _backup_paths(repo_root, region, groups):
-    root = _regional_root(repo_root, region)
-    paths = _paths(root, region, True)
-    return [path for name, path in paths.items()
-            if name == "main" or ("dictionaries" in groups and name.startswith("dictionary_"))
-            or ("catalogs" in groups and name.startswith("asset_"))]
-
-
 def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timelines=KEEP, originals=None,
                    audio=KEEP, jacket=KEEP, add_placeholder=False, fingerprints=None, backup=True, log=print):
     """Change parts of a registered song in place; ids never change.
@@ -1461,7 +1563,7 @@ def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timel
             operation = _operation_name(repo_root, "update", live_id)
             if backup:
                 log("Backing up the game databases")
-                folder = _backup(repo_root, operation, _backup_paths(repo_root, region, _touched(parts)))
+                folder = _backup(repo_root, operation, region, database)
             before = _state_packs(state)
             flags = dict(song["flags"])
             if "title" in parts:
@@ -1792,13 +1894,7 @@ def remove_mv_song(repo_root, *, region, live_id, review_token, backup=True, log
             operation = _operation_name(repo_root, "remove", live_id)
             if backup:
                 log("Backing up the game databases")
-                root = _regional_root(repo_root, region)
-                databases = list(_paths(root, region, True).values())
-                user = Path(repo_root).resolve() / "userdata.db"
-                if user.is_file():
-                    databases.append(user)
-                folder = _backup(repo_root, operation, databases,
-                                 [_stages_dir(repo_root) / name for name in plan["summary"]["stageFiles"]])
+                folder = _backup(repo_root, operation, region, database, userdata=True)
             log("Removing the song from the game catalogs")
             recount = set()
             for schema, table, where, params in items:

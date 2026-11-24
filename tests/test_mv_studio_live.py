@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import mv_studio_live as studio
 import mv_studio_manage as manage
-from test_mv_studio_manage import StudioCase, dump, query, region_paths, timeline, write_legacy_song
+from test_mv_studio_manage import StudioCase, dump, query, region_paths, restore, timeline, write_legacy_song
 
 
 class MVStudioLiveTests(StudioCase):
@@ -98,15 +98,36 @@ class MVStudioLiveTests(StudioCase):
         described = manage.describe_mv_song(self.root, region="gl", live_id=93000)
         self.assertEqual((described["difficulties"], described["revision"]),
                          ([{"id": 93000301, "type": 30, "placeholder": False}], 2))
-        # A restorable masterdata backup holds the placeholder chart it replaced.
+        # The backup holds the region's whole MV Studio state, the placeholder chart it replaced included.
         folder = self.root / "backup_db" / self.backups()[0]
         self.assertRegex(folder.name, r"_mv-studio-charts-93000$")
         self.assertEqual(sorted(str(path.relative_to(folder)) for path in folder.rglob("*") if path.is_file()),
-                         ["assets/db/gl/masterdata.db.lz4", "assets/stages/93000301.json.lz4"])
+                         sorted([".mv-studio-backup.json", "assets/stages/93000301.json.lz4"]
+                                + [f"assets/db/gl/{path.name}.lz4" for path in region_paths(self.root, "gl")]))
         with self.assertRaisesRegex(ValueError, "already installed"):
             self.attach(song["live_id"], backup=False)
         self.assertEqual(studio.chart_templates(self.root, region="gl", live_id=93000),
                          [{"live_difficulty_id": 21101, "live_difficulty_type": 10}])
+
+    def test_chart_backup_restores_its_own_moment_alone_after_a_removal(self):
+        song = self.register()
+        placeholder = (self.stages / "93000301.json").read_bytes()
+        before_attach = {path.name: dump(path) for path in region_paths(self.root, "gl")}
+        self.attach(song["live_id"])
+        charts, = self.backups()
+        attached = (self.stages / "93000301.json").read_bytes()
+        before_remove = {path.name: dump(path) for path in region_paths(self.root, "gl")}
+        removal = self.remove(song["live_id"])
+        self.assertFalse((self.stages / "93000301.json").exists())
+        # The older chart backup alone brings back the placeholder chart with the databases of its moment.
+        self.assertEqual(restore(self.root, self.root / "backup_db" / charts)["failed"], [])
+        self.assertEqual({path.name: dump(path) for path in region_paths(self.root, "gl")}, before_attach)
+        self.assertEqual((self.stages / "93000301.json").read_bytes(), placeholder)
+        self.assertEqual(manage.describe_mv_song(self.root, region="gl", live_id=93000)["difficulties"],
+                         [{"id": 93000301, "type": 30, "placeholder": True}])
+        self.assertEqual(restore(self.root, removal["backup"])["failed"], [])
+        self.assertEqual({path.name: dump(path) for path in region_paths(self.root, "gl")}, before_remove)
+        self.assertEqual((self.stages / "93000301.json").read_bytes(), attached)
 
     def test_new_difficulty_types_get_deterministic_ids(self):
         song = self.register()

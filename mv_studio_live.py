@@ -214,10 +214,9 @@ def attach_live_charts(repo_root, *, region, live_id, charts, backup=True):
             if 30 not in active | placeholders.keys() | validated.keys():
                 raise ValueError("The stock game requires a type-30 chart to open the song's MV from its music list.")
             if backup:
-                folder = manage._backup(repo_root, manage._operation_name(repo_root, "charts", live_id),
-                                        [manage._regional_root(repo_root, region) / "masterdata.db"],
-                                        [stages / f"{placeholders[kind]}.json" for kind in validated
-                                         if kind in placeholders])
+                # The region's whole MV Studio state, replaced placeholder stage files included.
+                folder = manage._backup(repo_root, manage._operation_name(repo_root, "charts", live_id), region,
+                                        database)
             stages.mkdir(parents=True, exist_ok=True)
             flags = dict(song["flags"])
             for difficulty, (data, template_id) in sorted(validated.items()):
