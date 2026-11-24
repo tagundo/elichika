@@ -1285,10 +1285,13 @@
     return out;
   }
   // Pre-order walk of the candidate roots named like options.root (all three steps of rootCandidates, the
-  // LiveDirector's root first), resumable from {root, rootId, path, emitted}. A DEFERRED_ROOTS node is
-  // listed (with its childCount) but not descended while no skill cut-in plays.
+  // LiveDirector's root first), resumable from {root, rootId, path, emitted, walked}. A DEFERRED_ROOTS node
+  // is listed (with its childCount) but not descended while no skill cut-in plays. A chunk resumes its root
+  // by instanceId; walked lists the roots already done, so the next root is the first one not in it. A
+  // resumed root that is gone (a step-3 root goes with its camera) is noted as census.rootGone, counted as
+  // walked, and the chunk goes on with the next root.
   function partCensus(ctx, options) {
-    var cursor = cursorOf(options), done = Number(cursor.emitted) || 0, r = Number(cursor.root) || 0;
+    var cursor = cursorOf(options), done = Number(cursor.emitted) || 0, r = Number(cursor.root) || 0, start = cursor.path;
     var rootName = String(options.root || "/EntryPoint").replace(/^\//, "").split("/")[0], roots = rootCandidates(ctx, rootName, true);
     var body = { census: { roots: roots.map(function (x, i) {
       var item = { index: i, path: "/" + rootName, instanceId: x.instanceId, source: x.source };
@@ -1296,16 +1299,22 @@
       return item;
     }), nodes: [] }, next: null };
     if (r === 0 && !Array.isArray(cursor.path)) body.census.selfCheck = censusSelfCheck(ctx, rootName, roots);
-    // Resume by the root's instanceId: a step-3 root comes and goes with its camera.
+    var ids = roots.map(function (x) { return x.instanceId; });
+    // A cursor without walked (none of this agent's) counts the roots before its index as done.
+    var walked = Array.isArray(cursor.walked) ? cursor.walked.filter(function (id) { return typeof id === "number"; }) : ids.slice(0, r);
+    function nextRoot() { for (var i = 0; i < ids.length; i++) if (walked.indexOf(ids[i]) < 0) return i; return ids.length; }
     if (typeof cursor.rootId === "number") {
-      var at = -1;
-      roots.forEach(function (x, i) { if (at < 0 && x.instanceId === cursor.rootId) at = i; });
-      if (at < 0) { body.census.rootGone = cursor.rootId; return body; }
-      r = at;
+      r = ids.indexOf(cursor.rootId);
+      if (r < 0) {
+        body.census.rootGone = cursor.rootId;
+        walked.push(cursor.rootId);
+        r = nextRoot();
+        start = [];
+      }
     }
     if (r >= roots.length) return body;
     var COMP = H.findClass("UnityEngine.Component", true), nodes = body.census.nodes, cutin = cutinState(ctx), skipDeferred = cutin.known && !cutin.playing;
-    var result = walk(ctx, roots[r].tr, cursor.path, CAPS.censusDepth, Math.min(CAPS.censusChunk, CAPS.censusNodes - done), function (tr, path, names) {
+    var result = walk(ctx, roots[r].tr, start, CAPS.censusDepth, Math.min(CAPS.censusChunk, CAPS.censusNodes - done), function (tr, path, names) {
       var go = inv(ctx, "UnityEngine.Component", "get_gameObject", tr, []), count = childCount(ctx, tr);
       var node = { path: "/" + names.map(stripName).join("/"), index: path.length ? path[path.length - 1] : 0, depth: path.length,
         activeSelf: g(ctx, "UnityEngine.GameObject", "get_activeSelf", go, bool),
@@ -1324,8 +1333,12 @@
     });
     var total = done + result.emitted;
     if (total < CAPS.censusNodes) {
-      if (result.next) body.next = { root: r, rootId: roots[r].instanceId, path: result.next, emitted: total };
-      else if (r + 1 < roots.length) body.next = { root: r + 1, rootId: roots[r + 1].instanceId, path: [], emitted: total };
+      if (result.next) body.next = { root: r, rootId: ids[r], path: result.next, emitted: total, walked: walked };
+      else {
+        walked.push(ids[r]);
+        var n = nextRoot();
+        if (n < roots.length) body.next = { root: n, rootId: ids[n], path: [], emitted: total, walked: walked };
+      }
     }
     return body;
   }

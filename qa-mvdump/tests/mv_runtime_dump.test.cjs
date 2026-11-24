@@ -709,6 +709,50 @@ test('a third same-name root reached through its camera: census, self-check and 
   assert.ok(!h.world.findAllTypes.slice(before).includes('UnityEngine.Material'), 'no Material scan');
 });
 
+test('census: a resumed root that is gone is noted as rootGone and the walk goes on with the next root', async () => {
+  const budget = { soft: 0, hard: 1e9 };   // one node per chunk
+  // Walk the census; drop(rec) may destroy a camera between chunks and returns true once it did.
+  async function census(drop) {
+    const h = await bound({ thirdRoot: true, fourthRoot: true }), records = [];
+    let cursor = {}, dropped = null;
+    for (let chunk = 0; chunk < 400; chunk++) {
+      const rec = await h.rpc('mvruntime', { part: 'census', cursor, budget });
+      records.push(rec);
+      if (!rec.next) break;
+      if (dropped === null && drop(h, rec)) dropped = rec.next.rootId;
+      cursor = rec.next;
+    }
+    assertClean(h.world);
+    assert.equal(records[records.length - 1].next, null, 'the census terminates');
+    return { records, dropped, nodes: records.flatMap(r => r.census.nodes) };
+  }
+  const byRoot = (nodes, k) => nodes.filter(n => (n.rootIndex || 0) === k).map(n => n.path);
+  const ref = await census(() => false);
+  assert.deepEqual(ref.records[0].census.roots.map(r => [r.source, r.via]), [['LiveDirector', undefined], ['GameObject.Find', undefined],
+    ['Camera', '/EntryPoint/AlwaysCamera'], ['Camera', '/EntryPoint/MarginCoverCamera']]);
+  assert.deepEqual(byRoot(ref.nodes, 2), ['/EntryPoint', '/EntryPoint/AlwaysCamera', '/EntryPoint/DarkFilterField']);
+  assert.deepEqual(byRoot(ref.nodes, 3), ['/EntryPoint', '/EntryPoint/MarginCoverCamera', '/EntryPoint/MarginCover']);
+  assert.ok(ref.records.every(r => r.census.rootGone === undefined));
+  // AlwaysCamera goes away while its root is half walked: the next chunk notes it and walks MarginCover's root.
+  const third = ref.records[0].census.roots[2].instanceId, fourth = ref.records[0].census.roots[3].instanceId;
+  const a = await census((h, rec) => rec.next.rootId === third && rec.next.path.length > 0 && (h.world.destroy(h.world.objects.alwaysCamera), true));
+  assert.equal(a.dropped, third);
+  const noted = a.records.filter(r => r.census.rootGone !== undefined);
+  assert.deepEqual(noted.map(r => r.census.rootGone), [third]);
+  assert.deepEqual(noted[0].census.roots.map(r => r.via), [undefined, undefined, '/EntryPoint/MarginCoverCamera']);
+  assert.deepEqual(noted[0].census.nodes.map(n => [n.path, n.rootIndex]), [['/EntryPoint', 2]], 'the same chunk walks the next root');
+  assert.equal(noted[0].next.rootId, fourth);
+  assert.ok(noted[0].next.walked.includes(third), 'the gone root counts as walked');
+  for (const k of [0, 1]) assert.deepEqual(byRoot(a.nodes, k), byRoot(ref.nodes, k), 'roots already walked are not walked again');
+  assert.deepEqual(byRoot(a.nodes, 2), ['/EntryPoint', '/EntryPoint', '/EntryPoint/MarginCoverCamera', '/EntryPoint/MarginCover']);
+  // The last root goes away: rootGone, nothing left to walk, the census ends.
+  const b = await census((h, rec) => rec.next.rootId === fourth && rec.next.path.length > 0 && (h.world.destroy(h.world.objects.marginCamera), true));
+  const last = b.records[b.records.length - 1];
+  assert.deepEqual([last.census.rootGone, last.census.nodes, last.next], [fourth, [], null]);
+  assert.deepEqual(byRoot(b.nodes, 2), byRoot(ref.nodes, 2));
+  assert.deepEqual(byRoot(b.nodes, 3), ['/EntryPoint']);
+});
+
 test('census without the decoy root: one root, same self-check', async () => {
   const h = await bound({ decoyRoot: false });
   const records = await runPart(h, 'census', {});

@@ -885,11 +885,19 @@ function createWorld(opts = {}) {
     component(g, 'UnityEngine.MeshFilter', { mesh: groundMesh });
     component(g, 'UnityEngine.MeshRenderer', { materials: [matStageA] });
   }
+  // opts.fourthRoot: one more camera-only EntryPoint root (MarginCoverCamera in the 12035 dump), created
+  // before the third root so it sorts after it (step-3 roots are ordered by ascending instanceId).
+  let marginCamera = null, alwaysCamera = null;
+  if (opts.fourthRoot) {
+    const fourth = gameObject('EntryPoint', 0), margin = gameObject('MarginCoverCamera', fourth.tr);
+    marginCamera = component(margin, CAM, { fov: 60, aspect: 1280 / 720, near: 0.3, far: 1000, depth: 6 });
+    gameObject('MarginCover', fourth.tr);
+  }
   // opts.thirdRoot: a third root named EntryPoint that only a camera leads to (the 12035 dump lists
   // /EntryPoint/AlwaysCamera and the renderer /EntryPoint/DarkFilterField outside the live and PopupView roots).
   if (opts.thirdRoot) {
     const third = gameObject('EntryPoint', 0), always = gameObject('AlwaysCamera', third.tr);
-    component(always, CAM, { fov: 60, aspect: 1280 / 720, near: 0.3, far: 1000, depth: 5 });
+    alwaysCamera = component(always, CAM, { fov: 60, aspect: 1280 / 720, near: 0.3, far: 1000, depth: 5 });
     const dark = gameObject('DarkFilterField', third.tr);
     const matDark = newUnity(C['UnityEngine.Material'], { name: 'dark_filter_mt', shader: shaderColor, props: { _TintColor: [0, 0, 0, 0.5] } });
     component(dark, 'UnityEngine.MeshFilter', { mesh: groundMesh });
@@ -963,7 +971,7 @@ function createWorld(opts = {}) {
     }
   };
   world.objects = { director, mainCamera, overlay, deadCamera, bodyRenderer, matBody, matStageA, rigRoot, rig, camGo, faceRenderer, postProcess,
-    profile, cutinOverlay, cutinOverlayCamera, cutCamera, timeline };
+    profile, cutinOverlay, cutinOverlayCamera, cutCamera, timeline, alwaysCamera, marginCamera };
   world.setDof = (focus) => { const s = objs.get(dofModel).klass.field('m_Settings'); view.setFloat32(dofModel + s.offset, focus, true); };
   world.Memory = Memory;
   world.NativeFunction = NativeFunction;
