@@ -1168,7 +1168,7 @@ def list_mv_songs(repo_root, *, region):
 
 def _result(repo_root, region, live_id, **extra):
     return {"song": describe_mv_song(repo_root, region=region, live_id=live_id), "liveId": live_id,
-            "restartRequired": True, **extra}
+            "restartRequired": bool(extra.get("changed", True)), **extra}
 
 
 # ---------------------------------------------------------------- register

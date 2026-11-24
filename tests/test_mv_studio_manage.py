@@ -610,6 +610,7 @@ class UpdateTests(StudioCase):
                              timelines={"android": timeline("a1"), "ios": timeline("other bytes")},
                              audio=audio("music_93000"), jacket=png(400, 400), fingerprints={"ios": "fi1"})
         self.assertFalse(result["changed"])
+        self.assertFalse(result["restartRequired"])
         self.assertEqual(result["parts"], [])
         self.assertEqual(self.validated, [])
         self.assertEqual({path.name: dump(path) for path in region_paths(self.root, "gl")}, before)
