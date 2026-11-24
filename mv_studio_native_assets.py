@@ -1,4 +1,8 @@
-"""Validate and install native, template-compatible MV Studio asset overrides."""
+"""Validate and install native, template-compatible MV Studio asset overrides.
+
+Every user-facing error message raised here is a constant string listed in
+``mv_studio_manage.MESSAGES`` so the tools UI can translate it.
+"""
 
 from contextlib import contextmanager
 import hashlib
@@ -7,6 +11,7 @@ from pathlib import Path
 import re
 import secrets
 import stat
+import struct
 import tempfile
 import time
 
@@ -14,23 +19,28 @@ from live_install_core import encrypt_bytes
 
 
 PLATFORMS = {"android": ("a", 13), "ios": ("i", 9)}
+# Same bound as webtools.core.mv_studio_game.MAX_ASSET_BYTES; checked before any database is opened.
+MAX_TIMELINE_BYTES = 64 * 1024 * 1024
+MAX_JACKET_BYTES = 2 * 1024 * 1024
+JACKET_SIZE = 400
 _MUSIC_CUE = re.compile(r"music_([0-9]{4,8})\Z")
+_UNITYFS = b"UnityFS\0"
 
 
 def _read(path, suffix, limit):
     path = Path(path)
     if path.suffix.lower() != suffix:
-        raise ValueError(f"Choose a native {suffix} file.")
+        raise ValueError("Choose a native file of the expected type.")
     descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
     with os.fdopen(descriptor, "rb") as handle:
         before = os.fstat(handle.fileno())
         if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= limit:
-            raise ValueError(f"The selected {suffix} file is empty, too large or unreadable.")
+            raise ValueError("The selected file is empty, too large or unreadable.")
         data = handle.read(before.st_size + 1)
         after = os.fstat(handle.fileno())
     if (before.st_size != len(data) or before.st_mtime_ns != after.st_mtime_ns or
             before.st_ctime_ns != after.st_ctime_ns):
-        raise ValueError(f"The selected {suffix} file changed during registration. Try again.")
+        raise ValueError("The selected file changed during registration. Try again.")
     return data
 
 
@@ -67,9 +77,114 @@ def pack_publication(repo_root):
         raise
 
 
+def timeline_bytes(data):
+    """Cheap checks for a plaintext native timeline before any database is opened."""
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise ValueError("Provide each native timeline as an unpacked UnityFS bundle.")
+    data = bytes(data)
+    if not data.startswith(_UNITYFS):
+        raise ValueError("Provide each native timeline as an unpacked UnityFS bundle.")
+    if len(data) > MAX_TIMELINE_BYTES:
+        raise ValueError("The native timeline exceeds the supported file size.")
+    return data
+
+
+def _png_size(data):
+    if len(data) < 33 or data[12:16] != b"IHDR" or struct.unpack(">I", data[8:12])[0] != 13:
+        raise ValueError("The jacket must be a PNG or JPEG image of exactly 400x400 pixels.")
+    return struct.unpack(">II", data[16:24])
+
+
+def _jpeg_size(data):
+    position = 2
+    while position + 4 <= len(data):
+        if data[position] != 0xFF:
+            break
+        marker = data[position + 1]
+        if marker == 0xFF:
+            position += 1
+            continue
+        position += 2
+        if marker in (0x01, *range(0xD0, 0xD8)):
+            continue
+        if marker in (0xD9, 0xDA):
+            break
+        length, = struct.unpack(">H", data[position:position + 2])
+        if length < 2 or position + length > len(data):
+            break
+        if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+            if length < 7:
+                break
+            height, width = struct.unpack(">HH", data[position + 3:position + 7])
+            return width, height
+        position += length
+    raise ValueError("The jacket must be a PNG or JPEG image of exactly 400x400 pixels.")
+
+
+def jacket_format(data):
+    """Parse a jacket's PNG IHDR or JPEG SOF with the standard library only."""
+    if not isinstance(data, (bytes, bytearray, memoryview)):
+        raise ValueError("The jacket must be a PNG or JPEG image of exactly 400x400 pixels.")
+    data = bytes(data)
+    if not 0 < len(data) <= MAX_JACKET_BYTES:
+        raise ValueError("The jacket image must be at most 2 MiB.")
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        kind, size = "png", _png_size(data)
+    elif data.startswith(b"\xff\xd8"):
+        kind, size = "jpeg", _jpeg_size(data)
+    else:
+        raise ValueError("The jacket must be a PNG or JPEG image of exactly 400x400 pixels.")
+    if tuple(size) != (JACKET_SIZE, JACKET_SIZE):
+        raise ValueError("The jacket must be a PNG or JPEG image of exactly 400x400 pixels.")
+    return kind
+
+
+def audio_cue(acb, awb):
+    """Inspect and fully decode one standalone CRI cue sheet; return its sheet name."""
+    if not isinstance(acb, (bytes, bytearray)) or awb is not None and not isinstance(awb, (bytes, bytearray)):
+        raise ValueError("Provide the song audio as an ACB cue sheet with its optional AWB bank.")
+    from webtools.core import cri_audio_decode as cri
+
+    acb, awb = bytes(acb), (bytes(awb) if awb is not None else None)
+    if not 0 < len(acb) <= cri.MAX_ACB_BYTES or awb is not None and not 0 < len(awb) <= min(cri.MAX_AWB_BYTES,
+                                                                                           MAX_TIMELINE_BYTES):
+        raise ValueError("The audio cue sheet or bank is empty or too large.")
+    try:
+        audio = cri.inspect_cues(acb)
+        sheet = audio["sheet"]
+        cues = audio["cues"]
+        if (not isinstance(sheet, str) or len(cues) != 1 or cues[0]["name"] != sheet
+                or len(cues[0]["waveforms"]) != 1):
+            raise ValueError("Provide an ACB containing one playable cue with the same name as the sheet.")
+        if cues[0]["waveforms"][0]["streaming"] != (awb is not None):
+            raise ValueError("Provide the matching AWB for a streaming cue, or only the ACB for an embedded cue.")
+        with tempfile.TemporaryDirectory(prefix="mv-studio-audio-") as folder:
+            cri.decode_cue(acb, awb, sheet, Path(folder) / "check.wav")
+    except cri.AudioDecodeError as error:
+        raise ValueError("The audio cue could not be read or decoded.") from error
+    return sheet
+
+
+def prepare_audio(acb_path, awb_path):
+    """Read and decode the exact standalone CRI cue before changing a catalog."""
+    if acb_path is None:
+        if awb_path is not None:
+            raise ValueError("Choose the ACB cue sheet for this AWB bank.")
+        return None
+    from webtools.core import cri_audio_decode as cri
+
+    acb = _read(acb_path, ".acb", cri.MAX_ACB_BYTES)
+    awb = _read(awb_path, ".awb", min(cri.MAX_AWB_BYTES, MAX_TIMELINE_BYTES)) if awb_path is not None else None
+    sheet = audio_cue(acb, awb)
+    match = _MUSIC_CUE.fullmatch(sheet)
+    if match is None or int(match[1]) == 0:
+        raise ValueError("The CRI sheet must use an unused music_XXXX game cue name.")
+    return sheet, int(match[1]), acb, awb
+
+
 def _timeline(data, platform, deadline):
-    if not data.startswith(b"UnityFS\0"):
-        raise ValueError("Choose an unpacked native UnityFS timeline bundle.")
+    if not data.startswith(_UNITYFS):
+        raise ValueError("Provide each native timeline as an unpacked UnityFS bundle.")
     import UnityPy
     from webtools.core.model_viewer import _normalized_bundle, _preflight_bundle
 
@@ -148,127 +263,127 @@ def _validate_timeline(raw, original, platform, deadline):
         raise ValueError("The native Unity timeline could not be read against the selected stage template.") from error
 
 
-def _mapping(database, schema, package, row, pack):
-    template = database.execute(f"SELECT category FROM {schema}.m_asset_package_mapping "
-                                "WHERE package_key=? AND pack_name=?", (package, row)).fetchone()
-    if template is None:
-        raise ValueError(f"The {schema} catalog is missing pack {row} from {package}.")
-    database.execute(f"INSERT INTO {schema}.m_asset_pack (pack_name,auto_delete) VALUES (?,0)", (pack[0],))
-    return {"pack_name": pack[0], "file_size": pack[1], "metapack_name": None,
-            "metapack_offset": 0, "category": template["category"]}
-
-
-def install_timelines(repo_root, database, schemas, original_key, old_asset_id, paths, publish):
-    """Alias the stock timeline and its dependencies across every regional catalog."""
+def _stock_timeline(repo_root, row, physical, deadline):
+    """Plaintext local stock timeline section for one catalog row, or None when its pack is not local."""
     from webtools.core import mv_studio_game as game
 
-    if not isinstance(paths, dict) or not paths or paths.keys() - PLATFORMS.keys():
-        raise ValueError("Select a native Unity timeline for Android, iOS or both.")
-    package = f"live:{old_asset_id}"
+    descriptor = {name: row[name] for name in ("pack_name", "head", "size", "key1", "key2")}
+    descriptor.update(format="unity", **game._mapping_info(tuple(physical), row["head"] + row["size"]))
+    return game.load_asset(repo_root, descriptor, deadline=deadline)
+
+
+def _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id, platform, payload, original):
+    label, native_platform = PLATFORMS[platform]
+    package = f"live:{template_asset_id}"
+    verified = set()
+    deadline = time.monotonic() + 60
+    for schema in schemas:
+        if not schema.startswith(f"asset_{label}_"):
+            continue
+        row = stock_rows[schema]
+        physical = database.execute(f"SELECT file_size,metapack_name,metapack_offset FROM {schema}.m_asset_package_mapping "
+                                    "WHERE package_key=? AND pack_name=?", (package, row["pack_name"])).fetchone()
+        if physical is None:
+            raise ValueError("A game catalog is missing the base MV's native timeline pack.")
+        identity = tuple(row) + tuple(physical)
+        if identity in verified:
+            continue
+        stock = _stock_timeline(repo_root, row, physical, deadline)
+        if stock is None:
+            if original is None:
+                raise ValueError("Install the base MV's original timeline for this platform locally, or allow the "
+                                 "download, to verify the edit.")
+            if len(original) != row["size"] or not original.startswith(_UNITYFS):
+                raise ValueError("The supplied original timeline does not match the base MV's catalogued size.")
+            stock = original
+        _validate_timeline(payload, stock, native_platform, deadline)
+        verified.add(identity)
+
+
+def unique_key(database, schemas):
+    """A random 8-hex asset key unused by every timeline and texture row of the region."""
     while True:
         key = secrets.token_hex(4)
-        if not any(database.execute(f"SELECT 1 FROM {name}.live_timeline WHERE asset_path=?", (key,)).fetchone()
-                   for name in schemas):
-            break
-    source_rows = {}
+        if not any(database.execute(f"SELECT 1 FROM {name}.{table} WHERE asset_path=?", (key,)).fetchone()
+                   for name in schemas for table in ("live_timeline", "texture")
+                   if database.execute(f"SELECT 1 FROM {name}.sqlite_master WHERE type='table' AND name=?",
+                                       (table,)).fetchone()):
+            return key
+
+
+def install_timelines(repo_root, database, schemas, stock_key, template_asset_id, timelines, publish, originals=None):
+    """Write one new timeline key across every regional catalog of both platforms.
+
+    ``timelines`` maps a platform to plaintext UnityFS bytes (validated against that
+    platform's own stock, then published as a whole-file pack) or to an existing
+    ``(pack_name, size)`` custom pack that is kept. A platform without an entry
+    aliases the stock row. Dependencies (choreography) are copied from the stock
+    key. With no entry at all nothing is written and the stock key is returned.
+    Returns ``(key, {platform: (pack_name, size) | None}, {platform: sha256})``.
+    """
+    if not isinstance(timelines, dict) or timelines.keys() - PLATFORMS.keys():
+        raise ValueError("Provide a native timeline for Android, iOS or both.")
+    originals = originals or {}
+    if not timelines:
+        return stock_key, {platform: None for platform in PLATFORMS}, {}
+    stock_rows = {}
     for schema in schemas:
-        row = database.execute(f"SELECT * FROM {schema}.live_timeline WHERE asset_path=?", (original_key,)).fetchone()
+        row = database.execute(f"SELECT * FROM {schema}.live_timeline WHERE asset_path=?", (stock_key,)).fetchone()
         if row is None:
-            raise ValueError(f"The {schema} catalog is missing the selected native timeline.")
-        source_rows[schema] = row
-
-    packs = {}
-    for platform, path in paths.items():
-        label, native_platform = PLATFORMS[platform]
-        payload = _read(path, ".unity", game.MAX_ASSET_BYTES)
-        verified = set()
-        deadline = time.monotonic() + 40
-        for schema, row in source_rows.items():
-            if not schema.startswith(f"asset_{label}_"):
-                continue
-            physical = database.execute(f"SELECT file_size,metapack_name,metapack_offset FROM {schema}.m_asset_package_mapping "
-                                        "WHERE package_key=? AND pack_name=?", (package, row["pack_name"])).fetchone()
-            if physical is None:
-                raise ValueError(f"The {schema} catalog is missing the selected timeline's native pack.")
-            identity = tuple(row) + tuple(physical)
-            if identity in verified:
-                continue
-            descriptor = {name: row[name] for name in ("pack_name", "head", "size", "key1", "key2")}
-            descriptor.update(format="unity", **game._mapping_info(tuple(physical), row["head"] + row["size"]))
-            original = game.load_asset(repo_root, descriptor, deadline=deadline)
-            if original is None:
-                raise ValueError(f"Install the selected {platform} stage's original timeline pack locally to verify the edit.")
-            _validate_timeline(payload, original, native_platform, deadline)
-            verified.add(identity)
-        packs[label] = publish(encrypt_bytes(payload))
-
-    extras = {}
-    for schema, row in source_rows.items():
-        pack = packs.get(schema.split("_")[1])
+            raise ValueError("A game catalog is missing the base MV's native timeline.")
+        stock_rows[schema] = row
+    packs, digests = {}, {}
+    for platform, target in sorted(timelines.items()):
+        if isinstance(target, (bytes, bytearray)):
+            payload = bytes(target)
+            _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id, platform, payload,
+                             originals.get(platform))
+            packs[platform] = publish(encrypt_bytes(payload))
+            digests[platform] = hashlib.sha256(payload).hexdigest()
+        else:
+            name, size = target
+            packs[platform] = (name, size)
+    key = unique_key(database, schemas)
+    for schema, row in stock_rows.items():
+        platform = next(name for name, (label, _) in PLATFORMS.items() if schema.startswith(f"asset_{label}_"))
+        pack = packs.get(platform)
         values = tuple(row[name] for name in ("pack_name", "head", "size", "key1", "key2"))
         if pack is not None:
-            extras[schema] = [_mapping(database, schema, package, row["pack_name"], pack)]
             values = pack[0], 0, pack[1], 0, 0
         database.execute(f"INSERT INTO {schema}.live_timeline (asset_path,pack_name,head,size,key1,key2) "
                          "VALUES (?,?,?,?,?,?)", (key, *values))
         database.execute(f"INSERT INTO {schema}.live_timeline_dependency (asset_path,dependency) "
-                         f"SELECT ?,dependency FROM {schema}.live_timeline_dependency WHERE asset_path=?", (key, original_key))
-    return key, extras
+                         f"SELECT ?,dependency FROM {schema}.live_timeline_dependency WHERE asset_path=?",
+                         (key, stock_key))
+    return key, {platform: packs.get(platform) for platform in PLATFORMS}, digests
 
 
-def prepare_audio(acb_path, awb_path):
-    """Read and decode the exact standalone CRI cue before changing a catalog."""
-    if acb_path is None:
-        if awb_path is not None:
-            raise ValueError("Choose the ACB cue sheet for this AWB bank.")
-        return None
-    from webtools.core import cri_audio_decode as cri, mv_studio_game as game
-
-    acb = _read(acb_path, ".acb", cri.MAX_ACB_BYTES)
-    audio = cri.inspect_cues(acb)
-    sheet = audio["sheet"]
-    match = _MUSIC_CUE.fullmatch(sheet) if isinstance(sheet, str) else None
-    if match is None or int(match[1]) == 0:
-        raise ValueError("The CRI sheet must use an unused music_XXXX game cue name.")
-    cues = audio["cues"]
-    if len(cues) != 1 or cues[0]["name"] != sheet or len(cues[0]["waveforms"]) != 1:
-        raise ValueError("Provide an ACB containing one playable cue with the same name as the sheet.")
-    streaming = cues[0]["waveforms"][0]["streaming"]
-    if streaming != (awb_path is not None):
-        raise ValueError("Provide the matching AWB for a streaming cue, or only the ACB for an embedded cue.")
-    awb = _read(awb_path, ".awb", min(cri.MAX_AWB_BYTES, game.MAX_ASSET_BYTES)) if streaming else None
-    with tempfile.TemporaryDirectory(prefix="mv-studio-audio-") as folder:
-        cri.decode_cue(acb, awb, sheet, Path(folder) / "check.wav")
-    return sheet, int(match[1]), acb, awb
-
-
-def install_audio(database, schemas, source_live_id, source_cue, prepared, publish):
-    sheet, music_id, acb, awb = prepared
-    if database.execute("SELECT 1 FROM m_live WHERE music_id=? OR bgm_path=? OR chorus_bgm_path=? LIMIT 1",
-                        (music_id, sheet, sheet)).fetchone():
-        raise ValueError("The selected music ID or cue already belongs to a song in this region.")
-    package = f"music:{source_live_id}"
-    originals = {}
-    for schema in schemas:
-        if database.execute(f"SELECT 1 FROM {schema}.m_asset_sound WHERE sheet_name=?", (sheet,)).fetchone():
-            raise ValueError(f"The cue sheet {sheet} already exists in the {schema} catalog.")
-        entry = database.execute(f"SELECT acb_pack_name,awb_pack_name FROM {schema}.m_asset_sound WHERE sheet_name=?",
-                                 (source_cue,)).fetchone()
-        if entry is None or not entry["acb_pack_name"]:
-            raise ValueError(f"The {schema} catalog is missing the source song's native cue sheet.")
-        originals[schema] = entry
-
-    acb_pack = publish(acb)
-    awb_pack = publish(awb) if awb is not None else None
-    extras, excluded = {}, {}
-    for schema, original in originals.items():
-        original_acb, original_awb = original
-        rows = [_mapping(database, schema, package, original_acb, acb_pack)]
-        if awb_pack is not None:
-            rows.append(_mapping(database, schema, package, original_awb if original_awb not in (None, "0") else original_acb,
-                                 awb_pack))
-        database.execute(f"INSERT INTO {schema}.m_asset_sound (sheet_name,acb_pack_name,awb_pack_name) VALUES (?,?,?)",
-                         (sheet, acb_pack[0], awb_pack[0] if awb_pack is not None else None))
-        extras[schema] = rows
-        excluded[schema] = (original_acb, original_awb)
-    return {"music_id": music_id, "bgm_path": sheet, "chorus_bgm_path": sheet}, extras, excluded
+MESSAGES = (
+    "Choose a native file of the expected type.",
+    "The selected file is empty, too large or unreadable.",
+    "The selected file changed during registration. Try again.",
+    "Provide each native timeline as an unpacked UnityFS bundle.",
+    "The native timeline exceeds the supported file size.",
+    "The jacket must be a PNG or JPEG image of exactly 400x400 pixels.",
+    "The jacket image must be at most 2 MiB.",
+    "Provide the song audio as an ACB cue sheet with its optional AWB bank.",
+    "The audio cue sheet or bank is empty or too large.",
+    "Provide an ACB containing one playable cue with the same name as the sheet.",
+    "Provide the matching AWB for a streaming cue, or only the ACB for an embedded cue.",
+    "The audio cue could not be read or decoded.",
+    "Choose the ACB cue sheet for this AWB bank.",
+    "The CRI sheet must use an unused music_XXXX game cue name.",
+    "The timeline must use the native format of its selected platform.",
+    "The selected Unity file has no unique native timeline container.",
+    "The selected Unity timeline container is empty.",
+    "The native timeline and its dependencies must match the selected stage template.",
+    "The timeline changes a serialized game type used by the stage.",
+    "The timeline changes native container, script or resource data.",
+    "The timeline introduces a reference outside the selected stage template.",
+    "The native Unity timeline could not be read against the selected stage template.",
+    "A game catalog is missing the base MV's native timeline pack.",
+    "Install the base MV's original timeline for this platform locally, or allow the download, to verify the edit.",
+    "The supplied original timeline does not match the base MV's catalogued size.",
+    "Provide a native timeline for Android, iOS or both.",
+    "A game catalog is missing the base MV's native timeline.",
+)

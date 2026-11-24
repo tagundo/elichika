@@ -122,7 +122,12 @@ def restore_from_backup(backup_path):
 
     Handles both backup formats: new lz4-compressed entries ("<rel>.lz4", which
     are decompressed on the way out) and old plain copies ("<rel>", verified by
-    SHA-256 as before)."""
+    SHA-256 as before). Hidden entries (a name starting with ".") are backup
+    bookkeeping, such as MV Studio's pack manifest or an interrupted copy, never
+    game files, so they stay in the backup. An MV Studio backup needs nothing
+    else: it holds every file its databases name that a later MV Studio change
+    moved away (packs as static/<pack>, stage files), so restoring it alone is
+    complete."""
     print(f"\nStarting restoration from backup '{backup_path}'...")
 
     # Backup current state before restore
@@ -135,7 +140,10 @@ def restore_from_backup(backup_path):
 
     # Traverse all files in the backup folder
     for root, dirs, files in os.walk(backup_path):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         for file in files:
+            if file.startswith("."):
+                continue
             backup_file_path = os.path.join(root, file)
             # Calculate relative path within backup
             rel_path = os.path.relpath(backup_file_path, backup_path)
