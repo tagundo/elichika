@@ -231,7 +231,10 @@ class TestIntegration(SamplerCase):
         late = [r for r in fulls if r['pass'] == 3 and r['part'] == 'materials']
         self.assertTrue(late and all(r.get('materialSource') == 'pass 2 renderers' for r in late), [r.get('materialSource') for r in late])
         self.assertTrue(all(m['resolvedBy'] == 'renderer' for r in late for m in r['materials']))
+        # Pass 4 reads pass 3's renderers only when pass 3 completed them (renderers are its last part).
         end = [r for r in fulls if r['pass'] == 4 and r['part'] == 'materials']
+        p3 = next(p for p in doc['trailer']['passes'] if p['pass'] == 3)
+        self.assertTrue(p3['complete'] and 'renderers' in p3['parts'], p3)
         self.assertTrue(end and all(r.get('materialSource') == 'pass 3 renderers' for r in end), [r.get('materialSource') for r in end])
         for r in late + end:
             for m in r['materials']:
@@ -939,6 +942,63 @@ class TestScheduling(unittest.TestCase):
         p4 = [options for part, options in sent if part == 'materials'][-1]
         self.assertEqual([(m['instanceId'], m['usedBy']) for m in p4['materials']],
                          [(-10, ['renderer:/a#0', 'renderer:/b#0']), (-12, ['renderer:/b#1'])], 'pass 4 reads pass 3\'s catalog once')
+
+    def test_a_renderers_part_cut_short_keeps_the_complete_catalog(self):
+        """A renderers part that ends partial (part errors or the chunk cap) lists only some renderers:
+        it never replaces a complete catalog, so the next late pass still reads the complete one. With
+        no complete catalog it is kept as 'pass k renderers (partial)' until a complete part replaces it."""
+        d = self.d
+        first = [{'key': 'renderer:/a', 'path': '/a', 'instanceId': -3, 'materials': [{'slot': 0, 'instanceId': -10}]}]
+        later = [{'key': 'renderer:/b', 'path': '/b', 'instanceId': -5, 'materials': [{'slot': 0, 'instanceId': -12}]}]
+        sent = []
+
+        def run(k, failing):
+            # Renderers: one good chunk, then either every later chunk fails or each one has a next cursor.
+            def record(part, options, kind, extra=None):
+                sent.append((k, part, options))
+                if part == 'renderers':
+                    if extra['chunk'] == 0 and not options['cursor']:
+                        return {'renderers': first if k == 2 else later, 'next': {'afterInstanceId': -1}}
+                    if failing == 'errors':
+                        return None
+                    if failing == 'cap':
+                        return {'renderers': [], 'next': {'afterInstanceId': -1 - extra['chunk']}}
+                    return {'renderers': [], 'next': None}
+                if part == 'materials':
+                    return {'materials': [], 'processed': 8, 'next': None}
+                return {'next': None}
+            with mock.patch.object(d, 'record', side_effect=record):
+                d.start_pass(k, 10.0 * k, 'test')
+                while d.current is not None:
+                    d.run_chunk()
+            return d.passes[-1]
+
+        complete = {'order': [-10], 'users': {'-10': ['renderer:/a#0']}, 'refs': {'-10': [{'path': '/a', 'slot': 0, 'rendererId': -3}]},
+                    'source': 'pass 2 renderers'}
+        self.assertTrue(run(2, None)['complete'])
+        self.assertEqual(d.material_catalog, complete)
+        for failing in ('errors', 'cap'):
+            with self.subTest(failing=failing), mock.patch.object(mvdump_sampler, 'MAX_CHUNKS_PER_PART', 3):
+                entry = run(3, failing)
+                self.assertEqual(entry['partial'], ['renderers'], entry)
+                self.assertEqual(d.material_catalog, complete, 'the complete pass 2 catalog is kept')
+                sent.clear()
+                run(4, None)
+                p4 = [options for k, part, options in sent if k == 4 and part == 'materials']
+                self.assertEqual([(m['instanceId'], m['usedBy']) for m in p4[0]['materials']], [(-10, ['renderer:/a#0'])])
+                self.assertEqual(d.material_catalog['source'], 'pass 4 renderers', 'a complete part replaces it')
+                d.material_catalog = complete
+        # No complete catalog yet: a partial one is kept, marked, and replaced by the next part.
+        d.material_catalog = None
+        with mock.patch.object(mvdump_sampler, 'MAX_CHUNKS_PER_PART', 3):
+            run(1, 'errors')
+            self.assertEqual((d.material_catalog['source'], d.material_catalog['partial'], d.material_catalog['order']),
+                             ('pass 1 renderers (partial)', True, [-12]))
+            run(2, 'cap')
+            self.assertEqual((d.material_catalog['source'], d.material_catalog['order']), ('pass 2 renderers (partial)', [-10]))
+            run(3, None)
+        self.assertEqual(d.material_catalog['source'], 'pass 3 renderers')
+        self.assertNotIn('partial', d.material_catalog)
 
 
 if __name__ == '__main__':

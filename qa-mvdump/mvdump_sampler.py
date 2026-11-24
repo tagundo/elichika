@@ -16,11 +16,17 @@ r8 cached dispatcher; host RPC timeout 12 s > the dispatcher's 10 s ticket timeo
     pass (-1) runs; it never uses up pass 0, which still waits for playback;
   - part order per pass (PASS_PARTS): pass 0 reads the timeline first, then the members; the
     late passes (3, 4) read members, materials (through the material catalog of the last
-    renderers part), post and particles before the renderers, so those values reach the song's
-    end (the 12035 Max 3D dump stopped them at 80.4 s). The end pass (D - 8 s) has room for
-    about 7 chunks before D at the 12035 dump's rate (~1 chunk per director second): it reads
-    post (1 chunk) and particles (2-3) before materials (~4 without the skill cut-in), since
-    pass 3 already read materials from 3D/4 and particles have no per-frame section;
+    complete renderers part), post and particles before the renderers, so those values reach
+    the song's end (the 12035 Max 3D dump stopped them at 80.4 s). The end pass (D - 8 s) has
+    room for about 7 chunks before D at the 12035 dump's rate (~1 chunk per director second):
+    it reads post (1 chunk) and particles (2-3) before materials (~4 without the skill cut-in),
+    since pass 3 already read materials from 3D/4 and particles have no per-frame section;
+  - the carried material catalog: renderers are pass 3's last part, so pass 4 reads materials
+    through pass 3's renderers (materialSource 'pass 3 renderers') only when pass 3 completes
+    them before D - 8 s; when the end pass preempts pass 3 it reads pass 2's ('pass 2
+    renderers', or an earlier pass's if pass 2 was cut too). A renderers part cut short (part
+    errors, chunk cap) does not replace a complete catalog; the materials records' materialSource
+    says which catalog was read;
   - particle windows: the timeline part lists the CustomControl/Control clips with their prefab;
     while a clip's window is open (start + 0.25 s .. end - 0.1 s) and it was not sampled yet, a
     window run (pass 10+n, part particles with options.roots = ["<prefab> [Timeline]"]) takes the
@@ -231,7 +237,7 @@ class Dumper:
         self.probe, self.header_reads, self.end_reads, self.screen_reads = None, None, None, None
         self.keys, self.keys_info = {}, None
         self.shots, self.last_shot = [], None
-        self.material_catalog = None            # material order/users/refs of the last renderers part
+        self.material_catalog = None            # material order/users/refs of the last complete renderers part
         self.faces, self.faces_by_slot = [], {}  # frame face renderers from the members part
         self.windows, self.window_run, self.window_runs = [], None, []
         self.t0 = self.mono()
@@ -571,7 +577,7 @@ class Dumper:
                         'materialRefs': {}, 'startedSeq': self.seq, 'startedWall': round(self.mono() - self.t0, 1)}
         parts = self.current['parts']
         # A pass that reads materials before its renderers resolves them through the catalog of the
-        # last renderers part (renderer path + slot, instance ids checked by the agent).
+        # last complete renderers part (renderer path + slot, instance ids checked by the agent).
         if 'materials' in parts and 'renderers' in parts and parts.index('materials') < parts.index('renderers') and self.material_catalog:
             catalog = json.loads(json.dumps(self.material_catalog))
             self.current.update(materialOrder=catalog['order'], materialUsers={int(k): v for k, v in catalog['users'].items()},
@@ -749,10 +755,17 @@ class Dumper:
 
     def advance_part(self):
         cur = self.current
-        if cur['parts'][cur['part_i']] == 'renderers' and cur['materialOrder']:
-            self.material_catalog = {'order': list(cur['materialOrder']), 'users': {str(k): v for k, v in cur['materialUsers'].items()},
-                                     'refs': {str(k): v for k, v in cur['materialRefs'].items()},
-                                     'source': f'pass {cur["pass"]} renderers'}
+        part = cur['parts'][cur['part_i']]
+        if part == 'renderers' and cur['materialOrder']:
+            # A renderers part cut short (MAX_PART_ERRORS, MAX_CHUNKS_PER_PART) lists only some
+            # renderers: it replaces no catalog or a partial one, never a complete one.
+            partial = part in cur['partial']
+            if not partial or self.material_catalog is None or self.material_catalog.get('partial'):
+                self.material_catalog = {'order': list(cur['materialOrder']), 'users': {str(k): v for k, v in cur['materialUsers'].items()},
+                                         'refs': {str(k): v for k, v in cur['materialRefs'].items()},
+                                         'source': f'pass {cur["pass"]} renderers' + (' (partial)' if partial else '')}
+                if partial:
+                    self.material_catalog['partial'] = True
         cur['part_i'] += 1
         cur['chunk'], cur['cursor'], cur['errors'] = 0, {}, 0
         if cur['part_i'] >= len(cur['parts']):
