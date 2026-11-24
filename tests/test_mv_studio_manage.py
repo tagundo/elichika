@@ -2,6 +2,7 @@
 
 import ast
 from contextlib import contextmanager
+import errno
 import hashlib
 import json
 import os
@@ -220,6 +221,29 @@ def dump(path, skip_tables=()):
 def region_paths(root, region):
     folder = Path(root) / "assets/db" / region
     return sorted(folder.glob("*.db"))
+
+
+def named_packs(catalogs):
+    """Every MV Studio pack any of the catalogs names (any pack column, m_asset_pack included)."""
+    names = set()
+    for catalog in catalogs:
+        with closing_db(catalog) as database:
+            for table, column in manage._pack_columns(database, "main") + [("m_asset_pack", "pack_name")]:
+                names.update(row[0] for row in database.execute(
+                    f'SELECT "{column}" FROM "{table}" WHERE "{column}" LIKE \'mvstudio_%\''))
+    return names
+
+
+def restore(root, folder):
+    """Run the stock restore tool on an MV Studio backup, from the repository root as it expects."""
+    import database_restore
+    cwd = os.getcwd()
+    os.chdir(root)
+    try:
+        with patch("builtins.print"):
+            return database_restore.restore_from_backup(str(folder))
+    finally:
+        os.chdir(cwd)
 
 
 def png(width, height):
@@ -682,19 +706,21 @@ class UpdateTests(StudioCase):
         self.assertEqual(query(self.gl / "asset_a_en.db", "SELECT COUNT(*) FROM m_asset_pack WHERE pack_name=?",
                                (old_android,)), [(0,)])
         self.assertEqual(result["quarantined"], [old_android])
-        quarantine = self.root / "static/.elichika-quarantine" / self.backups()[0] / old_android
-        self.assertTrue(quarantine.is_file())
+        # The dropped pack moves into the update's backup, next to the catalogs that still name it there.
+        folder = self.root / "backup_db" / self.backups()[0]
+        self.assertTrue((folder / "static" / old_android).is_file())
+        self.assertFalse((self.root / "static/.elichika-quarantine").exists())
         self.assertIn(old_ios, self.static_files())
         self.assertIn(old_jacket, self.static_files())
         for language in LANGUAGES["gl"]:
             self.assertEqual(query(self.gl / f"dictionary_{language}_k.db", "SELECT message FROM m_dictionary WHERE "
                                    "id='elichika_mv_studio_93000'"), [("Renamed",)])
         # The backup holds only the databases this update touched, in the restorable layout.
-        folder = self.root / "backup_db" / self.backups()[0]
         saved = sorted(str(path.relative_to(folder)) for path in folder.rglob("*") if path.is_file())
-        self.assertEqual(saved, sorted(f"assets/db/gl/{name}.lz4" for name in
-                                       ["masterdata.db"] + [f"dictionary_{l}_k.db" for l in LANGUAGES["gl"]]
-                                       + [f"asset_{p}_{l}.db" for l in LANGUAGES["gl"] for p in "ai"]))
+        self.assertEqual(saved, sorted([f"assets/db/gl/{name}.lz4" for name in
+                                        ["masterdata.db"] + [f"dictionary_{l}_k.db" for l in LANGUAGES["gl"]]
+                                        + [f"asset_{p}_{l}.db" for l in LANGUAGES["gl"] for p in "ai"]]
+                                       + [f"static/{old_android}"]))
 
         jacket_key = query(master, "SELECT jacket_asset_path FROM m_live WHERE live_id=93000")[0][0]
         result = self.update(93000, jacket=jpeg(400, 400), audio=audio("music_93000", tag="#2"))
@@ -711,6 +737,62 @@ class UpdateTests(StudioCase):
             self.assertEqual(main, [new_jacket[0]])
         with self.assertRaisesRegex(ValueError, "existing cue sheet names"):
             self.update(93000, audio=audio("music_93001"))
+
+    def test_restoring_an_update_backup_brings_back_every_pack_its_catalogs_name(self):
+        self.full()
+        before = {path.name: dump(path) for path in region_paths(self.root, "gl")}
+        old = {name: (self.root / "static" / name).read_bytes() for name in self.static_files()}
+        result = self.update(93000, jacket=jpeg(400, 400), audio=audio("music_93000", tag="#2"))
+        self.assertEqual(result["parts"], ["audio", "jacket"])
+        # The old jacket (main, category 8) and the old music and SABI packs (SABI in main, category 6).
+        self.assertEqual(len(result["quarantined"]), 5)
+        folder = Path(result["backup"])
+        for name in result["quarantined"]:
+            self.assertNotIn(name, self.static_files())
+            self.assertEqual((folder / "static" / name).read_bytes(), old[name])
+        restored = restore(self.root, folder)
+        self.assertEqual(restored["failed"], [])
+        self.assertEqual({path.name: dump(path) for path in region_paths(self.root, "gl")}, before)
+        named = named_packs(self.catalogs())
+        self.assertEqual(named, set(old))
+        for name in named:
+            self.assertEqual((self.root / "static" / name).read_bytes(), old[name], name)
+        song = manage.describe_mv_song(self.root, region="gl", live_id=93000)
+        self.assertEqual((song["jacket"], song["audio"], song["revision"]), ("custom", "custom", 1))
+
+    def test_update_without_backup_quarantines_beside_the_pack(self):
+        self.register(jacket=png(400, 400))
+        old, = self.static_files()
+        result = self.update(93000, jacket=jpeg(400, 400), backup=False)
+        self.assertEqual((result["backup"], result["quarantined"]), (None, [old]))
+        folder, = (self.root / "static/.elichika-quarantine").iterdir()
+        self.assertRegex(folder.name, r"_mv-studio-update-93000$")
+        self.assertTrue((folder / old).is_file())
+        self.assertEqual(self.backups(), [])
+
+    def test_pack_moves_to_another_file_system_by_copy_then_unlink(self):
+        source = self.root / "static" / ("mvstudio_" + "a" * 16 + "_" + "b" * 12)
+        source.parent.mkdir(exist_ok=True)
+        source.write_bytes(b"pack bytes")
+        target = self.root / "backup_db" / "op" / "static" / source.name
+        real = os.replace
+
+        def replace(src, dst):
+            if Path(src) == source:
+                raise OSError(errno.EXDEV, "Invalid cross-device link")
+            return real(src, dst)
+
+        with patch.object(manage.os, "replace", side_effect=replace):
+            with patch.object(manage.shutil, "copyfileobj", side_effect=OSError("disk full")):
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    manage._move_file(source, target)
+            # A failed copy keeps the pack in place and leaves no partial file behind.
+            self.assertEqual(source.read_bytes(), b"pack bytes")
+            self.assertEqual(list(target.parent.iterdir()), [])
+            manage._move_file(source, target)
+        self.assertFalse(source.exists())
+        self.assertEqual(target.read_bytes(), b"pack bytes")
+        self.assertEqual([path.name for path in target.parent.iterdir()], [source.name])
 
     def test_dropped_pack_named_elsewhere_is_not_quarantined(self):
         self.full()
@@ -962,19 +1044,16 @@ class RemoveTests(StudioCase):
         self.assertIn("userdata.db.lz4", saved)
         self.assertIn("assets/stages/93000301.json.lz4", saved)
         self.assertEqual(len([name for name in saved if name.startswith("assets/db/gl/")]), 10)
-        quarantine = self.root / "static/.elichika-quarantine" / folder.name
-        self.assertEqual(sorted(path.name for path in quarantine.iterdir()), packs)
-        import database_restore
-        cwd = os.getcwd()
-        os.chdir(self.root)
-        try:
-            with patch("builtins.print"):
-                restored = database_restore.restore_from_backup(str(folder))
-        finally:
-            os.chdir(cwd)
+        self.assertEqual(sorted(name for name in saved if name.startswith("static/")), [f"static/{p}" for p in packs])
+        self.assertFalse((self.root / "static/.elichika-quarantine").exists())
+        restored = restore(self.root, folder)
         self.assertEqual(restored["failed"], [])
         self.assertEqual(manage.describe_mv_song(self.root, region="gl", live_id=93000)["title"], song["title"])
         self.assertTrue((self.stages / "93000301.json").is_file())
+        # Every pack the restored catalogs name is back in static/ (jacket and SABI are in main for every client).
+        named = named_packs(self.catalogs())
+        self.assertEqual(sorted(named), packs)
+        self.assertEqual(self.static_files(), packs)
 
     def test_pack_still_named_by_the_other_region_is_kept(self):
         self.full()
@@ -1014,17 +1093,24 @@ class RemoveTests(StudioCase):
 
     def test_retention_keeps_the_newest_three(self):
         self.register(jacket=png(400, 400))
-        names = []
+        names = [f"2026-11-2{index}_10-00-00_mv-studio-update-93000" for index in range(4)]
         for index in range(4):
             with patch.object(manage, "datetime") as clock:
                 clock.now.return_value.strftime.return_value = f"2026-11-2{index}_10-00-00"
-                result = self.update(93000, title=f"title {index}", jacket=jpeg(400, 400) if index % 2 else png(400, 400))
-            names.append(Path(result["backup"]).name)
-        self.assertEqual(self.backups(), names[1:])
+                # The second update takes no backup: its dropped jacket goes to the quarantine folder instead.
+                result = self.update(93000, title=f"title {index}", jacket=jpeg(400, 400) if index % 2 else png(400, 400),
+                                     backup=index != 1)
+            # The first update keeps the registered jacket bytes, so it drops no pack.
+            self.assertEqual(len(result["quarantined"]), int(index > 0))
+            self.assertEqual(result["backup"] and Path(result["backup"]).name, names[index] if index != 1 else None)
+        self.assertEqual(self.backups(), names[2:])
+        for name in names[2:]:
+            self.assertEqual(len(list((self.root / "backup_db" / name / "static").iterdir())), 1)
         quarantine = self.root / "static/.elichika-quarantine"
-        self.assertEqual(sorted(path.name for path in quarantine.iterdir()), names[1:])
+        self.assertEqual(sorted(path.name for path in quarantine.iterdir()), names[1:2])
         self.assertEqual(manage.prune_mv_studio_backups(self.root, keep=1), names[1:3])
         self.assertEqual(self.backups(), names[3:])
+        self.assertEqual(list(quarantine.iterdir()), [])
 
 
 class MessageTests(unittest.TestCase):

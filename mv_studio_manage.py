@@ -12,12 +12,16 @@ Write order: packs are published durably first, then one ``BEGIN IMMEDIATE``
 transaction covers masterdata, dictionaries and every asset catalog of the region,
 then stage files. Update and remove take restorable backups in the
 ``database_backup`` layout; a new registration takes none because removing it undoes
-it exactly. Packs dropped by update or remove are quarantined, never deleted, and the
-newest three MV Studio backups are kept together with their quarantine folders.
+it exactly. Packs dropped by update or remove are never deleted: with a backup they
+move into it as ``static/<pack>``, so the stock restore tool brings back the catalogs
+and the packs they name together; without one they move to
+``<pack root>/.elichika-quarantine/<operation>/``. The newest three MV Studio backups
+are kept together with their quarantine folders.
 """
 
 from contextlib import closing, contextmanager
 from datetime import datetime
+import errno
 import hashlib
 import json
 import os
@@ -1102,8 +1106,40 @@ def _packs_named(repo_root, names):
     return found
 
 
-def _quarantine(repo_root, packs, name):
-    """Move MV Studio packs that no catalog of either region names any more. Returns the moved names."""
+def _move_file(source, target):
+    """Move a file durably. Across file systems (a backup root on shared storage) copy, fsync, then unlink."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(source, target)
+    except OSError as error:
+        if error.errno != errno.EXDEV:
+            raise
+        # A crash leaves only a hidden partial copy; the restore tool never sees a truncated pack under its name.
+        partial = target.with_name(f".{target.name}.partial")
+        try:
+            with open(source, "rb") as reader, open(partial, "wb") as writer:
+                shutil.copyfileobj(reader, writer, 1024 * 1024)
+                writer.flush()
+                os.fsync(writer.fileno())
+            os.replace(partial, target)
+        except BaseException:
+            partial.unlink(missing_ok=True)
+            raise
+        _fsync_dir(target.parent)
+        os.unlink(source)
+    _fsync_dir(target.parent)
+    _fsync_dir(source.parent)
+
+
+def _quarantine(repo_root, packs, name, folder=None):
+    """Move MV Studio packs that no catalog of either region names any more. Returns the moved names.
+
+    ``folder`` is the operation's backup: each pack goes to ``<backup>/static/<pack>``, the
+    relative layout ``database_restore`` copies back to ``./static/`` next to the catalogs that
+    name it (the server finds a pack in static/ whatever ``cdn_cache_dir`` is). Without a backup a
+    pack goes to ``<pack root>/.elichika-quarantine/<name>/``. Retention deletes both kinds
+    together, by operation name.
+    """
     candidates = {pack for pack in packs if _PACK_NAME.fullmatch(pack)}
     moved = []
     for pack in sorted(candidates - _packs_named(repo_root, candidates)):
@@ -1111,9 +1147,8 @@ def _quarantine(repo_root, packs, name):
             path = root / pack
             if path.is_symlink() or not path.is_file():
                 continue
-            target = root / _QUARANTINE / name / pack
-            target.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(path, target)
+            target = Path(folder) / "static" / pack if folder is not None else root / _QUARANTINE / name / pack
+            _move_file(path, target)
             moved.append(pack)
             break
     return moved
@@ -1481,7 +1516,7 @@ def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timel
         if folder is not None:
             shutil.rmtree(folder, ignore_errors=True)
         raise
-    quarantined = _quarantine(repo_root, dropped, operation) if dropped else []
+    quarantined = _quarantine(repo_root, dropped, operation, folder) if dropped else []
     prune_mv_studio_backups(repo_root)
     log("Updated MV-only song")
     return _result(repo_root, region, live_id, changed=True, parts=sorted(parts),
@@ -1736,7 +1771,7 @@ def remove_mv_song(repo_root, *, region, live_id, review_token, backup=True, log
     for name in plan["summary"]["stageFiles"]:
         (_stages_dir(repo_root) / name).unlink(missing_ok=True)
     _fsync_dir(_stages_dir(repo_root))
-    quarantined = _quarantine(repo_root, walk["packs"], operation)
+    quarantined = _quarantine(repo_root, walk["packs"], operation, folder)
     prune_mv_studio_backups(repo_root)
     return {"liveId": live_id, "region": region, "removed": True, "backup": str(folder) if folder else None,
             "quarantined": quarantined, "users": users, "warnings": warnings, "restartRequired": True}
