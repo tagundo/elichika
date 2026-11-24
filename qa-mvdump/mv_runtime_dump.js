@@ -9,6 +9,10 @@
  *  - every Unity call goes through inv(): deny pattern first, then an exact allowlist of
  *    UnityEngine getters / pure statics (ALLOW), fixed parameter signatures (SIG), a
  *    holder-type check, and m_CachedPtr != 0 before any instance call;
+ *  - engine getters whose managed wrappers the client strips (RenderSettings, Renderer.HasPropertyBlock)
+ *    go through icall(): an exact name allowlist (ICALLS, get_ and Has getters only, deny pattern first), resolved
+ *    with il2cpp_resolve_icall as the bridge does for UnityEngine.Application, "self" only on an alive
+ *    holder of the declaring class;
  *  - LLAS (game) objects are only read through fields, never through their methods;
  *  - indexes are bounds-checked (GetChild < childCount, blend shapes < blendShapeCount,
  *    material Get* only after HasProperty);
@@ -26,8 +30,8 @@
   "use strict";
   var H = globalThis.QA_MVDUMP_HOST;
   if (!H) throw new Error("MVDUMP_HOST_MISSING");
-  var EXT_VERSION = 2;
-  var PARTS = ["frame", "census", "quality", "fovmodNative", "renderers", "materials", "lightingRefs", "members",
+  var EXT_VERSION = 3;
+  var PARTS = ["frame", "timeline", "census", "quality", "fovmodNative", "renderers", "materials", "lightingRefs", "members",
     "springs", "stageNodes", "particles", "post"];
   // Defaults only: the sampler sends the budgets it uses (MV_RUNTIME_DUMP_FRAME_BUDGET_MS /
   // MV_RUNTIME_DUMP_FULL_BUDGET_MS, recorded in header.budgets) with every action.
@@ -35,20 +39,21 @@
   var CAPS = { directors: 8, cameras: 16, camerasDetailed: 8, correctors: 8, cameraWork: 4, lights: 16, globals: 20,
     anchors: 8, members: 9, censusNodes: 400, censusDepth: 6, censusChunk: 80, components: 12, renderers: 400,
     rendererChunk: 24, materials: 256, materialChunk: 8, properties: 48, keywords: 16, bonesPerMember: 24,
-    blendShapesInspected: 64, blendShapes: 24, swingBones: 64, stageNodes: 256, stageChunk: 64, stageDepth: 12,
+    blendShapesInspected: 64, swingBones: 64, stageNodes: 256, stageChunk: 64, stageDepth: 12,
     particles: 160, particleChunk: 40, fields: 48, fieldDepth: 2, arrayItems: 8, stringChars: 120, enumerate: 8192,
-    errors: 24, holders: 8, lightingPerClass: 16, slots: 8 };
+    errors: 24, holders: 8, lightingPerClass: 16, slots: 8, faceRenderers: 4, timelineTracks: 256, timelineChunk: 24,
+    timelineClips: 64, flareSettings: 8, spotLights: 12 };
 
   // ------------------------------------------------------------------ policy
   var DENY = /^set_|^Set[A-Z]|^(Play|Pause|Stop|Resume|Evaluate|RebuildGraph|DeferredEvaluate|Simulate|Emit|Clear|Render|RenderWithShader|Destroy|DestroyImmediate|Instantiate|AddComponent|SendMessage|BroadcastMessage|Invoke|InvokeRepeating|StartCoroutine|GetParticles|GetPropertyBlock|BakeMesh|Update|LateUpdate)$|^get_(material|materials|mesh)$/;
   var ALLOW = {
     "UnityEngine.Time": ["get_frameCount", "get_time", "get_unscaledTime", "get_deltaTime", "get_timeScale", "get_realtimeSinceStartup"],
     "UnityEngine.Screen": ["get_width", "get_height", "get_orientation"],
-    "UnityEngine.GameObject": ["Find", "get_activeSelf", "get_activeInHierarchy", "get_transform", "get_layer"],
+    // GetComponents(Type) / GetComponentsInChildren(Type, Boolean) on the GameObject: the GL client keeps
+    // these overloads (global-metadata methodIndex 19080 / 19083) and strips Component.GetComponents(Type).
+    "UnityEngine.GameObject": ["Find", "get_activeSelf", "get_activeInHierarchy", "get_transform", "get_layer",
+      "GetComponents", "GetComponentsInChildren"],
     "UnityEngine.Shader": ["PropertyToID", "GetGlobalFloat", "GetGlobalVector", "GetGlobalVectorArray"],
-    "UnityEngine.RenderSettings": ["get_fog", "get_fogMode", "get_fogColor", "get_fogDensity", "get_fogStartDistance",
-      "get_fogEndDistance", "get_ambientMode", "get_ambientSkyColor", "get_ambientEquatorColor", "get_ambientGroundColor",
-      "get_ambientIntensity", "get_ambientLight", "get_reflectionIntensity", "get_skybox"],
     "UnityEngine.QualitySettings": ["get_activeColorSpace", "get_vSyncCount", "get_antiAliasing"],
     "UnityEngine.Application": ["get_targetFrameRate"],
     "UnityEngine.Object": ["GetInstanceID", "get_name"],
@@ -74,7 +79,32 @@
       "GetVector", "GetTexture", "GetTextureScale", "GetTextureOffset"],
     "UnityEngine.Light": ["get_type", "get_color", "get_intensity", "get_range", "get_spotAngle", "get_shadows", "get_cullingMask"],
     "UnityEngine.ParticleSystem": ["get_isPlaying", "get_isEmitting", "get_isPaused", "get_particleCount", "get_time",
-      "get_randomSeed", "get_useAutoRandomSeed"]
+      "get_randomSeed", "get_useAutoRandomSeed", "get_isStopped", "get_duration", "get_playbackSpeed",
+      "get_automaticCullingEnabled"]
+  };
+  // Engine internal calls whose managed wrappers the GL client strips (global-metadata has no
+  // UnityEngine.RenderSettings type and no Renderer.HasPropertyBlock). libunity.so holds these names, but
+  // its registration code references only the icalls of managed methods the client keeps (checked: 9 of
+  // 9 Renderer icalls), so on GL 3.12.0 they resolve to NULL and the values are reported unavailable
+  // (the probe records the resolution). Read-only getters only, resolved by name through
+  // Il2Cpp.api.resolveInternalCall and called with NativeFunction only when resolved, the way the bridge
+  // itself reads UnityEngine.Application::get_*. [return type, args]: "self" = the alive managed object
+  // of the declaring class, "out4" = a 16-byte Color/Vector4 out pointer.
+  var ICALLS = {
+    "UnityEngine.RenderSettings::get_fog": ["bool", []],
+    "UnityEngine.RenderSettings::get_fogMode": ["int", []],
+    "UnityEngine.RenderSettings::get_fogColor_Injected": ["void", ["out4"]],
+    "UnityEngine.RenderSettings::get_fogDensity": ["float", []],
+    "UnityEngine.RenderSettings::get_fogStartDistance": ["float", []],
+    "UnityEngine.RenderSettings::get_fogEndDistance": ["float", []],
+    "UnityEngine.RenderSettings::get_ambientMode": ["int", []],
+    "UnityEngine.RenderSettings::get_ambientSkyColor_Injected": ["void", ["out4"]],
+    "UnityEngine.RenderSettings::get_ambientEquatorColor_Injected": ["void", ["out4"]],
+    "UnityEngine.RenderSettings::get_ambientGroundColor_Injected": ["void", ["out4"]],
+    "UnityEngine.RenderSettings::get_ambientIntensity": ["float", []],
+    "UnityEngine.RenderSettings::get_ambientLight_Injected": ["void", ["out4"]],
+    "UnityEngine.RenderSettings::get_reflectionIntensity": ["float", []],
+    "UnityEngine.Renderer::HasPropertyBlock": ["bool", ["self"]]
   };
   var INT = ["System.Int32"];
   var SIG = {
@@ -83,11 +113,12 @@
     "UnityEngine.Shader::GetGlobalVectorArray": INT, "UnityEngine.Component::GetComponents": ["System.Type"],
     "UnityEngine.Component::GetComponent": ["System.Type"], "UnityEngine.Transform::GetChild": INT,
     "UnityEngine.Transform::Find": ["System.String"], "UnityEngine.SkinnedMeshRenderer::GetBlendShapeWeight": INT,
+    "UnityEngine.GameObject::GetComponents": ["System.Type"], "UnityEngine.GameObject::GetComponentsInChildren": ["System.Type", "System.Boolean"],
     "UnityEngine.Mesh::GetBlendShapeName": INT, "UnityEngine.Material::HasProperty": INT, "UnityEngine.Material::GetFloat": INT,
     "UnityEngine.Material::GetColor": INT, "UnityEngine.Material::GetVector": INT, "UnityEngine.Material::GetTexture": INT,
     "UnityEngine.Material::GetTextureScale": INT, "UnityEngine.Material::GetTextureOffset": INT
   };
-  var STATIC_CLASSES = { "UnityEngine.Time": 1, "UnityEngine.Screen": 1, "UnityEngine.Shader": 1, "UnityEngine.RenderSettings": 1,
+  var STATIC_CLASSES = { "UnityEngine.Time": 1, "UnityEngine.Screen": 1, "UnityEngine.Shader": 1,
     "UnityEngine.QualitySettings": 1, "UnityEngine.Application": 1 };
   var STATIC_METHODS = { "UnityEngine.GameObject::Find": 1 };
 
@@ -96,7 +127,12 @@
     "LiveCoreOverlayCamera", "LiveSplitScreenEffect", "LiveCoreMemberManager", "LiveCoreMember", "LiveCoreMemberAmbient",
     "LiveCoreMemberRimlight", "LiveCoreMemberNodeScaling", "LiveCoreStageAmbient", "LiveCoreStageModel",
     "LiveCoreStageEmissive", "LiveCoreStageEffect", "LiveCoreStagePenlight", "LiveCoreStageDisplay",
-    "LiveCoreStageFlashLight", "LiveCoreStageColoring", "LivePropAmbient", "LivePropRimlight", "LivePauseMediator"];
+    "LiveCoreStageFlashLight", "LiveCoreStageColoring", "LivePropAmbient", "LivePropRimlight", "LiveCoreCameraPostProcess",
+    "LiveCoreCameraPostProcessFlare", "LiveCoreMemberSpotlightArea"];
+  // Namespaces from the GL 3.12.0 type dump: LiveMvScene is LLAS.Scene.EntryPoint.LiveMvScene, LivePauseMediator
+  // LLAS.Scene.Live.LivePauseMediator (a plain object), the member spot light shaft component
+  // LLAS.Scene.Live.Components.LiveCoreMemberSpotLightShaft. UnityEngine.Light has no type definition in
+  // the client's global-metadata (stripped), so it stays missing: lights are reported unavailable.
   var CLASS_TABLE = [
     { key: "Camera", candidates: ["UnityEngine.Camera"], unity: true },
     { key: "PlayableDirector", candidates: ["UnityEngine.Playables.PlayableDirector"], unity: true },
@@ -104,10 +140,12 @@
     { key: "ParticleSystem", candidates: ["UnityEngine.ParticleSystem"], unity: true },
     { key: "LiveDirector", candidates: ["LLAS.Scene.Live.LiveDirector", "LLAS.Scene.LiveMv.LiveDirector", "LiveDirector"] },
     { key: "LiveDirectorBase", candidates: ["LLAS.Scene.Live.LiveDirectorBase", "LLAS.Scene.LiveMv.LiveDirectorBase", "LiveDirectorBase"] },
-    { key: "LiveMvScene", candidates: ["LLAS.Scene.Live.LiveMvScene", "LLAS.Scene.LiveMv.LiveMvScene", "LiveMvScene"] }
+    { key: "LiveMvScene", candidates: ["LLAS.Scene.EntryPoint.LiveMvScene", "LLAS.Scene.Live.LiveMvScene", "LiveMvScene"] },
+    { key: "LivePauseMediator", candidates: ["LLAS.Scene.Live.LivePauseMediator", "LLAS.Scene.Live.Components.LivePauseMediator"] },
+    { key: "MemberSpotLightShaft", candidates: ["LLAS.Scene.Live.Components.LiveCoreMemberSpotLightShaft", "LLAS.Components.Members.MemberSpotLightShaft"] }
   ].concat(COMPONENTS.map(function (name) {
     return { key: name, candidates: ["LLAS.Scene.Live.Components." + name] };
-  })).concat(["LiveMusicMachine", "SwingBoneManager", "SwingBone", "BodyPartManager", "MemberSpotLightShaft",
+  })).concat(["LiveMusicMachine", "SwingBoneManager", "SwingBone", "BodyPartManager",
     "LiveQualitySettingVO"].map(function (name) {
     var first = name === "LiveMusicMachine" ? "LLAS.Scene.Live.Components." : name === "LiveQualitySettingVO" ? "LLAS.DM.ValueObject." : "LLAS.Components.Members.";
     var list = [first + name, "LLAS.Scene.Live.Components." + name, "LLAS.Scene.Live." + name, "LLAS." + name, name];
@@ -406,13 +444,133 @@
     var e = enumInt(v);
     return e;
   }
+  // ------------------------------------------------------------------ roots
+  // Root GameObjects can share a name: in the 12035 Max 3D dump GameObject.Find("/EntryPoint") returned a
+  // root holding only PopupView, not the root of /EntryPoint/Live, so every root-anchored path (census,
+  // stageNodes bindings, material renderer slots, anchor:stageOrigin) missed. A root-anchored path is now
+  // tried from these candidate roots of that name, deduplicated by instanceId, in this order:
+  //   1. the LiveDirector's own root (walked up from its transform);
+  //   2. GameObject.Find's result;
+  //   3. only when 1-2 miss the path, and always for the census: the roots reached by walking up from
+  //      objects the dump enumerates anyway (the active cameras of cameraCensus, the active
+  //      LiveCoreCameraManager components), by ascending instanceId. The 12035 dump lists cameras such
+  //      as /EntryPoint/AlwaysCamera that are in neither of the first two roots.
+  // A same-name root that holds none of these objects is still not reached; census.selfCheck.roots lists
+  // the roots that were.
+  function rootOfTransform(ctx, tr) {
+    var cur = tr, guard = 0, parent;
+    while (cur && guard++ < 48) {
+      parent = refValue(inv(ctx, "UnityEngine.Transform", "get_parent", cur, []));
+      if (!parent) return cur;
+      cur = parent;
+    }
+    return null;
+  }
+  // The candidate roots named `name` ({tr, instanceId, source, via?}); `extended` adds step 3 once per record.
+  function rootCandidates(ctx, name, extended) {
+    var memo = ctx.memo.roots || (ctx.memo.roots = {}), entry = memo[name];
+    function add(tr, source, via) {
+      var id = tr ? iid(tr) : null;
+      if (id === null || entry.seen[id]) return;
+      entry.seen[id] = true;
+      var root = { tr: tr, instanceId: id, source: source };
+      if (via) root.via = via;
+      entry.list.push(root);
+    }
+    if (!entry) {
+      entry = memo[name] = { list: [], seen: {}, extended: false };
+      try {
+        liveDirectors(ctx).forEach(function (ld) {
+          var root = rootOfTransform(ctx, trOf(ctx, ld)), rootName = root ? nameOf(ctx, root) : null;
+          if (root && (rootName === name || stripName(rootName) === name)) add(root, "LiveDirector");
+        });
+      } catch (error) { ctx.err("roots.liveDirector", error); }
+      var go = inv(ctx, "UnityEngine.GameObject", "Find", null, [Il2Cpp.string("/" + name)]);
+      if (alive(go)) add(refValue(inv(ctx, "UnityEngine.GameObject", "get_transform", go, [])), "GameObject.Find");
+    }
+    if (extended && !entry.extended) {
+      entry.extended = true;
+      var found = [];
+      var reach = function (object, info, source) {
+        var rawRoot = typeof info.rawPath === "string" ? info.rawPath.split("/")[1] : null;
+        if (info.segments[0] !== name && rawRoot !== name) return;
+        var root = rootOfTransform(ctx, trOf(ctx, object)), id = root ? iid(root) : null;
+        if (id !== null && !entry.seen[id] && !found.some(function (f) { return f.id === id; })) found.push({ tr: root, id: id, source: source, via: info.path });
+      };
+      try { cameraCensus(ctx).forEach(function (c) { reach(c.object, c.info, "Camera"); }); } catch (error) { ctx.err("roots.cameras", error); }
+      try {
+        cameraManagers(ctx).forEach(function (m) { if (activeGo(ctx, m)) reach(m, pathInfo(ctx, m), "LiveCoreCameraManager"); });
+      } catch (error) { ctx.err("roots.cameraManager", error); }
+      found.sort(function (a, b) { return a.id - b.id; });
+      found.forEach(function (f) { add(f.tr, f.source, f.via); });
+    }
+    return entry.list;
+  }
+  function findUnder(ctx, roots, parts, from) {
+    for (var i = from; i < roots.length; i++) {
+      if (parts.length === 1) return roots[i].tr;
+      var found = refValue(inv(ctx, "UnityEngine.Transform", "Find", roots[i].tr, [Il2Cpp.string(parts.slice(1).join("/"))]));
+      if (found) return found;
+    }
+    return null;
+  }
+  // A root-anchored path from the candidate roots: steps 1-2 first, step 3 only when they miss it.
   function resolvePath(ctx, path) {
-    var parts = String(path).replace(/^\//, "").split("/");
-    var root = inv(ctx, "UnityEngine.GameObject", "Find", null, [Il2Cpp.string("/" + parts[0])]);
-    if (!alive(root)) return null;
-    var tr = inv(ctx, "UnityEngine.GameObject", "get_transform", root, []);
-    if (parts.length === 1) return tr;
-    return refValue(inv(ctx, "UnityEngine.Transform", "Find", tr, [Il2Cpp.string(parts.slice(1).join("/"))]));
+    var parts = String(path).replace(/^\//, "").split("/"), roots = rootCandidates(ctx, parts[0], false), tried = roots.length;
+    var found = findUnder(ctx, roots, parts, 0);
+    if (found) return found;
+    return findUnder(ctx, rootCandidates(ctx, parts[0], true), parts, tried);
+  }
+  // Components of a GameObject by type: GameObject.GetComponents(Type) (Component.GetComponents(Type) is
+  // stripped from the GL client) and GameObject.GetComponentsInChildren(Type, includeInactive).
+  function componentsOf(ctx, object, klass, cap) {
+    var go = isA(object, H.findClass("UnityEngine.GameObject", true)) ? object : refValue(inv(ctx, "UnityEngine.Component", "get_gameObject", object, []));
+    return go ? items(inv(ctx, "UnityEngine.GameObject", "GetComponents", go, [klass.type.object]), cap) : [];
+  }
+  function componentsInChildren(ctx, object, klass, cap) {
+    var go = isA(object, H.findClass("UnityEngine.GameObject", true)) ? object : refValue(inv(ctx, "UnityEngine.Component", "get_gameObject", object, []));
+    return go ? items(inv(ctx, "UnityEngine.GameObject", "GetComponentsInChildren", go, [klass.type.object, true]), cap) : [];
+  }
+
+  // ------------------------------------------------------------------ engine internal calls (ICALLS)
+  var icallCache = {};
+  // The NativeFunction of an allowlisted getter icall, or null when libunity did not register the name.
+  function icallFunction(name) {
+    var spec = ICALLS[name], method = String(name).split("::")[1] || "";
+    if (!spec) throw new Error("MVDUMP_POLICY_NOT_ALLOWED:" + name);
+    if (DENY.test(method) || !/^get_|^Has[A-Z]/.test(method)) throw new Error("MVDUMP_POLICY_DENY:" + name);
+    if (!icallCache.hasOwnProperty(name)) {
+      var entry = null, api = typeof Il2Cpp !== "undefined" ? Il2Cpp.api : null;
+      if (api && api.resolveInternalCall) {
+        var handle = api.resolveInternalCall(Memory.allocUtf8String(name));
+        if (handle && !handle.isNull()) entry = new NativeFunction(handle, spec[0], spec[1].map(function () { return "pointer"; }));
+      }
+      icallCache[name] = entry;
+    }
+    return icallCache[name];
+  }
+  function icall(ctx, name, holder) {
+    var spec = ICALLS[name], fn = icallFunction(name);
+    if (!fn) throw new Error("MVDUMP_ICALL_UNAVAILABLE:" + name);
+    var args = [], out = null;
+    for (var i = 0; i < spec[1].length; i++) {
+      if (spec[1][i] === "self") {
+        var declaring = H.findClass(name.split("::")[0], true);
+        if (!alive(holder)) return null;
+        if (!declaring || !isA(holder, declaring)) throw new Error("MVDUMP_HOLDER_TYPE:" + H.fullType(holder) + " is not " + name.split("::")[0]);
+        args.push(holder.handle);
+      } else if (spec[1][i] === "out4") { out = Memory.alloc(16); args.push(out); }
+    }
+    if (ctx) ctx.calls++;
+    var value = fn.apply(null, args);
+    if (out) return [0, 1, 2, 3].map(function (k) { return num(ctx, out.add(4 * k).readFloat(), name + "[" + k + "]", 7); });
+    return spec[0] === "bool" ? !!value : value;
+  }
+  function ic(ctx, name, holder, convert) {
+    try {
+      var value = icall(ctx, name, holder);
+      return convert ? convert(value) : value;
+    } catch (error) { ctx.err(name.replace("UnityEngine.", ""), error); return null; }
   }
 
   // ------------------------------------------------------------------ generic field reader (schema section 5)
@@ -523,6 +681,11 @@
     ctx.memo.liveDirectors = out;
     return out;
   }
+  // LiveCoreCameraManager components (at most 2), enumerated once per record.
+  function cameraManagers(ctx) {
+    if (!ctx.memo.cameraManagers) ctx.memo.cameraManagers = instances(ctx, cls(ctx, "LiveCoreCameraManager"), 8).slice(0, 2);
+    return ctx.memo.cameraManagers;
+  }
   function readDirectors(ctx) {
     var PD = H.findClass("UnityEngine.Playables.PlayableDirector", true), D = "UnityEngine.Playables.PlayableDirector";
     var held = {};
@@ -629,7 +792,7 @@
       if (id !== null && roles[id] === undefined) { roles[id] = role; sources[id] = source; }
     }
     try {
-      instances(ctx, cls(ctx, "LiveCoreCameraManager"), 8).slice(0, 2).forEach(function (manager) {
+      cameraManagers(ctx).forEach(function (manager) {
         [["overlay", ["overlayCamera"]], ["cutin", ["cutinCamera"]], ["cutinOverlay", ["cutinOverlayCamera"]]].forEach(function (pair) {
           pair[1].forEach(function (name) {
             var found = fieldAny(manager, backingNames(name));
@@ -864,27 +1027,36 @@
     }
     return out;
   }
-  function readRenderSettings(ctx) {
-    var R = "UnityEngine.RenderSettings";
-    function c4(path) { return function (v) { return raw(ctx, v, 4, "renderSettings." + path, 7); }; }
+  // The GL 3.12.0 libunity registers only the internal calls of managed methods the client keeps (code
+  // references every kept Renderer icall name and none of the stripped ones), so a stripped getter
+  // normally does not resolve: then the value is reported unavailable once, without a call or an error.
+  var ICALL_UNREGISTERED = "engine icall not registered (its managed wrapper is stripped from the client)";
+  function icallResolvable(name) { try { return !!icallFunction(name); } catch (_) { return false; } }
+  // RenderSettings through the engine's internal calls (the managed class is stripped from the client).
+  function readRenderSettings(ctx, record) {
+    var R = "UnityEngine.RenderSettings::";
+    if (!Object.keys(ICALLS).some(function (name) { return name.indexOf(R) === 0 && icallResolvable(name); })) {
+      record.unavailable = Object.assign(record.unavailable || {}, { renderSettings: "UnityEngine.RenderSettings: " + ICALL_UNREGISTERED });
+      return null;
+    }
     function f(path) { return function (v) { return num(ctx, v, "renderSettings." + path); }; }
-    var skybox = g(ctx, R, "get_skybox", null);
-    return { fog: g(ctx, R, "get_fog", null, bool), fogMode: g(ctx, R, "get_fogMode", null, en("FogMode")),
-      fogColor: g(ctx, R, "get_fogColor", null, c4("fogColor")), fogDensity: g(ctx, R, "get_fogDensity", null, f("fogDensity")),
-      fogStartDistance: g(ctx, R, "get_fogStartDistance", null, f("fogStartDistance")),
-      fogEndDistance: g(ctx, R, "get_fogEndDistance", null, f("fogEndDistance")),
-      ambientMode: g(ctx, R, "get_ambientMode", null, en("AmbientMode")),
-      ambientSkyColor: g(ctx, R, "get_ambientSkyColor", null, c4("ambientSkyColor")),
-      ambientEquatorColor: g(ctx, R, "get_ambientEquatorColor", null, c4("ambientEquatorColor")),
-      ambientGroundColor: g(ctx, R, "get_ambientGroundColor", null, c4("ambientGroundColor")),
-      ambientIntensity: g(ctx, R, "get_ambientIntensity", null, f("ambientIntensity")),
-      ambientLight: g(ctx, R, "get_ambientLight", null, c4("ambientLight")),
-      reflectionIntensity: g(ctx, R, "get_reflectionIntensity", null, f("reflectionIntensity")),
-      skybox: alive(skybox) ? nameOf(ctx, skybox) : null };
+    return { source: "icall", fog: ic(ctx, R + "get_fog", null), fogMode: ic(ctx, R + "get_fogMode", null, en("FogMode")),
+      fogColor: ic(ctx, R + "get_fogColor_Injected", null), fogDensity: ic(ctx, R + "get_fogDensity", null, f("fogDensity")),
+      fogStartDistance: ic(ctx, R + "get_fogStartDistance", null, f("fogStartDistance")),
+      fogEndDistance: ic(ctx, R + "get_fogEndDistance", null, f("fogEndDistance")),
+      ambientMode: ic(ctx, R + "get_ambientMode", null, en("AmbientMode")),
+      ambientSkyColor: ic(ctx, R + "get_ambientSkyColor_Injected", null),
+      ambientEquatorColor: ic(ctx, R + "get_ambientEquatorColor_Injected", null),
+      ambientGroundColor: ic(ctx, R + "get_ambientGroundColor_Injected", null),
+      ambientIntensity: ic(ctx, R + "get_ambientIntensity", null, f("ambientIntensity")),
+      ambientLight: ic(ctx, R + "get_ambientLight_Injected", null),
+      reflectionIntensity: ic(ctx, R + "get_reflectionIntensity", null, f("reflectionIntensity")) };
   }
-  function readLights(ctx) {
-    var L = "UnityEngine.Light", out = [];
-    instances(ctx, H.findClass(L, true), 256).forEach(function (light) {
+  var LIGHT_STRIPPED = "UnityEngine.Light has no type definition in the client's global-metadata (stripped): Light components cannot be enumerated or read";
+  function readLights(ctx, record) {
+    var L = "UnityEngine.Light", out = [], klass = H.findClass(L, true);
+    if (!klass) { record.unavailable = Object.assign(record.unavailable || {}, { lights: LIGHT_STRIPPED }); return null; }
+    instances(ctx, klass, 256).forEach(function (light) {
       if (out.length >= CAPS.lights || ctx.pastHard() || !activeGo(ctx, light)) return;
       ctx.objects++;
       var p = "lights[" + out.length + "]", info = pathInfo(ctx, light), tr = trOf(ctx, light);
@@ -902,6 +1074,108 @@
       out.push(item);
     });
     return out;
+  }
+
+  // ------------------------------------------------------------------ blend shapes
+  // Blend shape names per mesh instanceId (strings only): a frame reads only the weights.
+  var shapeNameCache = {}, shapeNameCount = 0;
+  function shapeNames(ctx, mesh) {
+    var id = iid(mesh), cached = shapeNameCache[id];
+    if (cached) return cached;
+    var count = Number(g(ctx, "UnityEngine.Mesh", "get_blendShapeCount", mesh)) || 0, names = [];
+    for (var k = 0; k < count && k < CAPS.blendShapesInspected; k++) names.push(g(ctx, "UnityEngine.Mesh", "GetBlendShapeName", mesh, str, [k]) || String(k));
+    if (shapeNameCount >= 256) { shapeNameCache = {}; shapeNameCount = 0; }
+    shapeNameCache[id] = { count: count, names: names };
+    shapeNameCount++;
+    return shapeNameCache[id];
+  }
+  // {count, weights (non-zero, 0-100), channels (every inspected channel)} of one SkinnedMeshRenderer.
+  function blendWeights(ctx, renderer, mesh, section) {
+    var shapes = shapeNames(ctx, mesh), weights = {}, channels = {}, complete = true;
+    for (var k = 0; k < shapes.names.length; k++) {
+      if (k > 0 && ctx.pastHard()) { ctx.cut(section); complete = false; break; }
+      var w = g(ctx, "UnityEngine.SkinnedMeshRenderer", "GetBlendShapeWeight", renderer, function (v) { return num(ctx, v, section); }, [k]);
+      channels[shapes.names[k]] = w;
+      if (w) weights[shapes.names[k]] = w;
+    }
+    var out = { count: shapes.count, weights: weights, channels: channels };
+    if (!complete) out.incomplete = true;
+    return out;
+  }
+  // Per frame: the member face renderers the members part found (options.faces from the host:
+  // [{slot, key, path}] with raw paths). CombineFace carries Eye/Mouth channels, the EyeWhiteLine
+  // renderers theirs; channel names are the Unity blend shape names on either side.
+  function readFaces(ctx, faces) {
+    if (!Array.isArray(faces) || !faces.length) return undefined;
+    var SMR = H.findClass("UnityEngine.SkinnedMeshRenderer", true), out = [];
+    faces.slice(0, CAPS.members * CAPS.faceRenderers).forEach(function (face) {
+      if (!face || typeof face.path !== "string") return;
+      if (out.length && ctx.pastSoft()) { ctx.cut("faces"); return; }
+      var tr = resolvePath(ctx, face.path), renderer = tr ? refValue(g(ctx, "UnityEngine.Component", "GetComponent", tr, null, [SMR.type.object])) : null;
+      var item = { slot: face.slot, rendererKey: face.key };
+      if (!alive(renderer)) { item.missing = true; out.push(item); return; }
+      var mesh = g(ctx, "UnityEngine.SkinnedMeshRenderer", "get_sharedMesh", renderer);
+      if (!alive(mesh)) { item.missing = true; out.push(item); return; }
+      ctx.objects++;
+      var w = blendWeights(ctx, renderer, mesh, "faces");
+      item.count = w.count; item.weights = w.weights;
+      if (w.incomplete) item.incomplete = true;
+      item.enabled = g(ctx, "UnityEngine.Renderer", "get_enabled", renderer, bool);
+      out.push(item);
+    });
+    return out;
+  }
+
+  // ------------------------------------------------------------------ skill cut-in deferral
+  // /EntryPoint/SkillCutin holds ~40 ParticleSystems and ~150 renderers that never draw in an MV (12035:
+  // 0 playing, all renderers disabled) yet sorted first and took half of every pass. It is skipped while
+  // no skill cut-in plays, i.e. no cut-in Camera is isActiveAndEnabled: the Camera on the GameObject of
+  // LiveCoreCameraManager.cutinOverlayCamera and every Camera under the deferred root (both disabled in
+  // 171 of 172 frames of the 12035 dump; only the scene's first frame had them on). Without that
+  // evidence (no manager, no camera) the subtree is kept, sorted last.
+  var DEFERRED_ROOTS = ["/EntryPoint/SkillCutin"];
+  function cutinState(ctx) {
+    if (ctx.memo.cutin) return ctx.memo.cutin;
+    var out = { playing: false, evidence: [] }, CAM = H.findClass("UnityEngine.Camera", true);
+    function check(label, camera) {
+      if (!alive(camera) || out.evidence.length >= 8) return;
+      var on = g(ctx, "UnityEngine.Behaviour", "get_isActiveAndEnabled", camera, bool) === true;
+      out.evidence.push(label + ":" + (on ? "on" : "off"));
+      if (on) out.playing = true;
+    }
+    try {
+      cameraManagers(ctx).forEach(function (manager) {
+        var found = fieldAny(manager, backingNames("cutinOverlayCamera"));
+        if (found && alive(found.value)) check("cutinOverlayCamera", refValue(g(ctx, "UnityEngine.Component", "GetComponent", found.value, null, [CAM.type.object])));
+      });
+      DEFERRED_ROOTS.forEach(function (path) {
+        var tr = resolvePath(ctx, path);
+        if (tr) componentsInChildren(ctx, tr, CAM, 4).forEach(function (camera) { check(path + " camera", camera); });
+      });
+    } catch (error) { ctx.err("cutin", error); }
+    out.known = out.evidence.length > 0;
+    ctx.memo.cutin = out;
+    return out;
+  }
+  // {ids: {instanceId: true}, components, roots, skip, cutin} of klass components under DEFERRED_ROOTS.
+  function deferral(ctx, klass) {
+    var state = cutinState(ctx), out = { ids: {}, components: 0, roots: [], skip: state.known && !state.playing, cutin: state.evidence };
+    DEFERRED_ROOTS.forEach(function (path) {
+      try {
+        var tr = resolvePath(ctx, path);
+        if (!tr) return;
+        out.roots.push(path);
+        componentsInChildren(ctx, tr, klass, CAPS.enumerate).forEach(function (c) {
+          var id = isObj(c) ? iid(c) : null;
+          if (id !== null && !out.ids[id]) { out.ids[id] = true; out.components++; }
+        });
+      } catch (error) { ctx.err("deferral", error); }
+    });
+    return out;
+  }
+  function deferralSummary(d) {
+    return { roots: d.roots, components: d.components, skipped: d.skip, reason: d.skip ? "no skill cut-in playing" : d.roots.length ? "sorted last" : "no deferred root",
+      cutin: d.cutin };
   }
 
   // ------------------------------------------------------------------ record runner
@@ -943,8 +1217,10 @@
     section(ctx, record, "globals", function () { return readGlobals(ctx, keys); }, "required");
     section(ctx, record, "members", function () { return readMembersIdentity(ctx); }, "required");
     section(ctx, record, "anchors", function () { return readAnchors(ctx, keys); }, "optional");
-    section(ctx, record, "renderSettings", function () { return readRenderSettings(ctx); }, "optional");
-    section(ctx, record, "lights", function () { return readLights(ctx); }, "optional");
+    section(ctx, record, "post", function () { return framePost(ctx); }, "required");
+    section(ctx, record, "faces", function () { return readFaces(ctx, options.faces); }, "optional");
+    section(ctx, record, "renderSettings", function () { return readRenderSettings(ctx, record); }, "optional");
+    section(ctx, record, "lights", function () { return readLights(ctx, record); }, "optional");
     section(ctx, record, "clockEnd", function () { return readClockEnd(ctx, directors); }, "always");
     return finish(ctx, record);
   }
@@ -988,29 +1264,83 @@
       if (!cur) return { next: null, emitted: emitted };
     }
   }
+  // Self-check of the census root: the candidate roots of that name (instanceId, source, via), the
+  // LiveDirector's path, and whether /<root>/Live resolves inside the LiveDirector's own root and holds
+  // the LiveDirector (the live hierarchy; in the GL client the LiveDirector sits on /EntryPoint/Live itself).
+  function censusSelfCheck(ctx, rootName, roots) {
+    var out = { root: "/" + rootName, roots: roots.map(function (r) {
+      var item = { instanceId: r.instanceId, source: r.source, childCount: childCount(ctx, r.tr) };
+      if (r.via) item.via = r.via;
+      return item;
+    }) };
+    var ld = liveDirectors(ctx)[0], ldTr = ld ? trOf(ctx, ld) : null;
+    out.liveDirector = ldTr ? pathInfo(ctx, ldTr).path : null;
+    var livePath = "/" + rootName + "/Live", live = resolvePath(ctx, livePath), liveRoot = live ? rootOfTransform(ctx, live) : null;
+    out.live = { path: livePath, found: !!live, inLiveDirectorRoot: !!(liveRoot && roots[0] && roots[0].source === "LiveDirector" && iid(liveRoot) === roots[0].instanceId),
+      isLiveDirector: !!(live && ldTr && iid(live) === iid(ldTr)),
+      holdsLiveDirector: !!(live && out.liveDirector && (out.liveDirector === livePath || out.liveDirector.indexOf(livePath + "/") === 0)) };
+    // Roots are deduplicated by instanceId: a separate GameObject.Find entry is another root of that name.
+    out.findReturnedOtherRoot = roots.length > 0 && roots[0].source === "LiveDirector" && roots.some(function (x) { return x.source === "GameObject.Find"; });
+    out.ok = out.live.found && out.live.inLiveDirectorRoot && out.live.holdsLiveDirector;
+    return out;
+  }
+  // Pre-order walk of the candidate roots named like options.root (all three steps of rootCandidates, the
+  // LiveDirector's root first), resumable from {root, rootId, path, emitted, walked}. A DEFERRED_ROOTS node
+  // is listed (with its childCount) but not descended while no skill cut-in plays. A chunk resumes its root
+  // by instanceId; walked lists the roots already done, so the next root is the first one not in it. A
+  // resumed root that is gone (a step-3 root goes with its camera) is noted as census.rootGone, counted as
+  // walked, and the chunk goes on with the next root.
   function partCensus(ctx, options) {
-    var cursor = cursorOf(options), done = Number(cursor.emitted) || 0;
-    var root = resolvePath(ctx, options.root || "/EntryPoint");
-    if (!root) return { census: { roots: [], nodes: [] }, next: null };
-    var COMP = H.findClass("UnityEngine.Component", true), nodes = [];
-    var result = walk(ctx, root, cursor.path, CAPS.censusDepth, Math.min(CAPS.censusChunk, CAPS.censusNodes - done), function (tr, path, names) {
+    var cursor = cursorOf(options), done = Number(cursor.emitted) || 0, r = Number(cursor.root) || 0, start = cursor.path;
+    var rootName = String(options.root || "/EntryPoint").replace(/^\//, "").split("/")[0], roots = rootCandidates(ctx, rootName, true);
+    var body = { census: { roots: roots.map(function (x, i) {
+      var item = { index: i, path: "/" + rootName, instanceId: x.instanceId, source: x.source };
+      if (x.via) item.via = x.via;
+      return item;
+    }), nodes: [] }, next: null };
+    if (r === 0 && !Array.isArray(cursor.path)) body.census.selfCheck = censusSelfCheck(ctx, rootName, roots);
+    var ids = roots.map(function (x) { return x.instanceId; });
+    // A cursor without walked (none of this agent's) counts the roots before its index as done.
+    var walked = Array.isArray(cursor.walked) ? cursor.walked.filter(function (id) { return typeof id === "number"; }) : ids.slice(0, r);
+    function nextRoot() { for (var i = 0; i < ids.length; i++) if (walked.indexOf(ids[i]) < 0) return i; return ids.length; }
+    if (typeof cursor.rootId === "number") {
+      r = ids.indexOf(cursor.rootId);
+      if (r < 0) {
+        body.census.rootGone = cursor.rootId;
+        walked.push(cursor.rootId);
+        r = nextRoot();
+        start = [];
+      }
+    }
+    if (r >= roots.length) return body;
+    var COMP = H.findClass("UnityEngine.Component", true), nodes = body.census.nodes, cutin = cutinState(ctx), skipDeferred = cutin.known && !cutin.playing;
+    var result = walk(ctx, roots[r].tr, start, CAPS.censusDepth, Math.min(CAPS.censusChunk, CAPS.censusNodes - done), function (tr, path, names) {
       var go = inv(ctx, "UnityEngine.Component", "get_gameObject", tr, []), count = childCount(ctx, tr);
       var node = { path: "/" + names.map(stripName).join("/"), index: path.length ? path[path.length - 1] : 0, depth: path.length,
         activeSelf: g(ctx, "UnityEngine.GameObject", "get_activeSelf", go, bool),
         activeInHierarchy: g(ctx, "UnityEngine.GameObject", "get_activeInHierarchy", go, bool), childCount: count, components: [] };
+      if (r > 0) node.rootIndex = r;
       var rawPath = "/" + names.join("/");
       if (rawPath !== node.path) node.rawPath = rawPath;
       try {
-        items(inv(ctx, "UnityEngine.Component", "GetComponents", tr, [COMP.type.object]), CAPS.components).forEach(function (component) {
+        componentsOf(ctx, go, COMP, CAPS.components).forEach(function (component) {
           node.components.push(isObj(component) ? H.fullType(component) : null);
         });
       } catch (error) { ctx.err("census.components", error); }
       nodes.push(node);
+      if (skipDeferred && DEFERRED_ROOTS.indexOf(node.path) >= 0 && count > 0) { node.skipped = "no skill cut-in playing"; return 0; }
       return count;
     });
     var total = done + result.emitted;
-    return { census: { roots: [options.root || "/EntryPoint"], nodes: nodes },
-      next: result.next && total < CAPS.censusNodes ? { path: result.next, emitted: total } : null };
+    if (total < CAPS.censusNodes) {
+      if (result.next) body.next = { root: r, rootId: ids[r], path: result.next, emitted: total, walked: walked };
+      else {
+        walked.push(ids[r]);
+        var n = nextRoot();
+        if (n < roots.length) body.next = { root: n, rootId: ids[n], path: [], emitted: total, walked: walked };
+      }
+    }
+    return body;
   }
   function partQuality(ctx) {
     var holders = ["LiveDirector", "LiveDirectorBase", "LiveCoreCameraManager", "LiveCoreStageManager", "LiveCoreMemberManager", "LiveMvScene"];
@@ -1040,10 +1370,14 @@
     out.unity.targetFrameRate = g(ctx, "UnityEngine.Application", "get_targetFrameRate", null);
     return { quality: out, next: null };
   }
-  function sortedActive(ctx, klass, cursor, cap, total, emitBudget, visit) {
+  // Active objects of klass by ascending instanceId, resumable from {phase, afterInstanceId, emitted}.
+  // Phase 0 lists the objects outside the deferred subtrees, phase 1 (only when `defer` is not skipped)
+  // the deferred ones, so a skill cut-in subtree is never listed before the stage.
+  function sortedActive(ctx, klass, cursor, cap, total, defer, visit) {
+    var phase = Number(cursor.phase) === 1 ? 1 : 0, deferredIds = defer ? defer.ids : {};
     var after = typeof cursor.afterInstanceId === "number" ? cursor.afterInstanceId : null, done = Number(cursor.emitted) || 0;
     var list = instances(ctx, klass, CAPS.enumerate).map(function (o) { return { o: o, id: iid(o) }; })
-      .filter(function (e) { return after === null || e.id > after; });
+      .filter(function (e) { return (phase === 1) === !!deferredIds[e.id] && (after === null || e.id > after); });
     list.sort(function (a, b) { return a.id - b.id; });
     var out = [], last = after, i;
     for (i = 0; i < list.length; i++) {
@@ -1054,8 +1388,11 @@
       if (!activeGo(ctx, list[i].o)) continue;
       try { out.push(visit(list[i].o, list[i].id, out.length)); } catch (error) { ctx.err("object:" + list[i].id, error); }
     }
-    var exhausted = i >= list.length || done + out.length >= total;
-    return { list: out, next: exhausted ? null : { afterInstanceId: last, emitted: done + out.length } };
+    var exhausted = i >= list.length || done + out.length >= total, next = null;
+    if (!exhausted) next = { phase: phase, afterInstanceId: last, emitted: done + out.length };
+    else if (phase === 0 && defer && !defer.skip && defer.components > 0 && done + out.length < total)
+      next = { phase: 1, afterInstanceId: null, emitted: done + out.length };
+    return { list: out, next: next };
   }
   function scopeOf(path) {
     var m = /^\/EntryPoint\/Live\/Members\/Member(\d+)(\/|$)/.exec(path || "");
@@ -1075,7 +1412,8 @@
   }
   function partRenderers(ctx, options) {
     var R = "UnityEngine.Renderer", SMR = H.findClass("UnityEngine.SkinnedMeshRenderer", true), MF = H.findClass("UnityEngine.MeshFilter", true);
-    var result = sortedActive(ctx, H.findClass(R, true), cursorOf(options), CAPS.rendererChunk, CAPS.renderers, null, function (r, id, n) {
+    var d = deferral(ctx, H.findClass(R, true)), HPB = "UnityEngine.Renderer::HasPropertyBlock", hasBlock = icallResolvable(HPB);
+    var result = sortedActive(ctx, H.findClass(R, true), cursorOf(options), CAPS.rendererChunk, CAPS.renderers, d, function (r, id, n) {
       var p = "renderers[" + n + "]", info = pathInfo(ctx, r), tr = trOf(ctx, r);
       var item = withPath({ key: "renderer:" + info.path }, info);
       item.scope = scopeOf(info.path); item.class = H.fullType(r); item.instanceId = id;
@@ -1103,9 +1441,14 @@
         item.materials.push({ slot: slot, instanceId: s.instanceId, name: s.name, shader: s.shader, renderQueue: s.renderQueue, keywords: s.keywords });
       });
       if (shared.total > shared.length) item.materialsTotal = shared.total;
+      // Renderer.HasPropertyBlock (engine icall): an Animator/AnimationTrack material curve writes the
+      // renderer's MaterialPropertyBlock, so sharedMaterial values of such a renderer are not what it draws.
+      if (hasBlock) item.hasPropertyBlock = ic(ctx, HPB, r);
       return item;
     });
-    return { renderers: result.list, next: result.next };
+    var body = { renderers: result.list, next: result.next, deferred: deferralSummary(d) };
+    if (!hasBlock) body.unavailable = { hasPropertyBlock: HPB + ": " + ICALL_UNREGISTERED };
+    return body;
   }
   var DEFAULT_PROPS = { _MainTex: "tex", _TintColor: "color", _AmbientColor: "color", _BlendColor: "color", _Color: "color",
     _EmissiveColor: "color", _EmissiveIntensity: "float", _Cutoff: "float", _MainTexMipmapBias: "float", _RimlightColor: "color",
@@ -1237,23 +1580,42 @@
       out.bones.push({ key: "member:" + member.slot + ":" + bones[i], path: root.info.path + "/" + bones[i], position: t.position,
         rotation: t.rotation, lossyScale: t.lossyScale, localPosition: t.localPosition, localRotation: t.localRotation });
     }
+    // Every channel of every skinned renderer of the member (CombineFace: EyeBlendShape.* / MouthBlendShape.*,
+    // the EyeWhiteLine renderers: *EyeWhiteLineBlendShape.*): `channels` holds each inspected weight
+    // (0-100, zeros included), `weights` the non-zero ones; path/rawPath let the host hand the face
+    // renderers to the frame records (options.faces).
     out.blendShapes = [];
-    var SMR = "UnityEngine.SkinnedMeshRenderer", recorded = 0;
+    var SMR = "UnityEngine.SkinnedMeshRenderer";
     instances(ctx, H.findClass(SMR, true), 1024).forEach(function (r) {
-      if (ctx.pastSoft() || recorded >= CAPS.blendShapes) return;
+      if (out.blendShapes.length && ctx.pastSoft()) { ctx.cut("members.blendShapes"); return; }
       var info = pathInfo(ctx, r);
       if (!info.path || info.path.indexOf(member.root + "/") !== 0 || !activeGo(ctx, r)) return;
       var mesh = g(ctx, SMR, "get_sharedMesh", r);
       if (!alive(mesh)) return;
-      var count = Number(g(ctx, "UnityEngine.Mesh", "get_blendShapeCount", mesh)) || 0, weights = {};
-      for (var k = 0; k < count && k < CAPS.blendShapesInspected && recorded < CAPS.blendShapes; k++) {
-        if (ctx.pastHard()) { ctx.cut("members.blendShapes"); break; }
-        var w = g(ctx, SMR, "GetBlendShapeWeight", r, function (v) { return num(ctx, v, "blendShape"); }, [k]);
-        if (w) { weights[g(ctx, "UnityEngine.Mesh", "GetBlendShapeName", mesh, str, [k]) || String(k)] = w; recorded++; }
-      }
-      out.blendShapes.push({ rendererKey: "renderer:" + info.path, count: count, weights: weights });
+      var w = blendWeights(ctx, r, mesh, "members.blendShapes");
+      var entry = withPath({ rendererKey: "renderer:" + info.path, count: w.count, weights: w.weights, channels: w.channels }, info);
+      if (w.incomplete) entry.incomplete = true;
+      out.blendShapes.push(entry);
     });
-    return { members: [out], next: index + 1 < list.length ? { index: index + 1 } : null };
+    var body = { members: [out], next: index + 1 < list.length ? { index: index + 1 } : null };
+    if (index === 0) section(ctx, body, "spotLights", function () { return readSpotLights(ctx); }, "optional");
+    return body;
+  }
+  // LiveCoreMemberSpotLightShaft / LiveCoreMemberSpotlightArea components (fields: cachedColor,
+  // currentDrawIndex, paused, followed member, shaft objects): the member spot light state.
+  function readSpotLights(ctx) {
+    var out = [];
+    ["MemberSpotLightShaft", "LiveCoreMemberSpotlightArea"].forEach(function (key) {
+      instances(ctx, cls(ctx, key), 32).forEach(function (object) {
+        if (out.length >= CAPS.spotLights || ctx.pastHard() || !activeGo(ctx, object)) return;
+        ctx.objects++;
+        var info = pathInfo(ctx, object), item = withPath({ key: "spotLight:" + info.path + "#" + object.class.name, class: H.fullType(object) }, info);
+        item.enabled = g(ctx, "UnityEngine.Behaviour", "get_enabled", object, bool);
+        item.fields = readFields(ctx, object, 1, "spotLights.fields");
+        out.push(item);
+      });
+    });
+    return out;
   }
   function springManagers(ctx) {
     var klass = cls(ctx, "SwingBoneManager"), out = [];
@@ -1329,46 +1691,274 @@
     return { stageNodes: out, next: more ? { binding: b, path: [], emitted: done + out.length } : null };
   }
   function partParticles(ctx, options) {
-    var P = "UnityEngine.ParticleSystem", PSR = H.findClass("UnityEngine.ParticleSystemRenderer", true);
-    var result = sortedActive(ctx, H.findClass(P, true), cursorOf(options), CAPS.particleChunk, CAPS.particles, null, function (ps, id, n) {
+    var P = "UnityEngine.ParticleSystem", PSR = H.findClass("UnityEngine.ParticleSystemRenderer", true), klass = H.findClass(P, true);
+    function visit(ps, id, n) {
       var p = "particles[" + n + "]", info = pathInfo(ctx, ps), item = withPath({ key: "particles:" + info.path }, info);
       item.instanceId = id;
       item.isPlaying = g(ctx, P, "get_isPlaying", ps, bool);
       item.isEmitting = g(ctx, P, "get_isEmitting", ps, bool);
       item.isPaused = g(ctx, P, "get_isPaused", ps, bool);
+      item.isStopped = g(ctx, P, "get_isStopped", ps, bool);
       item.particleCount = g(ctx, P, "get_particleCount", ps);
       item.time = g(ctx, P, "get_time", ps, function (v) { return num(ctx, v, p + ".time", 9); });
+      item.duration = g(ctx, P, "get_duration", ps, function (v) { return num(ctx, v, p + ".duration", 9); });
+      // ParticleSystem.playbackSpeed returns main.simulationSpeed (Unity 2018.4).
+      item.simulationSpeed = g(ctx, P, "get_playbackSpeed", ps, function (v) { return num(ctx, v, p + ".simulationSpeed", 9); });
+      item.automaticCullingEnabled = g(ctx, P, "get_automaticCullingEnabled", ps, bool);
       item.randomSeed = g(ctx, P, "get_randomSeed", ps, function (v) { return num(ctx, v, p + ".randomSeed", 15); });
       item.useAutoRandomSeed = g(ctx, P, "get_useAutoRandomSeed", ps, bool);
       var renderer = PSR ? g(ctx, "UnityEngine.Component", "GetComponent", ps, null, [PSR.type.object]) : null;
       item.rendererEnabled = alive(renderer) ? g(ctx, "UnityEngine.Renderer", "get_enabled", renderer, bool) : null;
+      if (alive(renderer)) item.rendererVisible = g(ctx, "UnityEngine.Renderer", "get_isVisible", renderer, bool);
       return item;
+    }
+    if (Array.isArray(options.roots) && options.roots.length) return windowParticles(ctx, options, klass, visit);
+    var d = deferral(ctx, klass);
+    var result = sortedActive(ctx, klass, cursorOf(options), CAPS.particleChunk, CAPS.particles, d, visit);
+    return { particles: result.list, next: result.next, deferred: deferralSummary(d) };
+  }
+  // Window mode (options.roots): only the systems under the named scene roots, e.g. the
+  // "<prefab> [Timeline]" instances a CustomControl/Control clip creates while its window is open.
+  // Resumable from {afterInstanceId}.
+  function windowParticles(ctx, options, klass, visit) {
+    var cursor = cursorOf(options), after = typeof cursor.afterInstanceId === "number" ? cursor.afterInstanceId : null;
+    var list = [], seen = {}, roots = [], missing = {}, inactive = 0, scan = null;
+    function add(ps) {
+      var id = isObj(ps) ? iid(ps) : null;
+      if (id !== null && !seen[id]) { seen[id] = true; list.push({ o: ps, id: id }); }
+    }
+    options.roots.slice(0, 8).forEach(function (name) {
+      var path = "/" + String(name).replace(/^\//, ""), tr = null, entry = { path: path, found: false };
+      try { tr = resolvePath(ctx, path); } catch (error) { ctx.err("particles.roots", error); }
+      roots.push(entry);
+      if (!tr) { missing[path.slice(1)] = entry; return; }
+      entry.found = true;
+      componentsInChildren(ctx, tr, klass, CAPS.particles).forEach(add);
     });
-    return { particles: result.list, next: result.next };
+    if (Object.keys(missing).length) {
+      try { scan = particlesByRootName(ctx, klass, missing, add); } catch (error) { ctx.err("particles.rootScan", error); }
+    }
+    list.sort(function (a, b) { return a.id - b.id; });
+    var out = [], last = after, i;
+    for (i = 0; i < list.length && out.length < CAPS.particleChunk; i++) {
+      if (after !== null && list[i].id <= after) continue;
+      if (out.length && ctx.pastSoft()) { ctx.cut("objects"); break; }
+      last = list[i].id;
+      ctx.objects++;
+      if (!activeGo(ctx, list[i].o)) { inactive++; continue; }
+      try { out.push(visit(list[i].o, list[i].id, out.length)); } catch (error) { ctx.err("object:" + list[i].id, error); }
+    }
+    var body = { particles: out, roots: roots, systems: list.length, inactive: inactive, next: i < list.length ? { afterInstanceId: last } : null };
+    if (scan) body.scan = scan;
+    return body;
+  }
+  // A root that resolvePath misses (GameObject.Find returning a timeline's "<prefab> [Timeline]" instance is
+  // unproven on a device; the 12035 dump saw those systems only by enumeration): one ParticleSystem
+  // enumeration, keeping the active systems outside the deferred subtrees whose root name (pathInfo, raw or
+  // with (Clone) stripped) is a wanted one. Inactive systems are skipped before their path is read.
+  function particlesByRootName(ctx, klass, wanted, add) {
+    var d = deferral(ctx, klass), out = { by: "ParticleSystem root name", systems: 0, active: 0, matched: 0, truncated: false };
+    var objects = instances(ctx, klass, CAPS.enumerate);
+    for (var i = 0; i < objects.length; i++) {
+      if (i > 0 && ctx.pastHard()) { out.truncated = true; ctx.cut("particles.rootScan"); break; }
+      var ps = objects[i], id = iid(ps);
+      out.systems++;
+      if (id === null || d.ids[id] || !activeGo(ctx, ps)) continue;
+      out.active++;
+      var info = pathInfo(ctx, ps), rawRoot = typeof info.rawPath === "string" ? info.rawPath.split("/")[1] : null;
+      var entry = (rawRoot !== null && wanted.hasOwnProperty(rawRoot) ? wanted[rawRoot] : null) ||
+        (wanted.hasOwnProperty(info.segments[0]) ? wanted[info.segments[0]] : null);
+      if (!entry) continue;
+      entry.found = true; entry.via = "ParticleSystem root name"; entry.systems = (entry.systems || 0) + 1;
+      out.matched++;
+      add(ps);
+    }
+    return out;
+  }
+  // ------------------------------------------------------------------ post effects
+  // LiveCoreCamera.postProcess (LiveCoreCameraPostProcess: behaviour, profile, flares[], enablePostEffect)
+  // -> PostProcessingBehaviour.profile (the profile the camera renders with) -> PostProcessingProfile
+  // {depthOfField, bloom, flare} (PostProcessingModel.m_Enabled + m_Settings). The LiveDepthOfField/Bloom/
+  // Flare timeline mixers write these settings every frame, so they are the per-frame DOF/bloom/flare values.
+  // Field reads only (UnityEngine.PostProcessing is script code, no engine call).
+  function f32(ctx, value, path) { return typeof value === "number" ? num(ctx, value, path, 7) : typeof value === "boolean" ? value : null; }
+  function vecOf(ctx, value, count, path) { return isObj(value) || (value && value.handle) ? raw(ctx, value, count, path, 7) : null; }
+  function modelEnabled(model) { var v = fv(model, "m_Enabled"); return typeof v === "boolean" ? v : null; }
+  function dofOf(ctx, profile) {
+    var model = fv(profile, "depthOfField");
+    if (!isObj(model)) return null;
+    var s = fv(model, "m_Settings");
+    return { enabled: modelEnabled(model), focusDistance: f32(ctx, fv(s, "focusDistance"), "post.dof.focusDistance"),
+      aperture: f32(ctx, fv(s, "aperture"), "post.dof.aperture"), focalLength: f32(ctx, fv(s, "focalLength"), "post.dof.focalLength"),
+      useCameraFov: f32(ctx, fv(s, "useCameraFov")), kernelSize: enumInt(fv(s, "kernelSize")), antiAura: f32(ctx, fv(s, "antiAura")) };
+  }
+  function bloomOf(ctx, profile) {
+    var model = fv(profile, "bloom");
+    if (!isObj(model)) return null;
+    var s = fv(model, "m_Settings"), b = fv(s, "bloom"), dirt = fv(s, "lensDirt"), tex = fv(dirt, "texture");
+    return { enabled: modelEnabled(model), intensity: f32(ctx, fv(b, "intensity"), "post.bloom.intensity"),
+      threshold: f32(ctx, fv(b, "threshold"), "post.bloom.threshold"), softKnee: f32(ctx, fv(b, "softKnee"), "post.bloom.softKnee"),
+      radius: f32(ctx, fv(b, "radius"), "post.bloom.radius"), antiFlicker: f32(ctx, fv(b, "antiFlicker")),
+      lensDirtIntensity: f32(ctx, fv(dirt, "intensity"), "post.bloom.lensDirt"), lensDirtTexture: alive(tex) ? nameOf(ctx, tex) : null };
+  }
+  function flareOf(ctx, profile) {
+    var model = fv(profile, "flare");
+    if (!isObj(model)) return null;
+    var list = fv(model, "m_Settings"), settings = [];
+    items(list instanceof Il2Cpp.Array ? list : null, CAPS.flareSettings).forEach(function (s, i) {
+      var p = "post.flare[" + i + "]";
+      settings.push({ color: vecOf(ctx, fv(s, "color"), 4, p + ".color"), center: vecOf(ctx, fv(s, "center"), 2, p + ".center"),
+        intensity: f32(ctx, fv(s, "intensity"), p + ".intensity"), smoothness: f32(ctx, fv(s, "smoothness"), p + ".smoothness"),
+        roundness: f32(ctx, fv(s, "roundness"), p + ".roundness"), rounded: f32(ctx, fv(s, "rounded")) });
+    });
+    return { enabled: modelEnabled(model), settings: settings };
+  }
+  function profileOf(ctx, profile) {
+    if (!alive(profile)) return null;
+    return { instanceId: iid(profile), name: nameOf(ctx, profile), dof: dofOf(ctx, profile), bloom: bloomOf(ctx, profile), flare: flareOf(ctx, profile) };
+  }
+  function postProcessValues(ctx, core) {
+    var out = { enablePostEffect: null, initialized: null, behaviour: null, profile: null, dof: null, bloom: null, flare: null, flares: [] };
+    var process = fv(core, "postProcess");
+    if (!alive(process)) { out.missing = "LiveCoreCamera.postProcess"; return out; }
+    out.instanceId = iid(process);
+    out.enabled = g(ctx, "UnityEngine.Behaviour", "get_enabled", process, bool);
+    var enable = fv(process, "enablePostEffect"), init = fv(process, "<IsInitialized>k__BackingField");
+    out.enablePostEffect = typeof enable === "boolean" ? enable : null;
+    out.initialized = typeof init === "boolean" ? init : null;
+    var behaviour = fv(process, "behaviour"), own = fv(process, "profile"), rendered = null;
+    if (alive(behaviour)) {
+      rendered = fv(behaviour, "profile");
+      var flag = fv(behaviour, "Enabled");
+      out.behaviour = { instanceId: iid(behaviour), enabled: g(ctx, "UnityEngine.Behaviour", "get_enabled", behaviour, bool),
+        Enabled: typeof flag === "boolean" ? flag : null, profileInstanceId: alive(rendered) ? iid(rendered) : null };
+    }
+    var profile = alive(rendered) ? rendered : own;
+    out.profile = profileOf(ctx, profile);
+    if (out.profile) {
+      out.dof = out.profile.dof; out.bloom = out.profile.bloom; out.flare = out.profile.flare;
+      out.profile.source = alive(rendered) ? "PostProcessingBehaviour.profile" : "LiveCoreCameraPostProcess.profile";
+      out.profile.sameAsPostProcessProfile = alive(own) ? iid(own) === out.profile.instanceId : null;
+      delete out.profile.dof; delete out.profile.bloom; delete out.profile.flare;
+    }
+    var flares = fv(process, "flares");
+    items(flares instanceof Il2Cpp.Array ? flares : null, CAPS.flareSettings).forEach(function (flare) {
+      if (!alive(flare)) return;
+      var fp = fv(flare, "profile"), index = fv(flare, "index"), on = fv(flare, "enablePostEffect"), model = alive(fp) ? flareOf(ctx, fp) : null;
+      out.flares.push({ instanceId: iid(flare), index: typeof index === "number" ? index : null, enablePostEffect: typeof on === "boolean" ? on : null,
+        enabled: g(ctx, "UnityEngine.Behaviour", "get_enabled", flare, bool), activeInHierarchy: activeGo(ctx, flare),
+        profileInstanceId: alive(fp) ? iid(fp) : null, flare: model });
+    });
+    return out;
+  }
+  // The LiveCoreCameras, the main camera rig's first.
+  function liveCoreCameras(ctx) {
+    if (ctx.memo.liveCoreCameras) return ctx.memo.liveCoreCameras;
+    var list = [];
+    instances(ctx, cls(ctx, "LiveCoreCamera"), 16).forEach(function (o) { if (list.length < CAPS.holders && activeGo(ctx, o)) list.push({ object: o, info: pathInfo(ctx, o) }); });
+    list.sort(function (a, b) { return (/\/MainCamera$/.test(b.info.path || "") ? 1 : 0) - (/\/MainCamera$/.test(a.info.path || "") ? 1 : 0); });
+    ctx.memo.liveCoreCameras = list;
+    return list;
+  }
+  function framePost(ctx) {
+    var first = liveCoreCameras(ctx)[0];
+    if (!first) return null;
+    var values = postProcessValues(ctx, first.object);
+    return { key: "post:" + first.info.path, enablePostEffect: values.enablePostEffect, dof: values.dof, bloom: values.bloom,
+      flare: values.flare, flares: values.flares.map(function (f) { return { index: f.index, enablePostEffect: f.enablePostEffect, enabled: f.enabled, flare: f.flare }; }) };
   }
   function partPost(ctx) {
-    var out = { holders: [], enablePostEffect: null }, seen = {};
-    function add(object, source) {
+    var out = { holders: [], enablePostEffect: null, dof: null, bloom: null, flare: null }, seen = {};
+    function add(object, source, extra) {
       var id = iid(object);
-      if (seen[id] || out.holders.length >= CAPS.holders || ctx.pastHard()) return;
+      if (seen[id] || out.holders.length >= CAPS.holders || ctx.pastHard()) return null;
       seen[id] = true;
       ctx.objects++;
       var info = pathInfo(ctx, object), item = withPath({ key: "post:" + info.path + "#" + object.class.name, class: H.fullType(object), source: source }, info);
       item.enabled = g(ctx, "UnityEngine.Behaviour", "get_enabled", object, bool);
       item.fields = readFields(ctx, object, 0, "post.fields");
-      if (item.fields && item.fields.enablePostEffect && out.enablePostEffect === null) out.enablePostEffect = item.fields.enablePostEffect.v;
+      if (extra) Object.keys(extra).forEach(function (k) { item[k] = extra[k]; });
       out.holders.push(item);
+      return item;
     }
-    instances(ctx, cls(ctx, "LiveCoreCamera"), 16).forEach(function (o) { if (activeGo(ctx, o)) add(o, "LiveCoreCamera"); });
+    liveCoreCameras(ctx).forEach(function (entry, i) {
+      var values = postProcessValues(ctx, entry.object);
+      add(entry.object, "LiveCoreCamera", { postProcess: values });
+      if (i === 0) {
+        out.enablePostEffect = values.enablePostEffect; out.dof = values.dof; out.bloom = values.bloom; out.flare = values.flare;
+        out.source = "post:" + entry.info.path;
+      }
+    });
     var COMP = H.findClass("UnityEngine.Component", true);
     cameraCensus(ctx).slice(0, CAPS.camerasDetailed).forEach(function (c) {
       if (ctx.pastSoft()) return;
-      items(g(ctx, "UnityEngine.Component", "GetComponents", c.object, null, [COMP.type.object]), 24).forEach(function (component) {
-        if (isObj(component) && POST_CLASS.test(component.class.name) && alive(component)) add(component, "camera:" + c.key);
-      });
+      try {
+        componentsOf(ctx, c.object, COMP, 24).forEach(function (component) {
+          if (isObj(component) && POST_CLASS.test(component.class.name) && alive(component)) add(component, "camera:" + c.key);
+        });
+      } catch (error) { ctx.err("post.components", error); }
     });
     return { post: out, next: null };
   }
+  // ------------------------------------------------------------------ timeline (clip windows)
+  // The main director's TimelineAsset read through fields only (m_Tracks / m_Children / m_Clips,
+  // TimelineClip.m_Start / m_Duration / m_DisplayName / m_Asset, CustomControlAsset.prefabGameObject):
+  // the windows in which a CustomControl/Control clip has instantiated its "<prefab> [Timeline]" root, so
+  // the host can sample those particle systems while they exist. Tracks of other classes are counted only.
+  var TIMELINE_CLIPS = /(^|\.)(CustomControlTrack|ControlTrack|ActivationTrack|LiveDisplayTrack)$/;
+  function listItems(value, cap) {
+    if (value instanceof Il2Cpp.Array) return items(value, cap);
+    if (!isObj(value)) return [];
+    var backing = fv(value, "_items"), size = Number(fv(value, "_size")) || 0;
+    var list = backing instanceof Il2Cpp.Array ? items(backing, Math.min(cap, size)) : [];
+    list.total = size;
+    return list;
+  }
+  function timelineTracks(asset) {
+    var out = [];
+    function visit(track, depth, parent) {
+      if (!isObj(track) || out.length >= CAPS.timelineTracks) return;
+      out.push({ track: track, depth: depth, parent: parent });
+      // This track's own index, taken before its children (and their subtrees) are appended.
+      var own = out.length - 1;
+      if (depth < 3) listItems(fv(track, "m_Children"), 64).forEach(function (child) { visit(child, depth + 1, own); });
+    }
+    listItems(fv(asset, "m_Tracks"), 128).forEach(function (track) { visit(track, 0, null); });
+    return out;
+  }
+  function partTimeline(ctx, options, directors) {
+    var main = directors && directors.main, cursor = cursorOf(options), start = Number(cursor.track) || 0;
+    if (!main) return { timeline: { missing: "main director" }, next: null };
+    var asset = g(ctx, "UnityEngine.Playables.PlayableDirector", "get_playableAsset", main.object);
+    if (!alive(asset)) return { timeline: { missing: "playableAsset" }, next: null };
+    var tracks = timelineTracks(asset), out = { asset: nameOf(ctx, asset), assetClass: H.fullType(asset), director: main.item.key,
+      trackCount: tracks.length, tracks: [] }, i;
+    for (i = start; i < tracks.length && out.tracks.length < CAPS.timelineChunk; i++) {
+      if (out.tracks.length && ctx.pastSoft()) { ctx.cut("timeline"); break; }
+      var entry = tracks[i], track = entry.track, klass = H.fullType(track);
+      if (!TIMELINE_CLIPS.test(klass)) continue;
+      ctx.objects++;
+      var muted = fv(track, "m_Muted"), item = { index: i, depth: entry.depth, parent: entry.parent, class: klass,
+        name: alive(track) ? nameOf(ctx, track) : null, muted: typeof muted === "boolean" ? muted : null, clips: [] };
+      var clips = listItems(fv(track, "m_Clips"), CAPS.timelineClips);
+      item.clipCount = clips.total !== undefined ? clips.total : clips.length;
+      clips.forEach(function (clip) {
+        if (!isObj(clip)) return;
+        var s = fv(clip, "m_Start"), d = fv(clip, "m_Duration"), clipAsset = fv(clip, "m_Asset"), name = str(fv(clip, "m_DisplayName"));
+        var c = { start: typeof s === "number" ? num(ctx, s, "timeline.start", 9) : null, duration: typeof d === "number" ? num(ctx, d, "timeline.duration", 9) : null,
+          name: name === null ? null : name.slice(0, CAPS.stringChars) };
+        if (alive(clipAsset)) {
+          c.assetClass = H.fullType(clipAsset);
+          var prefab = fv(clipAsset, "prefabGameObject");
+          if (alive(prefab)) c.prefab = nameOf(ctx, prefab);
+        }
+        item.clips.push(c);
+      });
+      out.tracks.push(item);
+    }
+    return { timeline: out, next: i < tracks.length ? { track: i } : null };
+  }
+
   function sample(options) {
     var part = String(options.part || "frame");
     if (PARTS.indexOf(part) < 0) throw new Error("MVDUMP_UNKNOWN_PART:" + part);
@@ -1378,7 +1968,8 @@
     section(ctx, record, "clock", function () { return readClock(ctx, directors); }, "always");
     var body = null;
     try {
-      if (part === "census") body = partCensus(ctx, options);
+      if (part === "timeline") body = partTimeline(ctx, options, directors);
+      else if (part === "census") body = partCensus(ctx, options);
       else if (part === "quality") body = partQuality(ctx, options);
       else if (part === "fovmodNative") body = { fovmodNative: H.nativeFeatureState(), next: null };
       else if (part === "renderers") body = partRenderers(ctx, options);
@@ -1467,6 +2058,12 @@
     }
     if (chunk === 0) {
       try { var o = initOffsets(); out.objectLayout = { m_CachedPtr: o.cachedPtr, m_InstanceID: o.instanceId }; } catch (error) { out.objectLayout = { error: short(error) }; }
+      // Name resolution only (il2cpp_resolve_icall): which engine getters the RenderSettings and
+      // HasPropertyBlock reads can use. Nothing is called.
+      out.icalls = {};
+      Object.keys(ICALLS).forEach(function (name) {
+        try { out.icalls[name] = !!icallFunction(name); } catch (error) { out.icalls[name] = short(error); }
+      });
     }
     out.resolved = {};
     Object.keys(resolved).forEach(function (k) { out.resolved[k] = resolved[k]; });
@@ -1475,7 +2072,7 @@
   }
 
   globalThis.QA_MVDUMP_EXT = Object.freeze({ version: EXT_VERSION, parts: PARTS.slice(), deny: DENY.source,
-    allow: JSON.parse(JSON.stringify(ALLOW)), classTable: JSON.parse(JSON.stringify(CLASS_TABLE)), caps: JSON.parse(JSON.stringify(CAPS)),
+    allow: JSON.parse(JSON.stringify(ALLOW)), icalls: JSON.parse(JSON.stringify(ICALLS)), deferredRoots: DEFERRED_ROOTS.slice(), classTable: JSON.parse(JSON.stringify(CLASS_TABLE)), caps: JSON.parse(JSON.stringify(CAPS)),
     budgets: JSON.parse(JSON.stringify(BUDGET)) });
   rpc.exports.mvruntimeprobe = function (options) {
     requireReady();

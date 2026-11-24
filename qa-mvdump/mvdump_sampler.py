@@ -14,6 +14,26 @@ r8 cached dispatcher; host RPC timeout 12 s > the dispatcher's 10 s ticket timeo
     director time 0.3 s, D/4, D/2, 3D/4 and D - 8 s, D = the main director's duration. If no
     director plays MV_RUNTIME_DUMP_DISCOVERY_SECONDS (90) after the scene, a separate discovery
     pass (-1) runs; it never uses up pass 0, which still waits for playback;
+  - part order per pass (PASS_PARTS): pass 0 reads the timeline first, then the members; the
+    late passes (3, 4) read members, materials (through the material catalog of the last
+    complete renderers part), post and particles before the renderers, so those values reach
+    the song's end (the 12035 Max 3D dump stopped them at 80.4 s). The end pass (D - 8 s) has
+    room for about 7 chunks before D at the 12035 dump's rate (~1 chunk per director second):
+    it reads post (1 chunk) and particles (2-3) before materials (~4 without the skill cut-in),
+    since pass 3 already read materials from 3D/4 and particles have no per-frame section;
+  - the carried material catalog: renderers are pass 3's last part, so pass 4 reads materials
+    through pass 3's renderers (materialSource 'pass 3 renderers') only when pass 3 completes
+    them before D - 8 s; when the end pass preempts pass 3 it reads pass 2's ('pass 2
+    renderers', or an earlier pass's if pass 2 was cut too). A renderers part cut short (part
+    errors, chunk cap) does not replace a complete catalog; the materials records' materialSource
+    says which catalog was read;
+  - particle windows: the timeline part lists the CustomControl/Control clips with their prefab;
+    while a clip's window is open (start + 0.25 s .. end - 0.1 s) and it was not sampled yet, a
+    window run (pass 10+n, part particles with options.roots = ["<prefab> [Timeline]"]) takes the
+    chunk slots ahead of the current pass; a root the agent's path lookup misses is found through
+    one ParticleSystem enumeration by the systems' root name (roots[].via, record.scan);
+  - faces: the members part's skinned renderers with blend shapes (per member, up to 4) are sent
+    with every frame (options.faces), so CombineFace channel weights are sampled per frame;
   - budgets: MV_RUNTIME_DUMP_FRAME_BUDGET_MS (60/150) and MV_RUNTIME_DUMP_FULL_BUDGET_MS
     (80/200) as soft/hard ms, recorded in header.budgets;
   - stop rules: mv-ended, scene-changed, director-missing, wall-cap (first Playing frame +
@@ -39,18 +59,30 @@ import time
 
 import rtdump_codec as codec
 
-SAMPLER_VERSION = 1
+SAMPLER_VERSION = 2
 LIVE_SCENES = ('LiveMv', 'LiveMvCore')
-PARTS_ALL = ['census', 'quality', 'fovmodNative', 'renderers', 'materials', 'lightingRefs', 'members', 'springs',
-             'stageNodes', 'particles', 'post']
-PARTS_MID = ['renderers', 'materials', 'members', 'springs', 'stageNodes', 'particles', 'post']
-PASS_PARTS = {-1: PARTS_ALL, 0: PARTS_ALL, 1: PARTS_MID, 2: PARTS_MID, 3: PARTS_MID, 4: PARTS_ALL}
+PARTS_ALL = ['timeline', 'members', 'census', 'quality', 'fovmodNative', 'renderers', 'materials', 'lightingRefs', 'post',
+             'particles', 'springs', 'stageNodes']
+PARTS_MID = ['members', 'post', 'renderers', 'materials', 'particles', 'springs', 'stageNodes']
+# Late passes: members/materials/post/particles first (materials from the carried catalog), renderers last.
+# The end pass puts post and particles before materials (see the module docstring).
+PARTS_LATE = ['members', 'materials', 'post', 'particles', 'springs', 'stageNodes', 'renderers']
+PARTS_END = ['members', 'post', 'particles', 'materials', 'quality', 'fovmodNative', 'census', 'springs', 'stageNodes',
+             'lightingRefs', 'renderers']
+PASS_PARTS = {-1: PARTS_ALL, 0: PARTS_ALL, 1: PARTS_MID, 2: PARTS_MID, 3: PARTS_LATE, 4: PARTS_END}
 DISCOVERY_PASS = -1
+WINDOW_PASS_BASE = 10      # window runs are passes 10, 11, ... (record ids p10-particles-00, ...)
+MAX_WINDOW_RUNS = 32
+MAX_WINDOWS = 64
+WINDOW_LEAD_S = 0.25       # after the clip start the "<prefab> [Timeline]" instance exists
+WINDOW_TAIL_S = 0.1
+WINDOW_TRACKS = ('CustomControlTrack', 'ControlTrack')
+FACE_RENDERERS = 4         # skinned renderers with blend shapes sent per member with every frame
 # Schema section 7 (the agent enforces them; recorded in header.limits).
 CAPS = {'directors': 8, 'cameras': 16, 'camerasDetailed': 8, 'correctors': 8, 'cameraWork': 4, 'lights': 16, 'globals': 20,
         'anchors': 8, 'censusNodes': 400, 'censusDepth': 6, 'censusChunk': 80, 'components': 12, 'renderers': 400,
         'rendererChunk': 24, 'materials': 256, 'materialChunk': 8, 'properties': 48, 'keywords': 16, 'bonesPerMember': 24,
-        'blendShapesInspected': 64, 'blendShapes': 24, 'swingBones': 64, 'stageNodes': 256, 'stageChunk': 64,
+        'blendShapesInspected': 64, 'swingBones': 64, 'stageNodes': 256, 'stageChunk': 64,
         'particles': 160, 'particleChunk': 40, 'fields': 48, 'fieldDepth': 2, 'arrayItems': 8, 'stringChars': 120}
 MAX_CHUNKS_PER_PART = 48
 MAX_PART_ERRORS = 3
@@ -132,7 +164,13 @@ class Config:
                 'wallCapRule': 'first Playing frame + duration + playTailS (extended while the director advances), '
                                'never past wallCapS from the scene',
                 'discoveryS': self.discovery, 'rebinds': self.rebinds, 'arrays': self.arrays,
-                'propertyBlocks': False, 'partsPerInterval': self.parts_per_interval, 'logCapB64': self.log_cap,
+                # Property block VALUES are not read (the GL client strips MaterialPropertyBlock and
+                # Renderer.GetPropertyBlock); renderers[].hasPropertyBlock comes from the engine icall.
+                'propertyBlocks': False, 'propertyBlockPresence': True,
+                'windows': {'tracks': list(WINDOW_TRACKS), 'leadS': WINDOW_LEAD_S, 'tailS': WINDOW_TAIL_S,
+                            'maxRuns': MAX_WINDOW_RUNS, 'passBase': WINDOW_PASS_BASE},
+                'facesPerMember': FACE_RENDERERS,
+                'partsPerInterval': self.parts_per_interval, 'logCapB64': self.log_cap,
                 'probeCapB64': self.probe_cap(), 'maxChunksPerPart': MAX_CHUNKS_PER_PART, 'caps': CAPS}
 
     def budgets(self):
@@ -199,6 +237,9 @@ class Dumper:
         self.probe, self.header_reads, self.end_reads, self.screen_reads = None, None, None, None
         self.keys, self.keys_info = {}, None
         self.shots, self.last_shot = [], None
+        self.material_catalog = None            # material order/users/refs of the last complete renderers part
+        self.faces, self.faces_by_slot = [], {}  # frame face renderers from the members part
+        self.windows, self.window_run, self.window_runs = [], None, []
         self.t0 = self.mono()
         self.last_lifetime = self.t0
         self.started_iso = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
@@ -422,9 +463,92 @@ class Dumper:
 
     def frame_options(self):
         keys = self.keys or {}
-        return {'part': 'frame', 'arrays': self.cfg.arrays, 'budget': self.cfg.frame_budget,
-                'keys': {'globals': keys.get('globals'), 'vectorArrays': keys.get('vectorArrays'),
-                         'member': {'anchors': (keys.get('member') or {}).get('anchors')}, 'stageOrigin': keys.get('stageOrigin')}}
+        options = {'part': 'frame', 'arrays': self.cfg.arrays, 'budget': self.cfg.frame_budget,
+                   'keys': {'globals': keys.get('globals'), 'vectorArrays': keys.get('vectorArrays'),
+                            'member': {'anchors': (keys.get('member') or {}).get('anchors')}, 'stageOrigin': keys.get('stageOrigin')}}
+        if self.faces:
+            options['faces'] = self.faces
+        return options
+
+    # ------------------------------------------------------------ learned from parts
+    def learn_faces(self, rec):
+        """Face renderers per member slot from a members record: skinned renderers with blend shapes,
+        most channels first (CombineFace, then the EyeWhiteLine renderers), raw paths for Transform.Find."""
+        for member in rec.get('members') or []:
+            slot = member.get('slot')
+            shapes = [b for b in member.get('blendShapes') or [] if isinstance(b, dict) and isinstance(b.get('count'), int)
+                      and b['count'] > 0 and isinstance(b.get('rawPath') or b.get('path'), str)]
+            shapes.sort(key=lambda b: (-b['count'], b.get('rendererKey') or ''))
+            self.faces_by_slot[slot] = [{'slot': slot, 'key': b.get('rendererKey'), 'path': b.get('rawPath') or b.get('path')}
+                                        for b in shapes[:FACE_RENDERERS]]
+        self.faces = [face for slot in sorted(self.faces_by_slot, key=lambda s: (s is None, s or 0)) for face in self.faces_by_slot[slot]]
+
+    def learn_windows(self, rec):
+        """CustomControl/Control clip windows (with a prefab) from a timeline record."""
+        known = {(w['start'], w['prefab']) for w in self.windows}
+        for track in (rec.get('timeline') or {}).get('tracks') or []:
+            klass = str(track.get('class') or '')
+            if track.get('muted') or not klass.endswith(WINDOW_TRACKS):
+                continue
+            for clip in track.get('clips') or []:
+                start, duration, prefab = clip.get('start'), clip.get('duration'), clip.get('prefab')
+                if not isinstance(start, (int, float)) or not isinstance(duration, (int, float)) or duration <= 0 \
+                        or not isinstance(prefab, str) or not prefab or (start, prefab) in known or len(self.windows) >= MAX_WINDOWS:
+                    continue
+                known.add((start, prefab))
+                self.windows.append({'start': start, 'end': start + duration, 'prefab': prefab, 'root': prefab + ' [Timeline]',
+                                     'track': track.get('name'), 'sampled': False})
+        self.windows.sort(key=lambda w: (w['start'], w['prefab']))
+
+    # ------------------------------------------------------------ particle windows
+    def due_windows(self, t):
+        return [w for w in self.windows if not w['sampled'] and w['start'] + WINDOW_LEAD_S <= t < w['end'] - WINDOW_TAIL_S]
+
+    def check_windows(self, t, active):
+        if self.window_run is not None or not active or not isinstance(t, (int, float)) or len(self.window_runs) >= MAX_WINDOW_RUNS:
+            return
+        due = self.due_windows(t)
+        if not due:
+            return
+        roots = []
+        for w in due:
+            w['sampled'] = True
+            if w['root'] not in roots and len(roots) < 8:
+                roots.append(w['root'])
+        n = len(self.window_runs)
+        self.window_run = {'pass': WINDOW_PASS_BASE + n, 'roots': roots, 'cursor': {}, 'chunk': 0, 'errors': 0, 'startedAt': t,
+                           'clips': [{'start': w['start'], 'end': round(w['end'], 4), 'prefab': w['prefab']} for w in due],
+                           'startedWall': round(self.mono() - self.t0, 1), 'found': None, 'particles': 0}
+        self.log('RTDUMP-WINDOW', {'pass': self.window_run['pass'], 'start': t, 'roots': roots})
+
+    def run_window_chunk(self):
+        run = self.window_run
+        rec = self.record('particles', {'part': 'particles', 'roots': run['roots'], 'cursor': run['cursor'], 'budget': self.cfg.full_budget},
+                          'full', {'pass': run['pass'], 'chunk': run['chunk']})
+        if rec is None:
+            run['errors'] += 1
+            if run['errors'] >= MAX_PART_ERRORS:
+                self.close_window(False, 'errors')
+            return
+        run['errors'] = 0
+        run['particles'] += len(rec.get('particles') or [])
+        if run['found'] is None:
+            run['found'] = rec.get('roots')
+        nxt = rec.get('next')
+        if nxt and run['chunk'] + 1 < MAX_CHUNKS_PER_PART:
+            run['chunk'] += 1
+            run['cursor'] = nxt
+        else:
+            self.close_window(not nxt, None)
+
+    def close_window(self, complete, why):
+        run = self.window_run
+        entry = {k: run[k] for k in ('pass', 'roots', 'clips', 'startedAt', 'startedWall', 'found', 'particles')}
+        entry.update(complete=complete, endedAt=self.last_time, chunks=run['chunk'] + 1)
+        if why:
+            entry['closed'] = why
+        self.window_runs.append(entry)
+        self.window_run = None
 
     def part_options(self, part, cur):
         keys = self.keys or {}
@@ -451,6 +575,14 @@ class Dumper:
         self.current = {'pass': k, 'parts': list(PASS_PARTS[k]), 'part_i': 0, 'chunk': 0, 'cursor': {}, 'startedAt': at,
                         'reason': reason, 'done': [], 'partial': [], 'errors': 0, 'materialOrder': [], 'materialUsers': {},
                         'materialRefs': {}, 'startedSeq': self.seq, 'startedWall': round(self.mono() - self.t0, 1)}
+        parts = self.current['parts']
+        # A pass that reads materials before its renderers resolves them through the catalog of the
+        # last complete renderers part (renderer path + slot, instance ids checked by the agent).
+        if 'materials' in parts and 'renderers' in parts and parts.index('materials') < parts.index('renderers') and self.material_catalog:
+            catalog = json.loads(json.dumps(self.material_catalog))
+            self.current.update(materialOrder=catalog['order'], materialUsers={int(k): v for k, v in catalog['users'].items()},
+                                materialRefs={int(k): v for k, v in catalog['refs'].items()})
+            self.current['materialSource'] = catalog['source']
         if k == DISCOVERY_PASS:
             self.discovery_started = True
             self.current['discovery'] = True
@@ -533,6 +665,7 @@ class Dumper:
                 self.not_playing = 0
         if self.stop_reason:
             return
+        self.check_windows(t, active)
         targets = self.targets()
         cur = self.current
         if cur and 0 <= cur['pass'] < 4 and 4 in targets and self.next_pass <= 4 and active and t >= targets[4]:
@@ -592,15 +725,24 @@ class Dumper:
                             cur['materialOrder'].append(iid)
                         cur['materialUsers'][iid] = []
                         cur['materialRefs'][iid] = []
-                    cur['materialUsers'][iid].append(f'{renderer.get("key")}#{slot.get("slot")}')
+                    users, user = cur['materialUsers'][iid], f'{renderer.get("key")}#{slot.get("slot")}'
+                    if user not in users:
+                        users.append(user)
                     path = renderer.get('rawPath') or renderer.get('path')
                     refs = cur['materialRefs'][iid]
-                    if isinstance(path, str) and isinstance(slot.get('slot'), int) and len(refs) < 2:
-                        refs.append({'path': path, 'slot': slot['slot'], 'rendererId': renderer.get('instanceId')})
+                    ref = {'path': path, 'slot': slot.get('slot'), 'rendererId': renderer.get('instanceId')}
+                    if isinstance(path, str) and isinstance(slot.get('slot'), int) and len(refs) < 2 and ref not in refs:
+                        refs.append(ref)
         if part == 'materials':
             index = int(cur['cursor'].get('index', 0)) + max(1, int(rec.get('processed') or 0))
             nxt = {'index': index} if index < len(cur['materialOrder']) else None
             rec['next'] = nxt
+            if cur.get('materialSource'):
+                rec['materialSource'] = cur['materialSource']
+        if part == 'members':
+            self.learn_faces(rec)
+        if part == 'timeline':
+            self.learn_windows(rec)
         if nxt:
             cur['chunk'] += 1
             cur['cursor'] = nxt
@@ -613,10 +755,25 @@ class Dumper:
 
     def advance_part(self):
         cur = self.current
+        part = cur['parts'][cur['part_i']]
+        if part == 'renderers' and cur['materialOrder']:
+            # A renderers part cut short (MAX_PART_ERRORS, MAX_CHUNKS_PER_PART) lists only some
+            # renderers: it replaces no catalog or a partial one, never a complete one.
+            partial = part in cur['partial']
+            if not partial or self.material_catalog is None or self.material_catalog.get('partial'):
+                self.material_catalog = {'order': list(cur['materialOrder']), 'users': {str(k): v for k, v in cur['materialUsers'].items()},
+                                         'refs': {str(k): v for k, v in cur['materialRefs'].items()},
+                                         'source': f'pass {cur["pass"]} renderers' + (' (partial)' if partial else '')}
+                if partial:
+                    self.material_catalog['partial'] = True
         cur['part_i'] += 1
         cur['chunk'], cur['cursor'], cur['errors'] = 0, {}, 0
         if cur['part_i'] >= len(cur['parts']):
             self.close_pass(not cur['partial'], None)
+        elif cur['parts'][cur['part_i']] == 'renderers' and cur.get('materialSource'):
+            # The pass read its materials through the carried catalog already: its own renderers
+            # part builds a fresh catalog (no users appended twice, none left over from that pass).
+            cur.update(materialOrder=[], materialUsers={}, materialRefs={})
 
     @staticmethod
     def director_time(rec):
@@ -681,9 +838,13 @@ class Dumper:
             # The chunk budget comes first: after every frame record up to parts_per_interval
             # chunks run even when the next frame is already due. Otherwise a frame round trip
             # >= the interval would leave no room for any chunk and starve every full pass.
-            if self.current is not None and parts_since_frame < self.cfg.parts_per_interval:
+            if (self.window_run is not None or self.current is not None) and parts_since_frame < self.cfg.parts_per_interval:
                 parts_since_frame += 1
-                self.run_chunk()
+                # An open particle window goes first: its prefab instance exists only inside the clip.
+                if self.window_run is not None:
+                    self.run_window_chunk()
+                else:
+                    self.run_chunk()
                 continue
             if now >= next_frame:
                 sent = self.mono()
@@ -784,7 +945,8 @@ class Dumper:
             for path, same in groups.items():
                 if len(same) < 2:
                     continue
-                same.sort(key=lambda n: n.get('index') or 0)
+                # Same-name roots (census.roots, live root first) before sibling order.
+                same.sort(key=lambda n: (n.get('rootIndex') or 0, n.get('index') or 0))
                 for k, node in enumerate(same):
                     node.setdefault('rawPath', path)
                     node['path'] = f'{path}#{k}'
@@ -797,13 +959,35 @@ class Dumper:
         return {'directorFirst': times[0] if times else None, 'directorLast': times[-1] if times else None, 'duration': d,
                 'fraction': round(covered / d, 4) if isinstance(d, (int, float)) and d > 0 else 0.0, 'frames': len(times)}
 
+    def part_coverage(self):
+        """Per full part (window runs as particles:window): records and the first/last director time,
+        so a part whose values stop before the song's end is visible in the trailer."""
+        out = {}
+        for r in self.records:
+            if r.get('kind') != 'full':
+                continue
+            t = (r.get('clock') or {}).get('directorTime')
+            name = r.get('part') + (':window' if isinstance(r.get('pass'), int) and r['pass'] >= WINDOW_PASS_BASE else '')
+            entry = out.setdefault(name, {'records': 0, 'first': None, 'last': None})
+            entry['records'] += 1
+            if isinstance(t, (int, float)):
+                entry['first'] = t if entry['first'] is None else min(entry['first'], t)
+                entry['last'] = t if entry['last'] is None else max(entry['last'], t)
+        return out
+
     def trailer(self, release, dispatcher):
         if self.pending_gap is not None:
             gap = self.pending_gap
             self.gaps.append({'fromDirector': gap['fromDirector'], 'toDirector': None, 'wallSeconds': round(self.mono() - gap['wallStart'], 1),
                               'reason': gap['reason'], 'rebind': gap['rebind'], 'open': True})
             self.pending_gap = None
+        if self.window_run is not None:
+            self.close_window(False, 'dump ended')
+        windows = {'clips': [{k: w[k] for k in ('start', 'end', 'prefab', 'track', 'sampled')} for w in self.windows],
+                   'runs': self.window_runs}
         return {'records': {'frame': self.frames, 'full': self.fulls}, 'coverage': self.coverage(),
+                'partCoverage': self.part_coverage(), 'windows': windows,
+                'faces': [{k: f[k] for k in ('slot', 'key')} for f in self.faces],
                 'passes': self.passes + ([dict({'pass': self.current['pass'], 'startedAt': self.current['startedAt'], 'complete': False,
                                                 'parts': self.current['done'], 'partial': self.current['partial'],
                                                 'reason': self.current['reason'], 'endedAt': self.last_time,
@@ -888,12 +1072,14 @@ class Dumper:
                'cost': {'p50Ms': _pct(self.costs, .5), 'p95Ms': _pct(self.costs, .95), 'maxMs': _pct(self.costs, 1.0),
                         'rttP50Ms': _pct(self.rtts, .5), 'truncatedPct': round(100.0 * self.truncated / max(1, len(self.costs)), 1)},
                'passes': [[p.get('pass'), bool(p.get('complete'))] for p in doc['trailer'].get('passes') or []],
+               'partLast': {name: v.get('last') for name, v in sorted((doc['trailer'].get('partCoverage') or {}).items())},
+               'windows': [len((doc['trailer'].get('windows') or {}).get('clips') or []), len((doc['trailer'].get('windows') or {}).get('runs') or [])],
                'probe': {'found': len(header['probe']['classesFound']), 'missing': len(header['probe']['classesMissing']),
                          'layoutOk': header['probe']['layoutSelfCheck'].get('ok')},
                'rebinds': len(self.rebind_log), 'errors': len(self.errors), 'bytes': doc['trailer'].get('bytes'),
                'dropped': ((doc['trailer'].get('truncation') or {}).get('dropped')) or []}
         text = json.dumps(out, separators=(',', ':'), default=str)
-        for key in ('passes', 'probe', 'dropped', 'quality', 'cost'):
+        for key in ('partLast', 'windows', 'passes', 'probe', 'dropped', 'quality', 'cost'):
             if len(text) <= SUMMARY_LIMIT:
                 break
             out.pop(key, None)

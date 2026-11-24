@@ -136,7 +136,6 @@
     "materials": 256,
     "properties": 48,
     "bonesPerMember": 24,
-    "blendShapes": 24,
     "swingBones": 64,
     "stageNodes": 256,
     "particles": 160,

@@ -45,7 +45,8 @@ CONVENTIONS = {
                'color': 'raw', 'time': 'director-seconds'},
 }
 KINDS = ('frame', 'full')
-PARTS = ('census', 'quality', 'fovmodNative', 'renderers', 'materials', 'lightingRefs', 'members', 'springs',
+# 'timeline' (sampler 2) is additive: readers that do not know a part skip its records.
+PARTS = ('timeline', 'census', 'quality', 'fovmodNative', 'renderers', 'materials', 'lightingRefs', 'members', 'springs',
          'stageNodes', 'particles', 'post', 'propertyBlocks')
 # Schema section 7: parts dropped from rtdump-full, in this order, when the log cap is hit.
 DROP_ORDER = ('particles', 'springs', 'stageNodes', 'census', 'materials')

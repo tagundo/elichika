@@ -21,6 +21,13 @@ class TestValidate(unittest.TestCase):
     def test_accepts_the_schema_example(self):
         self.assertEqual(codec.validate(EXAMPLE), [])
 
+    def test_example_caps_are_caps_the_sampler_still_records(self):
+        """header.limits.caps is a free dict (not validated): the example lists only current caps."""
+        import mvdump_sampler
+        caps = EXAMPLE['header']['limits']['caps']
+        self.assertNotIn('blendShapes', caps, 'members record every channel; no 24-weight cap')
+        self.assertEqual({k: mvdump_sampler.CAPS.get(k) for k in caps}, caps)
+
     def test_rejects_unknown_schema_and_missing_envelope(self):
         doc = copy.deepcopy(EXAMPLE)
         doc['schema'] = 'sifas-mv-runtime-dump/2'
@@ -51,6 +58,22 @@ class TestValidate(unittest.TestCase):
         self.assertTrue(any('duplicate id' in p for p in problems))
         self.assertTrue(any('unknown part' in p for p in problems))
         self.assertTrue(any('directorTime' in p for p in problems) and any('non-finite' in p for p in problems))
+
+    def test_sampler_2_records_stay_schema_1(self):
+        """Sampler 2 adds a timeline part, window runs (pass >= 10, particles with roots) and new frame
+        sections (post, faces, unavailable): all additive, the schema name is unchanged."""
+        doc = copy.deepcopy(EXAMPLE)
+        clock = {'directorTime': 1.2}
+        doc['records'] += [
+            {'id': 'p0-timeline-00', 'kind': 'full', 'part': 'timeline', 'pass': 0, 'chunk': 0, 'clock': clock,
+             'timeline': {'asset': 'so2035_timeline', 'trackCount': 4, 'tracks': []}, 'next': None},
+            {'id': 'p10-particles-00', 'kind': 'full', 'part': 'particles', 'pass': 10, 'chunk': 0, 'clock': clock,
+             'particles': [], 'roots': [{'path': '/fx [Timeline]', 'found': True}], 'next': None}]
+        doc['records'][0].update(post={'dof': {'focusDistance': 4.25}}, faces=[{'slot': 1, 'count': 27, 'weights': {}}],
+                                 unavailable={'lights': 'stripped'}, lights=None)
+        self.assertEqual(doc['schema'], 'sifas-mv-runtime-dump/1')
+        self.assertEqual(codec.validate(doc), [])
+        self.assertIn('timeline', codec.PARTS)
 
     def test_editor_records_need_source_record(self):
         doc = copy.deepcopy(EXAMPLE)
