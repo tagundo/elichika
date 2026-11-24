@@ -59,7 +59,7 @@ class SamplerCase(unittest.TestCase):
             if isinstance(agent, NodeAgent):
                 agent.close()
 
-    def run_node(self, scenario, env=None, world=None, events=None, clock=None):
+    def run_node(self, scenario, env=None, world=None, events=None, clock=None, device=None):
         clock = clock or FakeClock()
         rec = {}
 
@@ -72,6 +72,8 @@ class SamplerCase(unittest.TestCase):
             self.agents.append(agent)
             return agent
         c = make_context(self.tmp.name, clock, factory, rec)
+        if device is not None:
+            c['device'] = device
         with mock.patch.dict(os.environ, sampler_env(env), clear=True):
             out = mvdump_sampler.run_dump(c)
         return out, rec, c, clock
@@ -191,6 +193,77 @@ class TestIntegration(SamplerCase):
         self.assertEqual(out['runtime_dump']['status'], 'RUNTIME_DUMPED')
         self.assertTrue(rec['saves'])
         self.assert_world_clean()
+
+    def test_frame_clock_rows_neighbours_and_shot_frames(self):
+        """Every action carries the frame clock lease; the rows of every frame the fake world ran
+        (each dispatched action is one frame) end up in trailer.frameClocks, each record gets the
+        clocks of the frames before and after it, and the end stops the loop."""
+        class Screen:
+            def adb(self, *args, **kwargs):
+                return b'\x89PNG\r\n\x1a\n' + b'0' * 32
+        out, rec, c, _ = self.run_node(normal_mv(), env={'MV_RUNTIME_DUMP_SHOT_INTERVAL': '5', 'MV_RUNTIME_DUMP_SHOTS': '3',
+                                                         'MV_RUNTIME_DUMP_FRAME_CLOCK_LEASE_FRAMES': '40'}, device=Screen())
+        self.assertEqual(out['status'], 'RUNTIME_DUMPED', out.get('runtime_dump'))
+        doc = self.evidence_doc(c)
+        self.assertEqual(codec.validate(doc), [])
+        clocks = doc['trailer']['frameClocks']
+        self.assertEqual(clocks['schema'], codec.FRAME_CLOCK_SCHEMA)
+        self.assertEqual(clocks['fields'], list(codec.FRAME_CLOCK_FIELDS))
+        rows = clocks['rows']
+        frames = [row[0] for row in rows]
+        self.assertEqual(frames, sorted(set(frames)))
+        self.assertEqual(clocks['frames'], len(rows))
+        self.assertGreater(len(rows), 3 * len(doc['records']), 'tick rows between the records, not only the records')
+        self.assertEqual(clocks['missing'], 0, 'the fake runs every frame through the dispatcher')
+        self.assertTrue(isinstance(clocks['stopped'], dict), clocks['stopped'])
+        self.assertEqual(clocks['director']['source'], 'LLAS.Scene.Live.LiveTimeSynchronizer.timelineDirector')
+        by_frame = {row[0]: row for row in rows}
+        # The fake's Time.time is 291.06665 + (frameCount - 4187) / 15.
+        for row in rows[:50]:
+            self.assertAlmostEqual(row[3], 291.06665 + (row[0] - 4187) / 15, places=3)
+        neighbours = 0
+        for record in doc['records']:
+            clock = record['clock']
+            self.assertIn(clock['frameCount'], by_frame, record['id'])
+            for key, step in (('prevFrame', -1), ('nextFrame', 1)):
+                row = by_frame.get(clock['frameCount'] + step)
+                if row is None:
+                    self.assertNotIn(key, clock)
+                    continue
+                neighbours += 1
+                self.assertEqual(clock[key], dict(zip(codec.FRAME_CLOCK_FIELDS[:-1], row[:-1])))
+            self.assertIn('kept', record['frameClock'])
+        self.assertGreater(neighbours, len(doc['records']), 'almost every record knows both neighbours')
+        last = max(doc['records'], key=lambda r: r['seq'])
+        self.assertIn('nextFrame', last['clock'], 'the final drain holds the frame after the last record')
+        shots = json.loads((Path(c['evidence']) / 'mv-runtime-shots.json').read_text())
+        self.assertEqual(len(shots), 3)
+        for shot in shots:
+            first, after = shot['before']['frameCount'], shot['after']['frameCount']
+            self.assertEqual([f[0] for f in shot['frames']], list(range(first, after + 1))[:64])
+            self.assertEqual(shot['framesMissing'], 0)
+        self.assertEqual(self.summary_line(rec)['frameClock']['missing'], 0)
+        # The rows travel in rtdump-core; rtdump-full says where; load() merges them back.
+        blobs = self.blobs(rec)
+        full = codec.decode_blob(blobs[codec.FULL])
+        self.assertEqual(full['trailer']['frameClocks'], {'in': codec.CORE, 'frames': len(rows)})
+        self.assertEqual(codec.merge([full, codec.decode_blob(blobs[codec.CORE])])['trailer']['frameClocks'], clocks)
+        self.assert_world_clean()
+
+    def test_frame_clock_off(self):
+        agents = []
+        clock = FakeClock()
+        c = make_context(self.tmp.name, clock, lambda label: agents.append(ScriptedAgent(clock, normal_mv(duration=20))) or agents[-1])
+        with mock.patch.dict(os.environ, sampler_env({'MV_RUNTIME_DUMP_FRAME_CLOCK': '0'}), clear=True):
+            mvdump_sampler.run_dump(c)
+        doc = self.evidence_doc(c)
+        self.assertTrue(all('frameClock' not in options for options in agents[0].sent))
+        self.assertNotIn('mvruntimeclock', [call[0] for call in agents[0].calls])
+        self.assertEqual(doc['trailer']['frameClocks']['enabled'], False)
+        self.assertEqual(doc['trailer']['frameClocks']['rows'], [])
+        self.assertTrue(all('prevFrame' not in r['clock'] for r in doc['records']))
+        self.assertEqual(doc['header']['limits']['frameClock']['enabled'], False)
+        self.assertEqual(codec.validate(doc), [])
 
     def test_schedule_windows_late_passes_faces_and_census_root(self):
         """The 12035 Max 3D findings on the real extension: CustomControl clip windows get their own
