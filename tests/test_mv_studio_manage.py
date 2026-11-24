@@ -954,11 +954,20 @@ class RemoveTests(StudioCase):
         key = manage.describe_mv_song(self.root, region="gl", live_id=93000)["timelineKey"]
         pack = query(self.gl / "asset_a_en.db", "SELECT pack_name FROM live_timeline WHERE asset_path=?", (key,))[0][0]
         _ = query(self.jp / "asset_a_ja.db", "INSERT INTO m_asset_pack VALUES (?,0)", (pack,))
+        # Another GL row (here a texture of something else) also uses the jacket pack.
+        jacket_key = query(self.gl / "masterdata.db", "SELECT jacket_asset_path FROM m_live WHERE live_id=93000")[0][0]
+        jacket = query(self.gl / "asset_i_ko.db", "SELECT pack_name FROM texture WHERE asset_path=?", (jacket_key,))[0][0]
+        _ = query(self.gl / "asset_i_ko.db", "INSERT INTO texture VALUES ('someone_else',?,0,1,0,0)", (jacket,))
         plan = manage.plan_remove_mv_song(self.root, region="gl", live_id=93000)
-        self.assertEqual(plan["summary"]["packs"]["kept"], [pack])
+        self.assertEqual(plan["summary"]["packs"]["kept"], sorted([pack, jacket]))
+        self.assertEqual(plan["summary"]["rows"]["asset_i_ko"]["m_asset_pack"], 5)
         result = self.remove(93000, token=plan["review_token"])
         self.assertNotIn(pack, result["quarantined"])
-        self.assertEqual(self.static_files(), [pack])
+        self.assertEqual(self.static_files(), sorted([pack, jacket]))
+        self.assertEqual(query(self.gl / "asset_i_ko.db", "SELECT COUNT(*) FROM m_asset_pack WHERE pack_name=?",
+                               (jacket,)), [(1,)])
+        self.assertEqual(query(self.gl / "asset_i_en.db", "SELECT COUNT(*) FROM m_asset_pack WHERE pack_name=?",
+                               (jacket,)), [(0,)])
 
     def test_locked_userdata_still_finishes_the_removal_with_a_warning(self):
         self.register(jacket=png(400, 400))
