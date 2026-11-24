@@ -9,7 +9,13 @@ tests; the editor comparator (modtools tests/mv_runtime_compare.py) reads the sa
   to the identical bytes.
 - split_for_log(doc, cap): the two job-log documents, rtdump-core (header, frame records,
   trailer; never dropped) and rtdump-full (header, full records, trailer), dropping full
-  parts in the fixed order particles -> springs -> stageNodes -> census -> materials.
+  parts in the fixed order particles -> springs -> stageNodes -> census -> materials. The
+  frame clock rows (trailer.frameClocks, sampler 3) travel in rtdump-core only; rtdump-full's
+  trailer says where they are.
+- trailer.frameClocks (sifas-mv-frame-clock/1, optional: older dumps have none): every rendered
+  frame's clock as rows of FRAME_CLOCK_FIELDS in ascending frameCount, and records may carry
+  clock.prevFrame / clock.nextFrame (the rows of frameCount -/+ 1 as objects). validate()
+  checks both when present; merge() keeps the rows from whichever document has them.
 - emit_blob(name, data, printer): @@RTDUMP-INDEX / @@RTDUMP-BEGIN / @@<2000 chars> /
   @@RTDUMP-END lines, the same shape as the module's @@SHOT lines.
 - fit_probe(probe, cap): the probe document (class / field / method inventory, the third
@@ -54,6 +60,10 @@ STOP_REASONS = ('mv-ended', 'scene-changed', 'director-missing', 'wall-cap', 'ob
                 'game-lost', 'error')
 LINE_CHARS = 2000
 CORE, FULL = 'rtdump-core', 'rtdump-full'
+# Every rendered frame's clock (mv_runtime_dump.js frame clock ring): source 0 = the per-frame
+# tick, 1 = a record's own clock section.
+FRAME_CLOCK_SCHEMA = 'sifas-mv-frame-clock/1'
+FRAME_CLOCK_FIELDS = ('frameCount', 'directorTime', 'musicTime', 'unityTime', 'deltaTime', 'realtimeSinceStartup', 'source')
 # Third blob: the probe document (mvruntimeprobe chunks: classes, fields with types and
 # offsets, resolved candidates, method availability, layout self-check). Not a dump subset.
 PROBE = 'rtdump-probe'
@@ -81,6 +91,37 @@ def _check_matrix(problems, where, matrix, perspective):
         if abs(matrix[11] + 1) > 1e-4 or abs(matrix[15]) > 1e-6:
             problems.append(f'{where}: perspective projection must have e[11] == -1 and e[15] == 0 '
                             f'(got {matrix[11]}, {matrix[15]}); matrices are column-major')
+
+
+def _check_frame_clocks(problems, clocks):
+    if not isinstance(clocks, dict) or 'rows' not in clocks:
+        return
+    if clocks.get('fields') != list(FRAME_CLOCK_FIELDS):
+        problems.append(f'trailer.frameClocks.fields must be {list(FRAME_CLOCK_FIELDS)}')
+        return
+    rows, last = clocks['rows'], None
+    if not isinstance(rows, list):
+        problems.append('trailer.frameClocks.rows must be a list')
+        return
+    for index, row in enumerate(rows):
+        where = f'trailer.frameClocks.rows[{index}]'
+        if not isinstance(row, list) or len(row) != len(FRAME_CLOCK_FIELDS) or not all(_number_or_none(v) for v in row):
+            problems.append(f'{where}: must be {len(FRAME_CLOCK_FIELDS)} numbers or nulls')
+            continue
+        frame = row[0]
+        if not isinstance(frame, int) or isinstance(frame, bool) or (last is not None and frame <= last):
+            problems.append(f'{where}: frameCount must be an integer above the previous row\'s')
+        last = frame if isinstance(frame, int) else last
+
+
+def _check_neighbours(problems, where, clock):
+    frame = clock.get('frameCount')
+    for key, step in (('prevFrame', -1), ('nextFrame', 1)):
+        if key not in clock:
+            continue
+        value = clock[key]
+        if not isinstance(value, dict) or not isinstance(frame, int) or value.get('frameCount') != frame + step:
+            problems.append(f'{where}: clock.{key} must be the clock of frame frameCount {step:+d}')
 
 
 def validate(doc):
@@ -112,6 +153,8 @@ def validate(doc):
             problems.append('header.producer must be an object')
     if not isinstance(trailer, dict):
         problems.append('trailer is not an object')
+    else:
+        _check_frame_clocks(problems, trailer.get('frameClocks'))
     if not isinstance(records, list):
         problems.append('records is not a list')
         return problems
@@ -134,6 +177,8 @@ def validate(doc):
         clock = record.get('clock')
         if not isinstance(clock, dict) or 'directorTime' not in clock or not _number_or_none(clock.get('directorTime')):
             problems.append(f'{where}: clock.directorTime must be present (number or null)')
+        elif doc['side'] == 'game':
+            _check_neighbours(problems, where, clock)
         if doc['side'] == 'editor' and not isinstance(record.get('sourceRecord'), str):
             problems.append(f'{where}: editor records need sourceRecord')
         if kind == 'full':
@@ -199,9 +244,13 @@ def load(path):
     return json.loads(text)
 
 
-def subset(doc, records, truncation=None):
-    out = {'schema': doc['schema'], 'side': doc['side'], 'header': doc['header'], 'records': records,
-           'trailer': dict(doc['trailer'], truncation=truncation)}
+def subset(doc, records, truncation=None, clocks=True):
+    """A document with `records`; clocks=False leaves the frame clock rows to the core blob."""
+    trailer = dict(doc['trailer'], truncation=truncation)
+    frame_clocks = trailer.get('frameClocks')
+    if not clocks and isinstance(frame_clocks, dict) and 'rows' in frame_clocks:
+        trailer['frameClocks'] = {'in': CORE, 'frames': frame_clocks.get('frames', len(frame_clocks['rows'] or []))}
+    out = {'schema': doc['schema'], 'side': doc['side'], 'header': doc['header'], 'records': records, 'trailer': trailer}
     return out
 
 
@@ -216,7 +265,7 @@ def split_for_log(doc, cap):
 
     def sizes(truncation, keep):
         core = subset(doc, frames, truncation)
-        full = subset(doc, keep, truncation) if keep is not None else None
+        full = subset(doc, keep, truncation, clocks=False) if keep is not None else None
         total = b64_len(len(encode_doc(core))) + (b64_len(len(encode_doc(full))) if full is not None else 0)
         return core, full, total
 
@@ -363,6 +412,12 @@ def merge(docs):
     for doc in docs[1:]:
         if (doc['trailer'] or {}).get('truncation'):
             trailer['truncation'] = doc['trailer']['truncation']
+    # The frame clock rows travel in one blob (rtdump-core); keep them whatever the order.
+    for doc in docs:
+        clocks = (doc['trailer'] or {}).get('frameClocks')
+        if isinstance(clocks, dict) and isinstance(clocks.get('rows'), list):
+            trailer['frameClocks'] = clocks
+            break
     return {'schema': base['schema'], 'side': base['side'], 'header': base['header'], 'records': records,
             'trailer': trailer}
 

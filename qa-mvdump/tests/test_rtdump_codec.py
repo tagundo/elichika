@@ -75,6 +75,35 @@ class TestValidate(unittest.TestCase):
         self.assertEqual(codec.validate(doc), [])
         self.assertIn('timeline', codec.PARTS)
 
+    def test_frame_clocks_are_optional_and_checked_when_present(self):
+        """Sampler 3: trailer.frameClocks and clock.prevFrame/nextFrame are additive (schema 1)."""
+        self.assertNotIn('frameClocks', EXAMPLE['trailer'])
+        doc = copy.deepcopy(EXAMPLE)
+        record = doc['records'][0]
+        record['clock']['frameCount'] = 4187
+        rows = [[4186, 11.4, 11400, 291.0, 0.0667, 1402.1, 0], [4187, 11.5, 11500, 291.0667, 0.0667, 1402.2, 1],
+                [4188, 11.567, 11567, 291.1333, 0.0667, 1402.3, 0]]
+        doc['trailer']['frameClocks'] = {'schema': codec.FRAME_CLOCK_SCHEMA, 'fields': list(codec.FRAME_CLOCK_FIELDS), 'rows': rows}
+        record['clock']['prevFrame'] = dict(zip(codec.FRAME_CLOCK_FIELDS[:-1], rows[0][:-1]))
+        record['clock']['nextFrame'] = dict(zip(codec.FRAME_CLOCK_FIELDS[:-1], rows[2][:-1]))
+        self.assertEqual(codec.validate(doc), [])
+        bad = copy.deepcopy(doc)
+        bad['trailer']['frameClocks']['rows'][2][0] = 4187
+        self.assertTrue(any('frameCount must be an integer above' in p for p in codec.validate(bad)))
+        bad = copy.deepcopy(doc)
+        bad['trailer']['frameClocks']['rows'][1] = [4187, 'x', None, None, None, None, 1]
+        self.assertTrue(any('numbers or nulls' in p for p in codec.validate(bad)))
+        bad = copy.deepcopy(doc)
+        bad['trailer']['frameClocks']['fields'] = ['frameCount']
+        self.assertTrue(any('fields must be' in p for p in codec.validate(bad)))
+        bad = copy.deepcopy(doc)
+        bad['records'][0]['clock']['nextFrame']['frameCount'] = 4190
+        self.assertTrue(any('clock.nextFrame' in p for p in codec.validate(bad)))
+        # A pointer to the core blob (rtdump-full's trailer) is not a row table.
+        doc['trailer']['frameClocks'] = {'in': codec.CORE, 'frames': 3}
+        doc['records'][0]['clock'].pop('prevFrame'); doc['records'][0]['clock'].pop('nextFrame')
+        self.assertEqual(codec.validate(doc), [])
+
     def test_editor_records_need_source_record(self):
         doc = copy.deepcopy(EXAMPLE)
         doc['side'] = 'editor'
@@ -223,6 +252,24 @@ class TestTransport(unittest.TestCase):
         self.assertEqual(level, 'fields-dropped')
         self.assertNotIn('fields', doc['chunks'][0]['classes'][0])
         self.assertEqual(doc['classesFound'], probe['classesFound'])
+
+    def test_frame_clock_rows_travel_in_the_core_blob_and_merge_back_in_any_order(self):
+        doc = copy.deepcopy(EXAMPLE)
+        rows = [[f, f / 15, None, f / 15, 1 / 15, f / 15, 0] for f in range(100, 160)]
+        doc['trailer']['frameClocks'] = {'schema': codec.FRAME_CLOCK_SCHEMA, 'fields': list(codec.FRAME_CLOCK_FIELDS), 'rows': rows,
+                                         'frames': len(rows)}
+        core, full, truncation = codec.split_for_log(doc, 10 ** 9)
+        self.assertIsNone(truncation)
+        self.assertEqual(core['trailer']['frameClocks']['rows'], rows)
+        self.assertEqual(full['trailer']['frameClocks'], {'in': codec.CORE, 'frames': len(rows)})
+        for order in ([core, full], [full, core]):
+            merged = codec.merge(copy.deepcopy(order))
+            self.assertEqual(merged['trailer']['frameClocks']['rows'], rows)
+        # A dump without frame clocks splits and merges as before.
+        old = copy.deepcopy(EXAMPLE)
+        core, full, _ = codec.split_for_log(old, 10 ** 9)
+        self.assertNotIn('frameClocks', full['trailer'])
+        self.assertNotIn('frameClocks', codec.merge([full, core])['trailer'])
 
     def test_merge_refuses_different_headers(self):
         a, b = doc_with(2), doc_with(2)
