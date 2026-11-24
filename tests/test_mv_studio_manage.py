@@ -361,7 +361,13 @@ class RegisterTests(StudioCase):
         self.assertEqual(query(master, "SELECT evaluation_type FROM m_live_evaluation_drop WHERE "
                                        "live_difficulty_master_id=?", (difficulty,)), [(1,), (2,)])
         saved = json.loads((self.stages / f"{difficulty}.json").read_text())
-        self.assertEqual(saved, {**stage_chart(21301), "live_difficulty_id": difficulty})
+        expected = {**stage_chart(21301), "live_difficulty_id": difficulty}
+        expected["stage_gimmick_dict"][1][0]["gimmick_master_id"] = difficulty * 10
+        self.assertEqual(saved, expected)
+        # As in every stock chart, the stage effects name exactly the difficulty's own gimmick rows.
+        stage_gimmicks = {entry["gimmick_master_id"] for entries in saved["stage_gimmick_dict"][1::2] for entry in entries}
+        self.assertEqual(stage_gimmicks, {row[0] for row in query(
+            master, "SELECT id FROM m_live_difficulty_gimmick WHERE live_difficulty_master_id=?", (difficulty,))})
         for language in LANGUAGES["gl"]:
             self.assertEqual(query(self.gl / f"dictionary_{language}_k.db", "SELECT * FROM m_dictionary WHERE id LIKE "
                                    "'elichika%'"), [("elichika_mv_studio_93000", "새 MV")])
@@ -587,6 +593,26 @@ class RegisterTests(StudioCase):
                                                          "live_difficulty_id=?", (difficulty,)), [(9000,)])
         self.assertEqual(song["stages"], [{"stageId": 103, "position": 1, "assetId": song["assetId"]}])
         self.assertEqual(json.loads((self.stages / f"{difficulty}.json").read_text())["live_difficulty_id"], difficulty)
+
+    def test_placeholder_stage_effects_follow_their_renumbered_rows(self):
+        _ = query(self.gl / "masterdata.db", "INSERT INTO m_live_difficulty_gimmick VALUES "
+                                             "(1000500,21301,1,50001001,'k.g500','k.d')")
+        chart = stage_chart(21301)
+        effect = chart["stage_gimmick_dict"][1][0]
+        chart["stage_gimmick_dict"] = [1, [{**effect, "gimmick_master_id": 1000500, "uniq_id": 1001}],
+                                       2, [{**effect, "uniq_id": 1002}, {**effect, "gimmick_master_id": 777, "uniq_id": 1003}]]
+        (self.stages / "21301.json").write_text(json.dumps(chart))
+        difficulty = self.register()["song"]["difficulties"][0]["id"]
+        rows = query(self.gl / "masterdata.db", "SELECT id,trigger_type,skill_master_id FROM m_live_difficulty_gimmick "
+                                                "WHERE live_difficulty_master_id=? ORDER BY id", (difficulty,))
+        self.assertEqual(rows, [(difficulty * 10, 1, 50001001), (difficulty * 10 + 1, 2, 50006001)])
+        saved = json.loads((self.stages / f"{difficulty}.json").read_text())["stage_gimmick_dict"]
+        # Template ids map in id order; an id that is not the template's own row is copied unchanged.
+        self.assertEqual([[entry["gimmick_master_id"] for entry in entries] for entries in saved[1::2]],
+                         [[difficulty * 10], [difficulty * 10 + 1, 777]])
+        self.assertEqual(saved[::2], [1, 2])
+        owned = json.loads(query(self.gl / "masterdata.db", "SELECT owned FROM _elichika_mv_studio_song")[0][0])
+        self.assertEqual(owned["difficulties"][0]["gimmicks"], [difficulty * 10, difficulty * 10 + 1])
 
     def test_three_row_layout_switch(self):
         with patch.object(manage, "MV_STAGE_ROWS", 3):

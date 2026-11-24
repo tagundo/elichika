@@ -919,8 +919,11 @@ def _write_stage(stages, difficulty_id, data, created):
 
 
 def _clone_children(database, source_id, new_id):
-    """Copy every row keyed only by the template difficulty. Stage gimmicks get ids new_id*10+k."""
-    gimmicks = []
+    """Copy every row keyed only by the template difficulty. Stage gimmicks get ids new_id*10+k.
+
+    Returns {template gimmick id: new gimmick id} in the order of the template ids.
+    """
+    gimmicks = {}
     for table, column in DIFFICULTY_TABLES:
         if not _table_exists(database, "main", table):
             continue
@@ -934,7 +937,7 @@ def _clone_children(database, source_id, new_id):
                 if gimmick > _INT32 or database.execute(f"SELECT 1 FROM {table} WHERE id=?", (gimmick,)).fetchone():
                     raise ValueError("The song's placeholder chart ID is already in use.")
                 _insert(database, table, row, id=gimmick, **{column: new_id})
-                gimmicks.append(gimmick)
+                gimmicks[row["id"]] = gimmick
         else:
             for row in rows:
                 _insert(database, table, row, **{column: new_id})
@@ -993,9 +996,26 @@ def _add_placeholder(database, repo_root, live_id, asset_id, template_live, crea
             live_3d_asset_master_id=asset_id, unlock_pattern=1, difficulty_const_master_id=difficulty)
     gimmicks = _clone_children(database, template["live_difficulty_id"], difficulty)
     chart["live_difficulty_id"] = difficulty
+    _renumber_stage_gimmicks(chart, gimmicks)
     _write_stage(stages, difficulty, chart, created)
     return {"id": difficulty, "type": PLACEHOLDER_TYPE, "const": difficulty, "placeholder": True,
-            "template": template["live_difficulty_id"], "gimmicks": gimmicks}
+            "template": template["live_difficulty_id"], "gimmicks": list(gimmicks.values())}
+
+
+def _renumber_stage_gimmicks(chart, gimmicks):
+    """Point the copied stage's effects at the placeholder's own gimmick rows, as in every stock chart.
+
+    The server builds stage_gimmick_dict from the difficulty's m_live_difficulty_gimmick rows
+    (gimmick_master_id = row id), so a copy must name the renumbered rows, not the template's.
+    """
+    stage = chart.get("stage_gimmick_dict")
+    if not isinstance(stage, list):
+        return
+    for entries in stage[1::2]:
+        for entry in entries if isinstance(entries, list) else ():
+            value = entry.get("gimmick_master_id") if isinstance(entry, dict) else None
+            if type(value) is int and value in gimmicks:
+                entry["gimmick_master_id"] = gimmicks[value]
 
 
 # ---------------------------------------------------------------- backups, quarantine, retention
