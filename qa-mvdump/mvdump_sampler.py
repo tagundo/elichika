@@ -152,7 +152,9 @@ class Config:
         self.rebinds = max(0, _env_int('MV_RUNTIME_DUMP_REBINDS', 2))
         self.arrays = os.environ.get('MV_RUNTIME_DUMP_ARRAYS', '0').strip() == '1'
         self.log_cap = max(10000, _env_int('MV_RUNTIME_DUMP_LOG_CAP', 3500000))
-        self.keys = os.environ.get('MV_RUNTIME_DUMP_KEYS', 'qa/mvdump-keys-12035.json').strip()
+        # Per-song key files: '{live}' is the live the navigation opened (result target_live, after
+        # any MV_EXPORT_FALLBACK_LIVE switch), e.g. qa/mvdump-keys-{live}.json.
+        self.keys = os.environ.get('MV_RUNTIME_DUMP_KEYS', 'qa/mvdump-keys-{live}.json').strip()
         # Schema section 7: at most one full part per frame interval (perturbation bound).
         self.parts_per_interval = max(0, _env_int('MV_RUNTIME_DUMP_PARTS_PER_INTERVAL', 1))
         # Screencaps during playback, each bracketed by frame records (director time before/after):
@@ -285,8 +287,18 @@ class Dumper:
     # maps. The rest (globals, rig bones and anchors, stage origin, lighting classes) is generic.
     SONG_SPECIFIC_KEYS = ('bindings', 'shaders')
 
+    def keys_path(self):
+        """MV_RUNTIME_DUMP_KEYS with '{live}' replaced by the live the navigation opened."""
+        target = self.result.get('target_live')
+        try:
+            live = str(int(target))
+        except (TypeError, ValueError):
+            live = 'unknown'
+        return self.cfg.keys.replace('{live}', live)
+
     def load_keys(self):
-        candidates = [Path(self.cfg.keys), Path(__file__).resolve().parent / Path(self.cfg.keys).name]
+        wanted = self.keys_path()
+        candidates = [Path(wanted), Path(__file__).resolve().parent / Path(wanted).name]
         for path in candidates:
             if path.is_file():
                 try:
@@ -296,7 +308,7 @@ class Dumper:
                     return
                 except ValueError as error:
                     self.errors.append({'seq': 0, 'error': f'keys unreadable: {error}'[:200]})
-        self.keys_info = {'file': Path(self.cfg.keys).name, 'sha256': None, 'missing': True}
+        self.keys_info = {'file': Path(wanted).name, 'sha256': None, 'missing': True, 'pattern': self.cfg.keys}
 
     def check_keys_song(self):
         """Keys of another song (navigation fell back to another live) must not bind: record

@@ -26,7 +26,10 @@ from fakes import ORIGIN, FakeClock, NodeAgent, ScriptedAgent, build_bundle, git
 KEYS = str(HERE.parent / 'keys' / 'mvdump-keys-12035.json')
 BASE_ENV = {'MV_RUNTIME_DUMP_KEYS': KEYS, 'MV_RUNTIME_DUMP_INTERVAL': '0.5', 'MV_RUNTIME_DUMP_SECONDS': '900',
             'MV_RUNTIME_DUMP_REBINDS': '2', 'MV_RUNTIME_DUMP_LOG_CAP': '3500000', 'MV_RUNTIME_DUMP_PARTS_PER_INTERVAL': '1',
-            'RUNNER_TEMP': '', 'MV_RUNTIME_DUMP_REBIND_SETTLE': '10'}
+            'RUNNER_TEMP': '', 'MV_RUNTIME_DUMP_REBIND_SETTLE': '10',
+            # The fake world runs a frame per dispatched action as fast as node can: a short lease keeps
+            # the frame clock's tick loop (and its rows) small between two simulated records.
+            'MV_RUNTIME_DUMP_FRAME_CLOCK_LEASE_FRAMES': '8'}
 
 
 def sampler_env(extra=None):
@@ -444,15 +447,17 @@ class TestIntegration(SamplerCase):
         self.assertTrue(self.blobs(rec))
 
     def test_oversized_dump_hits_the_cap_in_drop_order(self):
-        # Run once uncapped to learn the blob sizes, then cap at core + a third of the full blob.
-        _, _, c0, _ = self.run_node(normal_mv(), world={'extraRenderers': 120})
+        # Run once uncapped to learn the blob sizes, then cap at core + a third of the full blob. The
+        # frame clock is off: its row count follows the fake's event loop, not the scenario.
+        off = {'MV_RUNTIME_DUMP_FRAME_CLOCK': '0'}
+        _, _, c0, _ = self.run_node(normal_mv(), env=off, world={'extraRenderers': 120})
         core0, full0, _ = codec.split_for_log(self.evidence_doc(c0), 10 ** 9)
         core_b64, full_b64 = codec.b64_len(len(codec.encode_doc(core0))), codec.b64_len(len(codec.encode_doc(full0)))
         cap = core_b64 + full_b64 // 3
         self.tmp2 = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp2.cleanup)
         self.tmp, self.tmp_first = self.tmp2, self.tmp
-        out, rec, c, _ = self.run_node(normal_mv(), env={'MV_RUNTIME_DUMP_LOG_CAP': str(cap)}, world={'extraRenderers': 120})
+        out, rec, c, _ = self.run_node(normal_mv(), env={'MV_RUNTIME_DUMP_LOG_CAP': str(cap), **off}, world={'extraRenderers': 120})
         doc = self.evidence_doc(c)
         truncation = doc['trailer']['truncation']
         self.assertIsNotNone(truncation)
@@ -752,6 +757,30 @@ class TestScripted(SamplerCase):
             self.assertEqual(cfg.budgets(), {'frame': {'soft': 60, 'hard': 150}, 'full': {'soft': 80, 'hard': 200},
                                              'source': {'frame': 'default', 'full': 'default'}})
 
+    def test_keys_follow_the_live_the_navigation_opened(self):
+        """MV_RUNTIME_DUMP_KEYS '{live}' loads the key file of result target_live (after a fallback switch)."""
+        keys_dir = str(HERE.parent / 'keys')
+        for target, song in ((12023, 12023), (12035, 12035)):
+            clock = FakeClock()
+            c = make_context(self.tmp.name, clock, lambda label: ScriptedAgent(clock, normal_mv(duration=10)))
+            c['result']['target_live'] = target
+            with mock.patch.dict(os.environ, sampler_env({'MV_RUNTIME_DUMP_KEYS': keys_dir + '/mvdump-keys-{live}.json'}), clear=True):
+                mvdump_sampler.run_dump(c)
+            doc = self.evidence_doc(c)
+            self.assertEqual(doc['header']['keys']['file'], f'mvdump-keys-{song}.json')
+            self.assertEqual(doc['header']['keys']['song'], song)
+            self.assertNotIn('mismatch', doc['header']['keys'])
+        # A live without a key file: recorded as missing, the dump still runs.
+        clock = FakeClock()
+        c = make_context(self.tmp.name, clock, lambda label: ScriptedAgent(clock, normal_mv(duration=10)))
+        c['result']['target_live'] = 12999
+        with mock.patch.dict(os.environ, sampler_env({'MV_RUNTIME_DUMP_KEYS': keys_dir + '/mvdump-keys-{live}.json'}), clear=True):
+            mvdump_sampler.run_dump(c)
+        keys = self.evidence_doc(c)['header']['keys']
+        self.assertEqual([keys['file'], keys['missing'], keys['pattern']], ['mvdump-keys-12999.json', True, keys_dir + '/mvdump-keys-{live}.json'])
+        with mock.patch.dict(os.environ, {k: v for k, v in sampler_env().items() if k != 'MV_RUNTIME_DUMP_KEYS'}, clear=True):
+            self.assertEqual(mvdump_sampler.Config().keys, 'qa/mvdump-keys-{live}.json', 'per-song keys by default')
+
     def test_keys_of_another_song_are_withheld(self):
         def fallback(c):
             c['result']['target_live'] = 12038
@@ -866,6 +895,22 @@ class TestWorkflow(unittest.TestCase):
             for key in ('MV_EXPORT_LIVE', 'MV_NAVIGATION_SECONDS', 'MV_FOV_ORIENTATION', 'MV_EXPORT_LANDSCAPE', 'MV_EXPORT_STAGE',
                         'MV_EXPORT_SEARCH_DIRECTION', 'TOOLKIT_REF', 'EXPORT_RELEASE_ID'):
                 self.assertEqual(env.get(key), export_env.get(key), key)
+
+    def test_every_key_file_names_its_song(self):
+        files = sorted((HERE.parent / 'keys').glob('mvdump-keys-*.json'))
+        self.assertGreaterEqual([f.name for f in files], ['mvdump-keys-12023.json', 'mvdump-keys-12035.json'])
+        for path in files:
+            keys = json.loads(path.read_text())
+            self.assertEqual(f'mvdump-keys-{keys["song"]}.json', path.name)
+            self.assertEqual(keys['schema'], 'mvdump-keys/1')
+            self.assertLess(len(path.read_bytes()), 20000)
+            self.assertTrue(keys['bindings'] and all(b.startswith('/EntryPoint/Live/Stages/') for b in keys['bindings']), path.name)
+        second = json.loads((HERE.parent / 'keys' / 'mvdump-keys-12023.json').read_text())
+        self.assertEqual(second['asset'], 1202303)
+        # What 12023 adds to 12035's coverage (the reason it is the second song).
+        first = json.loads((HERE.parent / 'keys' / 'mvdump-keys-12035.json').read_text())
+        self.assertEqual(sorted(set(second['tracks']) - set(first['tracks'])), ['LiveStageEmissiveTrack', 'LiveStageSingleAmbientTrack'])
+        self.assertIn('AS/MatCap/Transparent', set(second['shaders']) - set(first['shaders']))
 
 
 class TestEmission(unittest.TestCase):
