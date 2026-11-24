@@ -1132,26 +1132,61 @@ def _move_file(source, target):
 
 
 def _quarantine(repo_root, packs, name, folder=None):
-    """Move MV Studio packs that no catalog of either region names any more. Returns the moved names.
+    """Move MV Studio packs that no catalog of either region names any more. Returns (moved names, any failed).
 
     ``folder`` is the operation's backup: each pack goes to ``<backup>/static/<pack>``, the
     relative layout ``database_restore`` copies back to ``./static/`` next to the catalogs that
     name it (the server finds a pack in static/ whatever ``cdn_cache_dir`` is). Without a backup a
     pack goes to ``<pack root>/.elichika-quarantine/<name>/``. Retention deletes both kinds
-    together, by operation name.
+    together, by operation name. A pack that cannot be moved stays where it is: nothing names
+    it, and a restore still finds it in place.
     """
     candidates = {pack for pack in packs if _PACK_NAME.fullmatch(pack)}
-    moved = []
+    moved, failed = [], False
     for pack in sorted(candidates - _packs_named(repo_root, candidates)):
         for root in _pack_roots(repo_root):
             path = root / pack
             if path.is_symlink() or not path.is_file():
                 continue
             target = Path(folder) / "static" / pack if folder is not None else root / _QUARANTINE / name / pack
-            _move_file(path, target)
-            moved.append(pack)
+            try:
+                _move_file(path, target)
+            except OSError:
+                failed = True
+            # A failure after the rename (a directory fsync) still moved the pack.
+            if target.is_file() and not path.exists():
+                moved.append(pack)
             break
-    return moved
+    return moved, failed
+
+
+def _after_commit(repo_root, warnings, packs=(), name=None, folder=None, stage_files=()):
+    """Clean-up once the catalogs committed: a failure here must not report the saved change as failed."""
+    quarantined, failed = [], False
+    stages = _stages_dir(repo_root)
+    for stage in stage_files:
+        try:
+            (stages / stage).unlink(missing_ok=True)
+        except OSError:
+            failed = True
+    try:
+        if stage_files:
+            _fsync_dir(stages)
+    except OSError:
+        failed = True
+    if packs:
+        try:
+            quarantined, failed_moves = _quarantine(repo_root, packs, name, folder)
+            failed = failed or failed_moves
+        except (OSError, sqlite3.Error):
+            failed = True
+    if failed:
+        warnings.append(FILES_NOT_CLEANED)
+    try:
+        prune_mv_studio_backups(repo_root)
+    except OSError:
+        warnings.append(BACKUPS_NOT_PRUNED)
+    return quarantined
 
 
 def prune_mv_studio_backups(repo_root, keep=BACKUPS_KEPT):
@@ -1222,6 +1257,7 @@ def list_mv_songs(repo_root, *, region):
 
 
 def _result(repo_root, region, live_id, **extra):
+    extra.setdefault("warnings", [])
     return {"song": describe_mv_song(repo_root, region=region, live_id=live_id), "liveId": live_id,
             "restartRequired": bool(extra.get("changed", True)), **extra}
 
@@ -1345,6 +1381,8 @@ def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timel
     the stock timeline and whose KEEP values keep that platform. A part whose
     content or caller fingerprint is unchanged is skipped; with nothing to change
     there are no writes, packs or backup and the result has ``changed: False``.
+    Clean-up after the commit (moving dropped packs, pruning old backups) never fails
+    the call: a failure adds FILES_NOT_CLEANED or BACKUPS_NOT_PRUNED to ``warnings``.
     """
     _require_guard(repo_root)
     _regional_root(repo_root, region)
@@ -1516,11 +1554,11 @@ def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timel
         if folder is not None:
             shutil.rmtree(folder, ignore_errors=True)
         raise
-    quarantined = _quarantine(repo_root, dropped, operation, folder) if dropped else []
-    prune_mv_studio_backups(repo_root)
+    warnings = []
+    quarantined = _after_commit(repo_root, warnings, dropped, operation, folder)
     log("Updated MV-only song")
     return _result(repo_root, region, live_id, changed=True, parts=sorted(parts),
-                   backup=str(folder) if folder else None, quarantined=quarantined)
+                   backup=str(folder) if folder else None, quarantined=quarantined, warnings=warnings)
 
 
 # ---------------------------------------------------------------- remove
@@ -1542,6 +1580,9 @@ BLOCK_LIVE = "A live in progress uses this song. Finish the live in the game, th
 BLOCK_SHOWCASE = "A profile showcase or ranking uses this song. Change it to another song in the game, then try again."
 USERS_NOT_CLEANED = ("The song was removed, but players' records for it could not be cleaned. The game ignores "
                      "records of songs it no longer has.")
+FILES_NOT_CLEANED = ("The change was saved, but some files it no longer needs could not be moved or deleted. "
+                     "The game does not use them.")
+BACKUPS_NOT_PRUNED = "The change was saved, but older MV Studio backups could not be deleted."
 
 
 def _user_tables(database):
@@ -1719,7 +1760,11 @@ def plan_remove_mv_song(repo_root, *, region, live_id):
 
 
 def remove_mv_song(repo_root, *, region, live_id, review_token, backup=True, log=print):
-    """Remove a reviewed song: catalogs commit first, then every player's rows, stage files and packs."""
+    """Remove a reviewed song: catalogs commit first, then every player's rows, stage files and packs.
+
+    Once the catalogs committed nothing raises: a failed clean-up step adds USERS_NOT_CLEANED,
+    FILES_NOT_CLEANED or BACKUPS_NOT_PRUNED to ``warnings``.
+    """
     _require_guard(repo_root)
     _regional_root(repo_root, region)
     _positive(live_id, "Select a song registered by MV Studio.")
@@ -1768,11 +1813,7 @@ def remove_mv_song(repo_root, *, region, live_id, review_token, backup=True, log
         # The catalogs already committed; the server tolerates records of songs it no longer has.
         users = None
         warnings.append(USERS_NOT_CLEANED)
-    for name in plan["summary"]["stageFiles"]:
-        (_stages_dir(repo_root) / name).unlink(missing_ok=True)
-    _fsync_dir(_stages_dir(repo_root))
-    quarantined = _quarantine(repo_root, walk["packs"], operation, folder)
-    prune_mv_studio_backups(repo_root)
+    quarantined = _after_commit(repo_root, warnings, walk["packs"], operation, folder, plan["summary"]["stageFiles"])
     return {"liveId": live_id, "region": region, "removed": True, "backup": str(folder) if folder else None,
             "quarantined": quarantined, "users": users, "warnings": warnings, "restartRequired": True}
 
@@ -1813,4 +1854,6 @@ MESSAGES = native.MESSAGES + (
     BLOCK_LIVE,
     BLOCK_SHOWCASE,
     USERS_NOT_CLEANED,
+    FILES_NOT_CLEANED,
+    BACKUPS_NOT_PRUNED,
 )

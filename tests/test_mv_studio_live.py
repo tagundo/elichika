@@ -80,6 +80,7 @@ class MVStudioLiveTests(StudioCase):
                                        "93000301"), [(3,)])
         current = self.attach(song["live_id"])
         self.assertFalse(current["mv_only"])
+        self.assertEqual(current["warnings"], [])
         self.assertEqual(current["difficulties"], [{"live_difficulty_id": 93000301, "live_difficulty_type": 30,
                                                     "placeholder": False}])
         self.assertEqual((current["stages"], current["asset_3d_id"]), (song["stages"], song["asset_3d_id"]))
@@ -127,6 +128,15 @@ class MVStudioLiveTests(StudioCase):
             self.attach(song["live_id"], {100: {"path": self.chart, "template_difficulty_id": 21101}}, backup=False)
         token = manage.plan_remove_mv_song(self.root, region="gl", live_id=93000)
         self.assertEqual(token["summary"]["stageFiles"], ["93000101.json", "93000301.json"])
+
+    def test_failed_retention_after_attach_is_a_warning(self):
+        song = self.register()
+        with patch.object(manage, "prune_mv_studio_backups", side_effect=OSError("busy")):
+            current = self.attach(song["live_id"])
+        self.assertEqual(current["warnings"], [manage.BACKUPS_NOT_PRUNED])
+        self.assertEqual(current["difficulties"], [{"live_difficulty_id": 93000301, "live_difficulty_type": 30,
+                                                    "placeholder": False}])
+        self.assertEqual(len(self.backups()), 1)
 
     def test_failed_attach_restores_the_placeholder(self):
         song = self.register()

@@ -349,7 +349,10 @@ class StudioCase(unittest.TestCase):
 
 class RegisterTests(StudioCase):
     def test_plain_registration_writes_exact_rows_without_backup(self):
-        song = self.register()["song"]
+        result = self.register()
+        song = result["song"]
+        self.assertEqual((result["changed"], result["parts"], result["backup"], result["warnings"]),
+                         (True, ["new"], None, []))
         live_id, asset_id, difficulty = 93000, 9300001, 93000301
         self.assertEqual((song["liveId"], song["assetId"], song["templateLiveId"], song["templateAssetId"]),
                          (live_id, asset_id, 21, 2102))
@@ -770,6 +773,29 @@ class UpdateTests(StudioCase):
         self.assertTrue((folder / old).is_file())
         self.assertEqual(self.backups(), [])
 
+    def test_clean_up_failures_after_the_commit_are_warnings(self):
+        self.register(jacket=png(400, 400))
+        old, = self.static_files()
+        with patch.object(manage, "_move_file", side_effect=OSError("disk")), \
+                patch.object(manage, "prune_mv_studio_backups", side_effect=OSError("busy")):
+            result = self.update(93000, jacket=jpeg(400, 400))
+        # The update committed, so it reports success with warnings instead of raising.
+        self.assertEqual((result["changed"], result["parts"], result["quarantined"]), (True, ["jacket"], []))
+        self.assertEqual(result["warnings"], [manage.FILES_NOT_CLEANED, manage.BACKUPS_NOT_PRUNED])
+        self.assertEqual((result["song"]["revision"], result["song"]["jacket"]), (2, "custom"))
+        self.assertIn(old, self.static_files())
+        # The pack that could not move stays in static/, so the backup still restores completely.
+        self.assertEqual(restore(self.root, result["backup"])["failed"], [])
+        self.assertTrue(all((self.root / "static" / name).is_file() for name in named_packs(self.catalogs())))
+        self.assertEqual(manage.describe_mv_song(self.root, region="gl", live_id=93000)["revision"], 1)
+        with patch.object(manage, "_quarantine", side_effect=OSError("disk")):
+            result = self.update(93000, jacket=jpeg(400, 400))
+        self.assertEqual((result["changed"], result["warnings"]), (True, [manage.FILES_NOT_CLEANED]))
+        self.assertEqual(manage.describe_mv_song(self.root, region="gl", live_id=93000)["revision"], 2)
+        result = self.update(93000, title="clean")
+        self.assertEqual(result["warnings"], [])
+        self.assertEqual(self.update(93000, title="clean")["warnings"], [])
+
     def test_pack_moves_to_another_file_system_by_copy_then_unlink(self):
         source = self.root / "static" / ("mvstudio_" + "a" * 16 + "_" + "b" * 12)
         source.parent.mkdir(exist_ok=True)
@@ -1084,6 +1110,29 @@ class RemoveTests(StudioCase):
         self.assertEqual(len(result["quarantined"]), 1)
         self.assertEqual(manage.list_mv_songs(self.root, region="gl"), [])
 
+    def test_clean_up_failures_after_removal_are_warnings(self):
+        self.register(jacket=png(400, 400))
+        pack, = self.static_files()
+        real_unlink = Path.unlink
+
+        def unlink(path, missing_ok=False):
+            if path.name == "93000301.json":
+                raise PermissionError("locked")
+            return real_unlink(path, missing_ok=missing_ok)
+
+        with patch.object(Path, "unlink", unlink), patch.object(manage, "_fsync_dir", side_effect=OSError("io")), \
+                patch.object(manage, "prune_mv_studio_backups", side_effect=OSError("busy")):
+            result = self.remove(93000)
+        self.assertTrue(result["removed"])
+        self.assertEqual(result["warnings"], [manage.FILES_NOT_CLEANED, manage.BACKUPS_NOT_PRUNED])
+        # Only the directory syncs failed after the rename: the pack still counts as moved.
+        self.assertEqual(result["quarantined"], [pack])
+        self.assertTrue((Path(result["backup"]) / "static" / pack).is_file())
+        self.assertTrue((self.stages / "93000301.json").is_file())
+        self.assertEqual(manage.list_mv_songs(self.root, region="gl"), [])
+        # The leftover stage file only keeps its id from being reused.
+        self.assertEqual(manage.next_mv_song_id(self.root, region="gl"), 93001)
+
     def test_jp_removal(self):
         self.register(region="jp", jacket=png(400, 400))
         before = len(self.static_files())
@@ -1137,7 +1186,9 @@ class MessageTests(unittest.TestCase):
                         self.assertIn(ast.unparse(message), ("plan['blocked'][0]", "message"), module.__name__)
         self.assertEqual(len(studio.MESSAGES), len(set(studio.MESSAGES)))
         self.assertTrue(all(isinstance(text, str) and "{" not in text for text in studio.MESSAGES))
-        self.assertIn(manage.BLOCK_LIVE, studio.MESSAGES)
+        for warning in (manage.BLOCK_LIVE, manage.BLOCK_SHOWCASE, manage.USERS_NOT_CLEANED, manage.FILES_NOT_CLEANED,
+                        manage.BACKUPS_NOT_PRUNED):
+            self.assertIn(warning, studio.MESSAGES)
 
 
 @unittest.skipUnless(os.environ.get("ELICHIKA_STUDIO_TIMELINE_DIR"), "Real timeline samples are optional")

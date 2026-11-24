@@ -281,8 +281,10 @@ def attach_live_charts(repo_root, *, region, live_id, charts, backup=True):
         if folder is not None:
             shutil.rmtree(folder, ignore_errors=True)
         raise
+    # The charts are committed: a failed retention prune is a warning, not a failed attach.
+    result["warnings"] = []
     if folder is not None:
-        prune_mv_studio_backups(repo_root)
+        manage._after_commit(repo_root, result["warnings"])
     return result
 
 
