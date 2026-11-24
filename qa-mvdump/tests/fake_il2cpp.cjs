@@ -982,6 +982,8 @@ function bundlePath() {
   if (process.env.MVDUMP_BUNDLE) return process.env.MVDUMP_BUNDLE;
   const qa = process.env.R8_QA_DIR || '/tmp/claude-0/-home-user/dc5429c4-d1a3-5925-9def-449194025faf/scratchpad/r8tree/qa';
   const out = fs.mkdtempSync(path.join(os.tmpdir(), 'mvdump-bundle-'));
+  // The built bundle is read by the tests of this process only: remove its folder when it exits.
+  process.on('exit', () => fs.rmSync(out, { recursive: true, force: true }));
   const target = path.join(out, 'unity_ui.mvdump.bundle.js');
   const built = spawnSync('python3', [path.join(__dirname, '..', 'build_mvdump_agent.py'), '--qa', qa, '--extension',
     path.join(__dirname, '..', 'mv_runtime_dump.js'), '--out', target], { encoding: 'utf8' });

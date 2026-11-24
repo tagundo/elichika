@@ -460,11 +460,28 @@ test('records validate through rtdump_codec.py (schema, column-major projection)
   const doc = { schema: 'sifas-mv-runtime-dump/1', side: 'game', header: { createdAt: '2026-11-23T00:00:00Z', producer: { name: 'qa-mvdump' },
     conventions: { space: 'unity-lh', matrixLayout: 'column-major', angles: 'degrees', quaternion: 'xyzw', color: 'raw', time: 'director-seconds' } },
   records, trailer: {} };
-  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'mvdump-doc-')), 'doc.json');
-  fs.writeFileSync(file, JSON.stringify(doc));
-  const res = spawnSync('python3', [path.join(__dirname, '..', 'rtdump_codec.py'), 'verify', file], { encoding: 'utf8' });
-  assert.equal(res.status, 0, res.stdout + res.stderr);
-  assert.deepEqual(JSON.parse(res.stdout).problems, []);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mvdump-doc-'));
+  try {
+    const file = path.join(dir, 'doc.json');
+    fs.writeFileSync(file, JSON.stringify(doc));
+    const res = spawnSync('python3', ['-B', path.join(__dirname, '..', 'rtdump_codec.py'), 'verify', file], { encoding: 'utf8' });
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout).problems, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  assert.ok(!fs.existsSync(dir), 'the temporary document folder is removed');
+});
+
+test('a bundle the harness builds (no MVDUMP_BUNDLE) is removed when its process exits', () => {
+  const env = Object.assign({}, process.env);
+  delete env.MVDUMP_BUNDLE;
+  const res = spawnSync(process.execPath, ['-e', 'const fs = require("fs"), p = require(process.argv[1]).bundlePath(); console.log(JSON.stringify([p, fs.statSync(p).size]));',
+    path.join(__dirname, 'fake_il2cpp.cjs')], { env, encoding: 'utf8' });
+  assert.equal(res.status, 0, res.stderr);
+  const [built, size] = JSON.parse(res.stdout);
+  assert.ok(/mvdump-bundle-/.test(built) && size > 0, built);
+  assert.ok(!fs.existsSync(path.dirname(built)), 'the build folder is gone after the process exits');
 });
 
 test('budget: camera census, correctors and cameras are read even far past the hard budget', async () => {
