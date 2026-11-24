@@ -63,7 +63,7 @@ function createWorld(opts = {}) {
   const world = { epoch: 1, now: 1000000, costPerCall: opts.costPerCall || 0, invocations: [], fatal: [], stale: [], thenables: 0,
     frame: 4187, directorTime: opts.directorTime === undefined ? 11.5 : opts.directorTime, duration: 107.3, playState: 1,
     scene: 'LiveMv', deltaTime: 1 / 15, advance: opts.advance || 0, inCallback: false, callsPerAction: [], performs: [],
-    poisonNext: false, throwNext: 0, dispatcherState: 'NEW', dispatches: 0, sent: [], findAllTypes: [] };
+    poisonNext: false, throwNext: 0, dispatcherState: 'NEW', dispatches: 0, sent: [], findAllTypes: [], staticReads: [] };
   const buffer = new ArrayBuffer(opts.heapBytes || (64 << 20)), view = new DataView(buffer);
   let brk = 0x10000, meta = 0x70000000, native = 0x50000000, nextId = -1000;
   function alloc(n) { const a = brk; brk += Math.max(16, (n + 15) & ~15); if (brk > buffer.byteLength) throw new Error('fake heap exhausted'); return a; }
@@ -135,6 +135,12 @@ function createWorld(opts = {}) {
   class FakeField {
     constructor(name, type, offset, isStatic, owner) { this.name = name; this.type = type; this.offset = offset; this.isStatic = isStatic; this.owner = owner; }
     get class() { return this.owner; }
+    // A static field (il2cpp_field_static_get_value): read from its own storage slot.
+    get value() {
+      if (!this.isStatic) throw new Error('cannot access instance field ' + this.name + ' from a class');
+      world.staticReads.push(this.owner.fullName + '::' + this.name);
+      return readTyped(new FakePtr(this.offset, world.epoch), this.type);
+    }
     withHolder(holder) {
       const base = holder.handle.add(this.offset - (holder instanceof VT ? HEADER : 0)), type = this.type, name = this.name;
       return { name, type, offset: this.offset,
@@ -189,6 +195,8 @@ function createWorld(opts = {}) {
       return this;
     }
     addMethod(name, params, isStatic, impl) { this.ms.push(new FakeMethod(this, name, params, isStatic, impl)); return this; }
+    // A static field whose storage is its own heap slot (FakeField.offset holds the slot address).
+    addStaticField(name, type) { this.own.push(new FakeField(name, type, alloc(8), true, this)); return this; }
     tryField(name) { let k = this; while (k) { const f = k.own.find(x => x.name === name); if (f) return f; k = k.parent; } return null; }
     field(name) { const f = this.tryField(name); if (!f) throw new Error("couldn't find field " + name + ' in class ' + this.fullName); return f; }
     tryMethod(name, argc = -1) { let k = this; while (k) { const m = k.ms.find(x => x.name === name && (argc < 0 || x.params.length === argc)); if (m) return m; k = k.parent; } return null; }
@@ -371,7 +379,20 @@ function createWorld(opts = {}) {
   cls('UnityEngine.PostProcessing.PostProcessingProfile', 'UnityEngine.ScriptableObject', [['depthOfField', C['UnityEngine.PostProcessing.DepthOfFieldModel'].type],
     ['bloom', C['UnityEngine.PostProcessing.BloomModel'].type], ['flare', C['UnityEngine.PostProcessing.FlareModel'].type]]);
   cls('UnityEngine.PostProcessing.PostProcessingBehaviour', MB, [['profile', C['UnityEngine.PostProcessing.PostProcessingProfile'].type], ['Enabled', B]]);
-  cls('LLAS.Scene.Live.Components.LiveMusicMachine', null, [['musicPlayingTime', F], ['<IsPlayingMusic>k__BackingField', B], ['<MusicLength>k__BackingField', F]]);
+  // System.Delegate / MulticastDelegate field names as in the GL 3.12.0 corlib (m_target, delegates).
+  cls('System.Delegate', null, [['method_ptr', T['System.IntPtr']], ['invoke_impl', T['System.IntPtr']], ['m_target', T['System.Object']]]);
+  C['System.Delegate'].namespace = 'System'; C['System.Delegate'].name = 'Delegate';
+  cls('System.MulticastDelegate', 'System.Delegate', [['delegates', arrayOf(C['System.Delegate'].type)]]);
+  C['System.MulticastDelegate'].namespace = 'System'; C['System.MulticastDelegate'].name = 'MulticastDelegate';
+  cls('System.Action`1<System.Int32>', 'System.MulticastDelegate');
+  C['System.Action`1<System.Int32>'].namespace = 'System'; C['System.Action`1<System.Int32>'].name = 'Action`1';
+  cls('LLAS.Scene.Live.Components.LiveMusicMachine', null, [['musicPlayingTime', F], ['<IsPlayingMusic>k__BackingField', B], ['<MusicLength>k__BackingField', F],
+    ['<OnSyncMusicTime>k__BackingField', C['System.Action`1<System.Int32>'].type]]);
+  // MonoSingleton`1<LiveMusicMachine>.instance, found through LiveMusicMachine (parents are walked).
+  C['LLAS.Scene.Live.Components.LiveMusicMachine'].addStaticField('instance', C['LLAS.Scene.Live.Components.LiveMusicMachine'].type);
+  cls('LLAS.Scene.Live.LiveTimeSynchronizer', null, [['timelineDirector', C['UnityEngine.Playables.PlayableDirector'].type],
+    ['musicMachine', C['LLAS.Scene.Live.Components.LiveMusicMachine'].type], ['synchronizedTime', T['System.Double']], ['duration', T['System.Double']]]);
+  cls('LLAS.Scene.Live.LiveSeListener', null, [['volume', F]]);
   cls('LLAS.DM.ValueObject.Live3DMemberVO', null, [['<MemberMasterId>k__BackingField', I], ['<FormationPosition>k__BackingField', I], ['<SuitId>k__BackingField', T['System.Nullable`1<System.Int32>']]]);
   cls('LLAS.DM.ValueObject.Live3DAssetVO', null, [['<Members>k__BackingField', arrayOf(C['LLAS.DM.ValueObject.Live3DMemberVO'].type)]]);
   cls('LLAS.DM.ValueObject.LiveQualitySettingVO', null, [['<PostEffect>k__BackingField', B], ['<RenderingResolution>k__BackingField', I],
@@ -780,6 +801,21 @@ function createWorld(opts = {}) {
   const directorGo = gameObject('Director', live.tr);
   const director = component(directorGo, PD, { main: true, asset: timeline });
   const music = newManaged(C[LC + 'LiveMusicMachine'], { musicPlayingTime: 11.48, '<IsPlayingMusic>k__BackingField': true, '<MusicLength>k__BackingField': 107.3 });
+  // LiveTimeSynchronizer.Initialize combines its SyncMusicPlayingTime into OnSyncMusicTime; opts.syncCallback
+  // 'multicast' puts another listener first, 'none' leaves the event empty; opts.musicInstance false clears the singleton.
+  const synchronizer = newManaged(C['LLAS.Scene.Live.LiveTimeSynchronizer'], { timelineDirector: director, musicMachine: music, duration: 107.3 });
+  const syncCallback = newManaged(C['System.Action`1<System.Int32>'], { m_target: synchronizer });
+  if (opts.syncCallback === 'multicast') {
+    // The combined delegate's own m_target is another listener: only its invocation list leads to the synchronizer.
+    const listener = newManaged(C['LLAS.Scene.Live.LiveSeListener'], { volume: 1 });
+    const other = newManaged(C['System.Action`1<System.Int32>'], { m_target: listener });
+    set(music, '<OnSyncMusicTime>k__BackingField', newManaged(C['System.Action`1<System.Int32>'],
+      { m_target: listener, delegates: newArray(C['System.Delegate'].type, [other, syncCallback]) }));
+  } else if (opts.syncCallback !== 'none') set(music, '<OnSyncMusicTime>k__BackingField', syncCallback);
+  if (opts.musicInstance !== false) {
+    const slot = C[LC + 'LiveMusicMachine'].field('instance').offset;
+    view.setBigUint64(slot, BigInt(music), true);
+  }
   const memberVO = newManaged(C['LLAS.DM.ValueObject.Live3DMemberVO'], { '<MemberMasterId>k__BackingField': 212, '<FormationPosition>k__BackingField': 1,
     '<SuitId>k__BackingField': [true, 100212001] });
   const assetVO = newManaged(C['LLAS.DM.ValueObject.Live3DAssetVO'], { '<Members>k__BackingField': newArray(C['LLAS.DM.ValueObject.Live3DMemberVO'].type, [memberVO]) });
@@ -946,7 +982,9 @@ function createWorld(opts = {}) {
           counts.enqueued++;
           return new Promise((resolve, reject) => setImmediate(() => {
             counts.callbacks++;
-            if (world.throwNext > 0) {
+            // throwNext models an RPC's action that throws; the extension's own per-frame clock tick
+            // (clockTick, frame clock ring) is not an RPC action and does not consume it.
+            if (world.throwNext > 0 && action.name !== 'clockTick') {
               // A JS error inside the action: the ticket is rejected, the dispatcher stays READY.
               world.throwNext--; counts.rejected++; reject(new Error('FAKE_ACTION_THREW')); return;
             }
@@ -970,7 +1008,7 @@ function createWorld(opts = {}) {
       };
     }
   };
-  world.objects = { director, mainCamera, overlay, deadCamera, bodyRenderer, matBody, matStageA, rigRoot, rig, camGo, faceRenderer, postProcess,
+  world.objects = { music, synchronizer, director, mainCamera, overlay, deadCamera, bodyRenderer, matBody, matStageA, rigRoot, rig, camGo, faceRenderer, postProcess,
     profile, cutinOverlay, cutinOverlayCamera, cutCamera, timeline, alwaysCamera, marginCamera };
   world.setDof = (focus) => { const s = objs.get(dofModel).klass.field('m_Settings'); view.setFloat32(dofModel + s.offset, focus, true); };
   world.Memory = Memory;

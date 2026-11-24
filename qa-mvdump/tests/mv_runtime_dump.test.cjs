@@ -93,9 +93,9 @@ async function runPart(h, part, extra, maxChunks = 80) {
   return records;
 }
 
-test('RPC surface: the 11 original RPCs unchanged, mvruntimeprobe + mvruntime added', () => {
+test('RPC surface: the 11 original RPCs unchanged, mvruntimeprobe + mvruntime + mvruntimeclock added', () => {
   const h = boot({ bundle: BUNDLE });
-  assert.deepEqual(Object.keys(h.ctx.rpc.exports), [...ORIGINAL, 'mvruntimeprobe', 'mvruntime']);
+  assert.deepEqual(Object.keys(h.ctx.rpc.exports), [...ORIGINAL, 'mvruntimeprobe', 'mvruntime', 'mvruntimeclock']);
   assert.equal(typeof h.ctx.QA_MVDUMP_HOST.onMain, 'function');
   assert.ok(Object.isFrozen(h.ctx.QA_MVDUMP_HOST));
 });
@@ -104,6 +104,7 @@ test('both RPCs refuse before enablecached: no perform, no dispatch, no Unity ca
   const h = boot({ bundle: BUNDLE });
   assert.throws(() => h.ctx.rpc.exports.mvruntime({ part: 'frame' }), /MVDUMP_DISPATCHER_NOT_READY/);
   assert.throws(() => h.ctx.rpc.exports.mvruntimeprobe({ chunk: 0 }), /MVDUMP_DISPATCHER_NOT_READY/);
+  assert.throws(() => h.ctx.rpc.exports.mvruntimeclock({ stop: true }), /MVDUMP_DISPATCHER_NOT_READY/);
   assert.deepEqual(h.world.performs, []);
   assert.equal(h.world.dispatches, 0);
   assert.equal(h.world.invocations.length, 0);
@@ -773,4 +774,129 @@ test('caps: the sampler records exactly the agent caps it shares (no stale blend
   for (const [key, value] of Object.entries(sampler)) assert.equal(caps[key], value, key);
   assert.ok(!('blendShapes' in caps) && !('blendShapes' in sampler), 'members record every channel; blendShapesInspected bounds the names per mesh');
   assert.equal(caps.blendShapesInspected, 64);
+});
+
+// ------------------------------------------------------------------ frame clock ring
+// Lets the fake dispatcher run every queued tick (each one is a dispatched action = one fake frame)
+// until no new action is dispatched for a few event-loop turns.
+async function settle(h, turns = 4) {
+  let last = -1, quiet = 0;
+  for (let i = 0; i < 20000 && quiet < turns; i++) {
+    await new Promise(resolve => setImmediate(resolve));
+    if (h.world.dispatches === last) quiet++; else { quiet = 0; last = h.world.dispatches; }
+  }
+}
+const ROW = { frame: 0, director: 1, music: 2, unity: 3, delta: 4, real: 5, source: 6 };
+
+test('frame clock: one read-only tick per dispatched frame, rows in frame order, the lease ends the loop', async () => {
+  const h = await bound({ advance: 1 / 15 });
+  const rec = await h.rpc('mvruntime', { part: 'frame', frameClock: { leaseFrames: 6, leaseMs: 60000 } });
+  assert.deepEqual(rec.frameClock.fields, ['frameCount', 'directorTime', 'musicTime', 'unityTime', 'deltaTime', 'realtimeSinceStartup', 'source']);
+  // The record's own clock is the first row (source 1); the lease started the tick loop.
+  assert.deepEqual(rec.frameClock.rows.map(r => [r[ROW.frame], r[ROW.source]]), [[rec.clock.frameCount, 1]]);
+  assert.equal(rec.frameClock.rows[0][ROW.director], rec.clock.directorTime);
+  assert.equal(rec.frameClock.starts, 1);
+  await settle(h);
+  const drained = await h.rpc('mvruntimeclock', {});
+  const rows = drained.frameClock.rows;
+  assert.equal(drained.frameClock.running, false, 'the frame lease ended the loop');
+  assert.ok(rows.length >= 6 && rows.length <= 8, `ticks until the lease frame: ${rows.length}`);
+  rows.forEach((row, i) => {
+    assert.equal(row[ROW.source], 0, 'tick rows');
+    assert.equal(row[ROW.frame], rec.clock.frameCount + 1 + i, 'consecutive frames');
+    // The fake director advances 1/15 s per frame; the tick reads it through the synchronizer.
+    assert.ok(Math.abs(row[ROW.director] - (11.5 + (row[ROW.frame] - 4187) / 15)) < 1e-6, `director time of frame ${row[ROW.frame]}`);
+    close([row[ROW.music]], [11.48], 1e-6, 'musicTime');
+    assert.ok(Math.abs(row[ROW.unity] - (291.06665 + (row[ROW.frame] - 4187) / 15)) < 1e-4, 'Time.time');
+    assert.ok(Math.abs(row[ROW.delta] - 1 / 15) < 1e-6, 'deltaTime');
+    assert.equal(typeof row[ROW.real], 'number');
+  });
+  assert.ok(rows.at(-1)[ROW.frame] <= rec.clock.frameCount + 7, 'no tick after the lease frame');
+  assert.deepEqual(drained.frameClock.director, { source: 'LLAS.Scene.Live.LiveTimeSynchronizer.timelineDirector', instanceId: rec.directors.find(d => d.main).instanceId });
+  // Nothing is cached across ticks: the singleton is re-read from its static field in every tick.
+  assert.equal(h.world.staticReads.filter(name => /LiveMusicMachine::instance$/.test(name)).length, drained.frameClock.ticks);
+  assert.equal(drained.frameClock.ticks, rows.length);
+  const before = h.world.dispatches;
+  await settle(h);
+  assert.equal(h.world.dispatches, before, 'the loop stays stopped');
+  assertClean(h.world);
+});
+
+test('frame clock: rows keep the first read of a frame, a full record drains too, stop ends the loop', async () => {
+  const h = await bound();
+  const first = await h.rpc('mvruntime', { part: 'post', frameClock: { leaseFrames: 1000, leaseMs: 60000 } });
+  assert.deepEqual(first.frameClock.rows.map(r => r[ROW.source]), [1]);
+  for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve));
+  const frame = await h.rpc('mvruntime', { part: 'frame', frameClock: { leaseFrames: 1000, leaseMs: 60000 } });
+  const frames = frame.frameClock.rows.map(r => r[ROW.frame]);
+  assert.ok(frames.length > 1, 'tick rows since the first record');
+  assert.deepEqual(frames, [...frames].sort((a, b) => a - b));
+  assert.equal(new Set(frames).size, frames.length, 'one row per frame');
+  assert.ok(frames.includes(frame.clock.frameCount));
+  const stopped = await h.rpc('mvruntimeclock', { stop: true });
+  assert.equal(stopped.frameClock.stopped, true);
+  await settle(h);
+  const quiet = h.world.dispatches;
+  await settle(h);
+  assert.equal(h.world.dispatches, quiet, 'no tick after stop');
+  const after = await h.rpc('mvruntimeclock', {});
+  assert.ok(after.frameClock.rows.length <= 1, 'at most the tick that was already queued');
+  assert.equal(after.frameClock.running, false);
+  assertClean(h.world);
+});
+
+test('frame clock: a multicast OnSyncMusicTime still finds the synchronizer; without it directorTime is null and musicTime stays', async () => {
+  for (const [opts, director, music] of [[{ syncCallback: 'multicast' }, true, true], [{ syncCallback: 'none' }, false, true],
+    [{ musicInstance: false }, false, false]]) {
+    const h = await bound(opts);
+    await h.rpc('mvruntimeclock', { lease: { leaseFrames: 3, leaseMs: 60000 } });
+    await settle(h);
+    const rows = (await h.rpc('mvruntimeclock', { stop: true })).frameClock.rows;
+    assert.ok(rows.length >= 3, JSON.stringify(opts));
+    for (const row of rows) {
+      assert.equal(row[ROW.director] !== null, director, JSON.stringify(opts) + ' directorTime');
+      assert.equal(row[ROW.music] !== null, music, JSON.stringify(opts) + ' musicTime');
+      assert.equal(typeof row[ROW.frame], 'number');
+      assert.equal(typeof row[ROW.unity], 'number');
+    }
+    assertClean(h.world);
+  }
+});
+
+test('frame clock: the ring keeps the newest 2048 rows and counts the dropped ones', async () => {
+  const h = await bound();
+  const start = await h.rpc('mvruntimeclock', { lease: { leaseFrames: 2100, leaseMs: 60000 } });
+  await settle(h);
+  const drained = (await h.rpc('mvruntimeclock', {})).frameClock;
+  assert.equal(drained.rows.length, 2048);
+  assert.equal(drained.dropped, drained.ticks - 2048 + start.frameClock.rows.length);
+  assert.ok(drained.dropped > 0);
+  const frames = drained.rows.map(r => r[ROW.frame]);
+  assert.equal(frames.at(-1) - frames[0], 2047, 'the newest consecutive frames');
+  const next = (await h.rpc('mvruntimeclock', {})).frameClock;
+  assert.equal(next.dropped, 0, 'counters restart at each drain');
+  assertClean(h.world);
+});
+
+test('frame clock: a poisoned dispatcher rejects the tick and ends the loop', async () => {
+  const h = await bound();
+  await h.rpc('mvruntimeclock', { lease: { leaseFrames: 7200, leaseMs: 60000 } });
+  for (let i = 0; i < 30; i++) await new Promise(resolve => setImmediate(resolve));
+  h.world.poisonNext = true;
+  await settle(h);
+  assert.equal(h.world.dispatcherState, 'POISONED');
+  const quiet = h.world.dispatches;
+  await settle(h);
+  assert.equal(h.world.dispatches, quiet, 'a rejected tick does not re-arm');
+  assert.throws(() => h.ctx.rpc.exports.mvruntimeclock({}), /MVDUMP_DISPATCHER_NOT_READY/);
+  assertClean(h.world);
+});
+
+test('frame clock: actions without options.frameClock never start the loop', async () => {
+  const h = await bound();
+  const rec = await h.rpc('mvruntime', { part: 'frame' });
+  assert.equal(rec.frameClock, undefined);
+  const before = h.world.dispatches;
+  await settle(h);
+  assert.equal(h.world.dispatches, before);
 });

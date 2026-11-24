@@ -26,7 +26,10 @@ from fakes import ORIGIN, FakeClock, NodeAgent, ScriptedAgent, build_bundle, git
 KEYS = str(HERE.parent / 'keys' / 'mvdump-keys-12035.json')
 BASE_ENV = {'MV_RUNTIME_DUMP_KEYS': KEYS, 'MV_RUNTIME_DUMP_INTERVAL': '0.5', 'MV_RUNTIME_DUMP_SECONDS': '900',
             'MV_RUNTIME_DUMP_REBINDS': '2', 'MV_RUNTIME_DUMP_LOG_CAP': '3500000', 'MV_RUNTIME_DUMP_PARTS_PER_INTERVAL': '1',
-            'RUNNER_TEMP': '', 'MV_RUNTIME_DUMP_REBIND_SETTLE': '10'}
+            'RUNNER_TEMP': '', 'MV_RUNTIME_DUMP_REBIND_SETTLE': '10',
+            # The fake world runs a frame per dispatched action as fast as node can: a short lease keeps
+            # the frame clock's tick loop (and its rows) small between two simulated records.
+            'MV_RUNTIME_DUMP_FRAME_CLOCK_LEASE_FRAMES': '8'}
 
 
 def sampler_env(extra=None):
@@ -59,7 +62,7 @@ class SamplerCase(unittest.TestCase):
             if isinstance(agent, NodeAgent):
                 agent.close()
 
-    def run_node(self, scenario, env=None, world=None, events=None, clock=None):
+    def run_node(self, scenario, env=None, world=None, events=None, clock=None, device=None):
         clock = clock or FakeClock()
         rec = {}
 
@@ -72,6 +75,8 @@ class SamplerCase(unittest.TestCase):
             self.agents.append(agent)
             return agent
         c = make_context(self.tmp.name, clock, factory, rec)
+        if device is not None:
+            c['device'] = device
         with mock.patch.dict(os.environ, sampler_env(env), clear=True):
             out = mvdump_sampler.run_dump(c)
         return out, rec, c, clock
@@ -191,6 +196,93 @@ class TestIntegration(SamplerCase):
         self.assertEqual(out['runtime_dump']['status'], 'RUNTIME_DUMPED')
         self.assertTrue(rec['saves'])
         self.assert_world_clean()
+
+    def test_frame_clock_rows_neighbours_and_shot_frames(self):
+        """Every action carries the frame clock lease; the rows of every frame the fake world ran
+        (each dispatched action is one frame) end up in trailer.frameClocks, each record gets the
+        clocks of the frames before and after it, and the end stops the loop."""
+        class Screen:
+            def adb(self, *args, **kwargs):
+                return b'\x89PNG\r\n\x1a\n' + b'0' * 32
+        out, rec, c, _ = self.run_node(normal_mv(), env={'MV_RUNTIME_DUMP_SHOT_INTERVAL': '5', 'MV_RUNTIME_DUMP_SHOTS': '3',
+                                                         'MV_RUNTIME_DUMP_FRAME_CLOCK_LEASE_FRAMES': '40'}, device=Screen())
+        self.assertEqual(out['status'], 'RUNTIME_DUMPED', out.get('runtime_dump'))
+        doc = self.evidence_doc(c)
+        self.assertEqual(codec.validate(doc), [])
+        clocks = doc['trailer']['frameClocks']
+        self.assertEqual(clocks['schema'], codec.FRAME_CLOCK_SCHEMA)
+        self.assertEqual(clocks['fields'], list(codec.FRAME_CLOCK_FIELDS))
+        rows = clocks['rows']
+        frames = [row[0] for row in rows]
+        self.assertEqual(frames, sorted(set(frames)))
+        self.assertEqual(clocks['frames'], len(rows))
+        self.assertGreater(len(rows), 3 * len(doc['records']), 'tick rows between the records, not only the records')
+        self.assertEqual(clocks['missing'], 0, 'the fake runs every frame through the dispatcher')
+        self.assertTrue(isinstance(clocks['stopped'], dict), clocks['stopped'])
+        self.assertEqual(clocks['director']['source'], 'LLAS.Scene.Live.LiveTimeSynchronizer.timelineDirector')
+        by_frame = {row[0]: row for row in rows}
+        # The fake's Time.time is 291.06665 + (frameCount - 4187) / 15.
+        for row in rows[:50]:
+            self.assertAlmostEqual(row[3], 291.06665 + (row[0] - 4187) / 15, places=3)
+        neighbours = 0
+        for record in doc['records']:
+            clock = record['clock']
+            self.assertIn(clock['frameCount'], by_frame, record['id'])
+            for key, step in (('prevFrame', -1), ('nextFrame', 1)):
+                row = by_frame.get(clock['frameCount'] + step)
+                if row is None:
+                    self.assertNotIn(key, clock)
+                    continue
+                neighbours += 1
+                self.assertEqual(clock[key], dict(zip(codec.FRAME_CLOCK_FIELDS[:-1], row[:-1])))
+            self.assertIn('kept', record['frameClock'])
+        self.assertGreater(neighbours, len(doc['records']), 'almost every record knows both neighbours')
+        last = max(doc['records'], key=lambda r: r['seq'])
+        self.assertIn('nextFrame', last['clock'], 'the final drain holds the frame after the last record')
+        shots = json.loads((Path(c['evidence']) / 'mv-runtime-shots.json').read_text())
+        self.assertEqual(len(shots), 3)
+        for shot in shots:
+            first, after = shot['before']['frameCount'], shot['after']['frameCount']
+            self.assertEqual([f[0] for f in shot['frames']], list(range(first, after + 1))[:64])
+            self.assertEqual(shot['framesMissing'], 0)
+        self.assertEqual(self.summary_line(rec)['frameClock']['missing'], 0)
+        # The rows travel in rtdump-core; rtdump-full says where; load() merges them back.
+        blobs = self.blobs(rec)
+        full = codec.decode_blob(blobs[codec.FULL])
+        self.assertEqual(full['trailer']['frameClocks'], {'in': codec.CORE, 'frames': len(rows)})
+        self.assertEqual(codec.merge([full, codec.decode_blob(blobs[codec.CORE])])['trailer']['frameClocks'], clocks)
+        self.assert_world_clean()
+
+    def test_frame_clock_stops_before_the_end_reads(self):
+        """Its tick keeps a ticket outstanding: the end stops it before the host and agent end reads."""
+        agents = []
+        clock = FakeClock()
+        c = make_context(self.tmp.name, clock, lambda label: agents.append(ScriptedAgent(clock, normal_mv(duration=20))) or agents[-1])
+        reads = c['read_fov_state']
+        c['read_fov_state'] = lambda: (agents[0].calls.append(('host-fov-read', None)), reads())[1]
+        with mock.patch.dict(os.environ, sampler_env(), clear=True):
+            mvdump_sampler.run_dump(c)
+        calls = agents[0].calls
+        stop = calls.index(('mvruntimeclock', None))
+        self.assertEqual(calls[stop:], [('mvruntimeclock', None), ('host-fov-read', None), ('mvruntime', 'fovmodNative')])
+        self.assertEqual(agents[0].sent[[i for i, call in enumerate(calls) if call[0] != 'host-fov-read'].index(stop)], {'stop': True})
+        self.assertTrue(all(options.get('frameClock') == {'leaseMs': 5000, 'leaseFrames': 8} for options in agents[0].sent
+                            if isinstance(options, dict) and options.get('part') not in (None, 'fovmodNative') and 'chunk' not in options))
+
+    def test_frame_clock_off(self):
+        agents = []
+        clock = FakeClock()
+        c = make_context(self.tmp.name, clock, lambda label: agents.append(ScriptedAgent(clock, normal_mv(duration=20))) or agents[-1])
+        with mock.patch.dict(os.environ, sampler_env({'MV_RUNTIME_DUMP_FRAME_CLOCK': '0'}), clear=True):
+            mvdump_sampler.run_dump(c)
+        doc = self.evidence_doc(c)
+        self.assertTrue(all('frameClock' not in options for options in agents[0].sent))
+        self.assertNotIn('mvruntimeclock', [call[0] for call in agents[0].calls])
+        self.assertEqual(doc['trailer']['frameClocks']['enabled'], False)
+        self.assertEqual(doc['trailer']['frameClocks']['rows'], [])
+        self.assertTrue(all('prevFrame' not in r['clock'] for r in doc['records']))
+        self.assertEqual(doc['header']['limits']['frameClock']['enabled'], False)
+        self.assertEqual(codec.validate(doc), [])
 
     def test_schedule_windows_late_passes_faces_and_census_root(self):
         """The 12035 Max 3D findings on the real extension: CustomControl clip windows get their own
@@ -371,15 +463,17 @@ class TestIntegration(SamplerCase):
         self.assertTrue(self.blobs(rec))
 
     def test_oversized_dump_hits_the_cap_in_drop_order(self):
-        # Run once uncapped to learn the blob sizes, then cap at core + a third of the full blob.
-        _, _, c0, _ = self.run_node(normal_mv(), world={'extraRenderers': 120})
+        # Run once uncapped to learn the blob sizes, then cap at core + a third of the full blob. The
+        # frame clock is off: its row count follows the fake's event loop, not the scenario.
+        off = {'MV_RUNTIME_DUMP_FRAME_CLOCK': '0'}
+        _, _, c0, _ = self.run_node(normal_mv(), env=off, world={'extraRenderers': 120})
         core0, full0, _ = codec.split_for_log(self.evidence_doc(c0), 10 ** 9)
         core_b64, full_b64 = codec.b64_len(len(codec.encode_doc(core0))), codec.b64_len(len(codec.encode_doc(full0)))
         cap = core_b64 + full_b64 // 3
         self.tmp2 = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp2.cleanup)
         self.tmp, self.tmp_first = self.tmp2, self.tmp
-        out, rec, c, _ = self.run_node(normal_mv(), env={'MV_RUNTIME_DUMP_LOG_CAP': str(cap)}, world={'extraRenderers': 120})
+        out, rec, c, _ = self.run_node(normal_mv(), env={'MV_RUNTIME_DUMP_LOG_CAP': str(cap), **off}, world={'extraRenderers': 120})
         doc = self.evidence_doc(c)
         truncation = doc['trailer']['truncation']
         self.assertIsNotNone(truncation)
@@ -679,6 +773,30 @@ class TestScripted(SamplerCase):
             self.assertEqual(cfg.budgets(), {'frame': {'soft': 60, 'hard': 150}, 'full': {'soft': 80, 'hard': 200},
                                              'source': {'frame': 'default', 'full': 'default'}})
 
+    def test_keys_follow_the_live_the_navigation_opened(self):
+        """MV_RUNTIME_DUMP_KEYS '{live}' loads the key file of result target_live (after a fallback switch)."""
+        keys_dir = str(HERE.parent / 'keys')
+        for target, song in ((12023, 12023), (12035, 12035)):
+            clock = FakeClock()
+            c = make_context(self.tmp.name, clock, lambda label: ScriptedAgent(clock, normal_mv(duration=10)))
+            c['result']['target_live'] = target
+            with mock.patch.dict(os.environ, sampler_env({'MV_RUNTIME_DUMP_KEYS': keys_dir + '/mvdump-keys-{live}.json'}), clear=True):
+                mvdump_sampler.run_dump(c)
+            doc = self.evidence_doc(c)
+            self.assertEqual(doc['header']['keys']['file'], f'mvdump-keys-{song}.json')
+            self.assertEqual(doc['header']['keys']['song'], song)
+            self.assertNotIn('mismatch', doc['header']['keys'])
+        # A live without a key file: recorded as missing, the dump still runs.
+        clock = FakeClock()
+        c = make_context(self.tmp.name, clock, lambda label: ScriptedAgent(clock, normal_mv(duration=10)))
+        c['result']['target_live'] = 12999
+        with mock.patch.dict(os.environ, sampler_env({'MV_RUNTIME_DUMP_KEYS': keys_dir + '/mvdump-keys-{live}.json'}), clear=True):
+            mvdump_sampler.run_dump(c)
+        keys = self.evidence_doc(c)['header']['keys']
+        self.assertEqual([keys['file'], keys['missing'], keys['pattern']], ['mvdump-keys-12999.json', True, keys_dir + '/mvdump-keys-{live}.json'])
+        with mock.patch.dict(os.environ, {k: v for k, v in sampler_env().items() if k != 'MV_RUNTIME_DUMP_KEYS'}, clear=True):
+            self.assertEqual(mvdump_sampler.Config().keys, 'qa/mvdump-keys-{live}.json', 'per-song keys by default')
+
     def test_keys_of_another_song_are_withheld(self):
         def fallback(c):
             c['result']['target_live'] = 12038
@@ -765,15 +883,21 @@ class TestWorkflow(unittest.TestCase):
 
     def test_env_and_inputs(self):
         text = self.text
-        self.assertIsNone(re.search(r'^\s+MV_EXPORT_FALLBACK_LIVE:', text, re.M), 'the 12035 keys must not meet a 12038 fallback')
-        self.assertIn('MV_EXPORT_SEARCH_DIRECTION: backward', text)
-        self.assertIn('MV_RUNTIME_DUMP_KEYS: qa/mvdump-keys-12035.json', text)
-        self.assertIn('MV_EXPORT_LIVE: "12035"', text)
+        # One song per run: live_id picks it, its key file must exist, a fallback is opt-in and gets its own keys.
+        self.assertIn("MV_EXPORT_LIVE: ${{ inputs.live_id || '12035' }}", text)
+        self.assertIn("MV_EXPORT_FALLBACK_LIVE: ${{ inputs.fallback_live || '' }}", text)
+        self.assertIn("MV_EXPORT_SEARCH_DIRECTION: ${{ inputs.search_direction || 'backward' }}", text)
+        self.assertIn('MV_RUNTIME_DUMP_KEYS: qa/mvdump-keys-{live}.json', text)
+        self.assertIn("MV_RUNTIME_DUMP_FRAME_CLOCK: ${{ inputs.frame_clock || '1' }}", text)
+        self.assertIn('self/qa-mvdump/keys/mvdump-keys-*.json toolkit/qa/', text)
+        self.assertIn("group: mv-runtime-dump-${{ inputs.live_id || '12035' }}", text, 'a dump of one song never cancels another')
+        self.assertIn('test -f "self/qa-mvdump/keys/mvdump-keys-$live.json"', text)
         for name, default in (('MV_RUNTIME_DUMP_FRAME_BUDGET_MS', "inputs.frame_budget_ms || '60/150'"),
                               ('MV_RUNTIME_DUMP_FULL_BUDGET_MS', "inputs.full_budget_ms || '80/200'"),
                               ('MV_RUNTIME_DUMP_SECONDS', "inputs.wall_seconds || '900'")):
             self.assertIn(f'{name}: ${{{{ {default} }}}}', text)
-        for name in ('frame_budget_ms', 'full_budget_ms', 'wall_seconds', 'discovery_seconds'):
+        for name in ('frame_budget_ms', 'full_budget_ms', 'wall_seconds', 'discovery_seconds', 'live_id', 'fallback_live',
+                     'search_direction', 'frame_clock'):
             self.assertIn(f'      {name}:\n', text)
         try:
             import yaml  # noqa: F401  (optional on the runner)
@@ -785,14 +909,34 @@ class TestWorkflow(unittest.TestCase):
         self.assertEqual(inputs['frame_budget_ms']['default'], '60/150')
         self.assertEqual(inputs['full_budget_ms']['default'], '80/200')
         self.assertEqual(inputs['wall_seconds']['default'], '900')
+        self.assertEqual(inputs['live_id']['default'], '12035')
+        self.assertEqual(inputs['fallback_live']['default'], '')
+        self.assertEqual(inputs['frame_clock']['default'], '1')
         env = doc['jobs']['dump']['env']
-        self.assertNotIn('MV_EXPORT_FALLBACK_LIVE', env)
         export = HERE.parent.parent / '.github' / 'workflows' / 'mv-game-export.yml'
         if export.is_file():
             export_env = yaml.safe_load(export.read_text())['jobs']['export']['env']
-            for key in ('MV_EXPORT_LIVE', 'MV_NAVIGATION_SECONDS', 'MV_FOV_ORIENTATION', 'MV_EXPORT_LANDSCAPE', 'MV_EXPORT_STAGE',
-                        'MV_EXPORT_SEARCH_DIRECTION', 'TOOLKIT_REF', 'EXPORT_RELEASE_ID'):
+            for key in ('MV_NAVIGATION_SECONDS', 'MV_FOV_ORIENTATION', 'MV_EXPORT_LANDSCAPE', 'MV_EXPORT_STAGE', 'TOOLKIT_REF', 'EXPORT_RELEASE_ID'):
                 self.assertEqual(env.get(key), export_env.get(key), key)
+            # The defaults are the export run's navigation (without its 12038 fallback: no 12038 key file).
+            self.assertEqual(inputs['live_id']['default'], export_env['MV_EXPORT_LIVE'])
+            self.assertEqual(inputs['search_direction']['default'], export_env['MV_EXPORT_SEARCH_DIRECTION'])
+
+    def test_every_key_file_names_its_song(self):
+        files = sorted((HERE.parent / 'keys').glob('mvdump-keys-*.json'))
+        self.assertGreaterEqual([f.name for f in files], ['mvdump-keys-12023.json', 'mvdump-keys-12035.json'])
+        for path in files:
+            keys = json.loads(path.read_text())
+            self.assertEqual(f'mvdump-keys-{keys["song"]}.json', path.name)
+            self.assertEqual(keys['schema'], 'mvdump-keys/1')
+            self.assertLess(len(path.read_bytes()), 20000)
+            self.assertTrue(keys['bindings'] and all(b.startswith('/EntryPoint/Live/Stages/') for b in keys['bindings']), path.name)
+        second = json.loads((HERE.parent / 'keys' / 'mvdump-keys-12023.json').read_text())
+        self.assertEqual(second['asset'], 1202303)
+        # What 12023 adds to 12035's coverage (the reason it is the second song).
+        first = json.loads((HERE.parent / 'keys' / 'mvdump-keys-12035.json').read_text())
+        self.assertEqual(sorted(set(second['tracks']) - set(first['tracks'])), ['LiveStageEmissiveTrack', 'LiveStageSingleAmbientTrack'])
+        self.assertIn('AS/MatCap/Transparent', set(second['shaders']) - set(first['shaders']))
 
 
 class TestEmission(unittest.TestCase):

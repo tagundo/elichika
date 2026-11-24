@@ -41,7 +41,14 @@ r8 cached dispatcher; host RPC timeout 12 s > the dispatcher's 10 s ticket timeo
     ceiling MV_RUNTIME_DUMP_SECONDS <= 900 s from the scene), observer-errors, observer-lost
     (rebinds exhausted), game-lost (re-raised after the dump is written);
   - errors with a READY dispatcher are counted; a poisoned dispatcher is rebound (at most
-    MV_RUNTIME_DUMP_REBINDS) exactly like the navigation loop, and the gap is recorded.
+    MV_RUNTIME_DUMP_REBINDS) exactly like the navigation loop, and the gap is recorded;
+  - frame clock (MV_RUNTIME_DUMP_FRAME_CLOCK, on unless 0): every action carries
+    options.frameClock (the agent's lease); each record returns the clock rows of every frame
+    rendered since the previous record (one read-only tick per frame, see mv_runtime_dump.js),
+    the end drains and stops it (mvruntimeclock). The rows become trailer.frameClocks (schema
+    sifas-mv-frame-clock/1, one row per frameCount, first read kept) and every record gets
+    clock.prevFrame / clock.nextFrame (the rows of frameCount -/+ 1) when they were read; each
+    screencap lists the frames rendered between its two bracketing records (shot.frames).
 At the end: host FOVMOD reads, release_observers(), assemble + validate + redact, evidence
 (toolkit/evidence/mv-runtime-dump.json.gz, .summary.json, mv-runtime-probe.json) and the job
 log (@@RTDUMP-INDEX/BEGIN/@@<chunk>/END for rtdump-core, rtdump-probe and rtdump-full, then one
@@ -59,7 +66,7 @@ import time
 
 import rtdump_codec as codec
 
-SAMPLER_VERSION = 2
+SAMPLER_VERSION = 3
 LIVE_SCENES = ('LiveMv', 'LiveMvCore')
 PARTS_ALL = ['timeline', 'members', 'census', 'quality', 'fovmodNative', 'renderers', 'materials', 'lightingRefs', 'post',
              'particles', 'springs', 'stageNodes']
@@ -95,6 +102,9 @@ ADVANCE_EPS = 0.01         # director seconds; two increases in a row = the dire
 PROBE_LOG_CAP = 262144     # base64 bytes for the rtdump-probe blob (also <= 1/8 of the log cap)
 FRAME_BUDGET_DEFAULT = '60/150'
 FULL_BUDGET_DEFAULT = '80/200'
+FRAME_CLOCK_RING = 2048    # the agent's ring (rows kept between two drains)
+FRAME_CLOCK_GAPS = 256     # trailer.frameClocks.gaps entries kept
+SHOT_FRAMES = 64           # shot.frames entries kept
 
 
 def _env_float(name, default):
@@ -142,7 +152,9 @@ class Config:
         self.rebinds = max(0, _env_int('MV_RUNTIME_DUMP_REBINDS', 2))
         self.arrays = os.environ.get('MV_RUNTIME_DUMP_ARRAYS', '0').strip() == '1'
         self.log_cap = max(10000, _env_int('MV_RUNTIME_DUMP_LOG_CAP', 3500000))
-        self.keys = os.environ.get('MV_RUNTIME_DUMP_KEYS', 'qa/mvdump-keys-12035.json').strip()
+        # Per-song key files: '{live}' is the live the navigation opened (result target_live, after
+        # any MV_EXPORT_FALLBACK_LIVE switch), e.g. qa/mvdump-keys-{live}.json.
+        self.keys = os.environ.get('MV_RUNTIME_DUMP_KEYS', 'qa/mvdump-keys-{live}.json').strip()
         # Schema section 7: at most one full part per frame interval (perturbation bound).
         self.parts_per_interval = max(0, _env_int('MV_RUNTIME_DUMP_PARTS_PER_INTERVAL', 1))
         # Screencaps during playback, each bracketed by frame records (director time before/after):
@@ -157,6 +169,10 @@ class Config:
         self.lifetime_every = 15.0
         self.max_errors = 5
         self.rebind_settle = _env_float('MV_RUNTIME_DUMP_REBIND_SETTLE', 10)
+        # The agent's per-frame clock ring; its lease outlives the last action by leaseMs / leaseFrames.
+        self.frame_clock = os.environ.get('MV_RUNTIME_DUMP_FRAME_CLOCK', '1').strip() != '0'
+        self.frame_clock_lease = {'leaseMs': max(500, min(60000, _env_int('MV_RUNTIME_DUMP_FRAME_CLOCK_LEASE_MS', 5000))),
+                                  'leaseFrames': max(1, min(7200, _env_int('MV_RUNTIME_DUMP_FRAME_CLOCK_LEASE_FRAMES', 600)))}
 
     def limits(self):
         return {'frameBudgetMs': self.frame_budget, 'fullBudgetMs': self.full_budget, 'rpcTimeoutS': self.rpc_timeout,
@@ -171,6 +187,8 @@ class Config:
                             'maxRuns': MAX_WINDOW_RUNS, 'passBase': WINDOW_PASS_BASE},
                 'facesPerMember': FACE_RENDERERS,
                 'partsPerInterval': self.parts_per_interval, 'logCapB64': self.log_cap,
+                'frameClock': {'enabled': self.frame_clock, 'lease': dict(self.frame_clock_lease), 'ring': FRAME_CLOCK_RING,
+                               'fields': list(codec.FRAME_CLOCK_FIELDS)},
                 'probeCapB64': self.probe_cap(), 'maxChunksPerPart': MAX_CHUNKS_PER_PART, 'caps': CAPS}
 
     def budgets(self):
@@ -240,6 +258,9 @@ class Dumper:
         self.material_catalog = None            # material order/users/refs of the last complete renderers part
         self.faces, self.faces_by_slot = [], {}  # frame face renderers from the members part
         self.windows, self.window_run, self.window_runs = [], None, []
+        # Frame clock rows by frameCount (first read kept) and what the agent reported about its ring.
+        self.clock_rows, self.clock_stats = {}, {'drains': 0, 'dropped': 0, 'duplicates': 0, 'errors': 0, 'lastError': None,
+                                                 'director': None, 'starts': 0, 'stopped': None}
         self.t0 = self.mono()
         self.last_lifetime = self.t0
         self.started_iso = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
@@ -266,8 +287,18 @@ class Dumper:
     # maps. The rest (globals, rig bones and anchors, stage origin, lighting classes) is generic.
     SONG_SPECIFIC_KEYS = ('bindings', 'shaders')
 
+    def keys_path(self):
+        """MV_RUNTIME_DUMP_KEYS with '{live}' replaced by the live the navigation opened."""
+        target = self.result.get('target_live')
+        try:
+            live = str(int(target))
+        except (TypeError, ValueError):
+            live = 'unknown'
+        return self.cfg.keys.replace('{live}', live)
+
     def load_keys(self):
-        candidates = [Path(self.cfg.keys), Path(__file__).resolve().parent / Path(self.cfg.keys).name]
+        wanted = self.keys_path()
+        candidates = [Path(wanted), Path(__file__).resolve().parent / Path(wanted).name]
         for path in candidates:
             if path.is_file():
                 try:
@@ -277,7 +308,7 @@ class Dumper:
                     return
                 except ValueError as error:
                     self.errors.append({'seq': 0, 'error': f'keys unreadable: {error}'[:200]})
-        self.keys_info = {'file': Path(self.cfg.keys).name, 'sha256': None, 'missing': True}
+        self.keys_info = {'file': Path(wanted).name, 'sha256': None, 'missing': True, 'pattern': self.cfg.keys}
 
     def check_keys_song(self):
         """Keys of another song (navigation fell back to another live) must not bind: record
@@ -376,6 +407,8 @@ class Dumper:
     def record(self, part, options, kind, extra=None):
         """One agent action -> one record (annotated), or None after on_error."""
         sent = self.mono()
+        if self.cfg.frame_clock:
+            options = dict(options, frameClock=dict(self.cfg.frame_clock_lease))
         try:
             body = self.call('mvruntime', options)
         except AssertionError:
@@ -390,6 +423,8 @@ class Dumper:
         self.consecutive = 0
         self.seq += 1
         rec = dict(body)
+        if 'frameClock' in rec:
+            rec['frameClock'] = self.take_frame_clock(rec['frameClock'])
         if kind == 'frame':
             self.frames += 1
             rec['id'] = f'f{self.frames:04d}'
@@ -412,6 +447,105 @@ class Dumper:
         if self.seq % self.cfg.progress_every == 0:
             self.progress()
         return rec
+
+    # ------------------------------------------------------------ frame clock
+    def take_frame_clock(self, block):
+        """Keep the rows of an agent frameClock block (first read of a frame wins); the record keeps
+        only the block's counters."""
+        if not isinstance(block, dict):
+            return None
+        fields = block.get('fields')
+        rows = block.get('rows') if fields == list(codec.FRAME_CLOCK_FIELDS) else None
+        kept = 0
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, list) and len(row) == len(codec.FRAME_CLOCK_FIELDS) and isinstance(row[0], int) \
+                    and not isinstance(row[0], bool) and row[0] not in self.clock_rows:
+                self.clock_rows[row[0]] = row
+                kept += 1
+        stats = self.clock_stats
+        stats['drains'] += 1
+        for key in ('dropped', 'duplicates'):
+            if isinstance(block.get(key), int):
+                stats[key] += block[key]
+        if isinstance(block.get('errors'), int):
+            stats['errors'] = max(stats['errors'], block['errors'])
+        if block.get('lastError'):
+            stats['lastError'] = str(block['lastError'])[:160]
+        if isinstance(block.get('director'), dict):
+            stats['director'] = block['director']
+        if isinstance(block.get('starts'), int):
+            stats['starts'] = max(stats['starts'], block['starts'])
+        out = {k: block.get(k) for k in ('running', 'ticks', 'starts', 'errors', 'dropped') if k in block}
+        out['rows'] = len(rows) if isinstance(rows, list) else 0
+        out['kept'] = kept
+        if rows is None and isinstance(block.get('rows'), list):
+            out['fieldsMismatch'] = fields
+        return out
+
+    def stop_frame_clock(self):
+        """Drain and stop the agent's frame clock (the rows after the last record)."""
+        if not self.cfg.frame_clock:
+            return
+        try:
+            body = self.call('mvruntimeclock', {'stop': True})
+        except AssertionError:
+            raise
+        except Exception as error:
+            self.clock_stats['stopped'] = f'{type(error).__name__}: {str(error)[:160]}'
+            return
+        block = self.take_frame_clock((body or {}).get('frameClock'))
+        self.clock_stats['stopped'] = {'rows': (block or {}).get('rows'), 'kept': (block or {}).get('kept')}
+
+    def frame_clock_row(self, frame):
+        row = self.clock_rows.get(frame)
+        if row is None:
+            return None
+        return {name: row[i] for i, name in enumerate(codec.FRAME_CLOCK_FIELDS) if name != 'source'}
+
+    def frame_clocks(self):
+        """trailer.frameClocks: every frame's clock row in frame order, with the missing frames."""
+        frames = sorted(self.clock_rows)
+        gaps, missing = [], 0
+        for a, b in zip(frames, frames[1:]):
+            if b - a > 1:
+                missing += b - a - 1
+                if len(gaps) < FRAME_CLOCK_GAPS:
+                    gaps.append([a, b])
+        stats = self.clock_stats
+        return {'schema': codec.FRAME_CLOCK_SCHEMA, 'enabled': self.cfg.frame_clock, 'fields': list(codec.FRAME_CLOCK_FIELDS),
+                'rows': [self.clock_rows[f] for f in frames], 'frames': len(frames), 'first': frames[0] if frames else None,
+                'last': frames[-1] if frames else None, 'missing': missing, 'gaps': gaps,
+                'gapsTotal': sum(1 for a, b in zip(frames, frames[1:]) if b - a > 1),
+                'fromRecords': sum(1 for f in frames if self.clock_rows[f][-1] == 1),
+                'dropped': stats['dropped'], 'duplicates': stats['duplicates'], 'errors': stats['errors'], 'lastError': stats['lastError'],
+                'director': stats['director'], 'drains': stats['drains'], 'starts': stats['starts'], 'stopped': stats['stopped'],
+                'lease': dict(self.cfg.frame_clock_lease)}
+
+    def attach_frame_neighbours(self, records):
+        """clock.prevFrame / clock.nextFrame: the clock rows of frameCount - 1 and + 1, when read."""
+        if not self.clock_rows:
+            return
+        for rec in records:
+            clock = rec.get('clock')
+            frame = clock.get('frameCount') if isinstance(clock, dict) else None
+            if not isinstance(frame, int) or isinstance(frame, bool):
+                continue
+            prev, nxt = self.frame_clock_row(frame - 1), self.frame_clock_row(frame + 1)
+            if prev is not None:
+                clock['prevFrame'] = prev
+            if nxt is not None:
+                clock['nextFrame'] = nxt
+
+    def shot_frames(self):
+        """shot.frames: the frames rendered from the record before a screencap to the one after it
+        ([frameCount, directorTime, realtimeSinceStartup]); the PNG shows one of them."""
+        for shot in self.shots:
+            first, last = (shot.get('before') or {}).get('frameCount'), (shot.get('after') or {}).get('frameCount')
+            if not isinstance(first, int) or not isinstance(last, int) or last < first:
+                continue
+            rows = [self.clock_rows[f] for f in range(first, last + 1) if f in self.clock_rows]
+            shot['frames'] = [[row[0], row[1], row[5]] for row in rows[:SHOT_FRAMES]]
+            shot['framesMissing'] = (last - first + 1) - len(rows)
 
     def progress(self):
         status = self.c['observer_status']() or {}
@@ -811,8 +945,10 @@ class Dumper:
         if tb is not None and ta is not None and a_sent is not None and a_sent > b_recv:
             estimate = tb + (ta - tb) * max(0.0, min(1.0, (mid - b_recv) / (a_sent - b_recv)))
         entry = {'n': n, 'file': 'rtshots/' + name, 'bytes': len(png), 'sha256': hashlib.sha256(png).hexdigest(),
-                 'before': {'id': before.get('id'), 'directorTime': tb, 'recvMono': b_recv},
-                 'after': {'id': (after or {}).get('id'), 'directorTime': ta, 'sentMono': a_sent},
+                 'before': {'id': before.get('id'), 'directorTime': tb, 'recvMono': b_recv,
+                            'frameCount': (before.get('clock') or {}).get('frameCount')},
+                 'after': {'id': (after or {}).get('id'), 'directorTime': ta, 'sentMono': a_sent,
+                           'frameCount': ((after or {}).get('clock') or {}).get('frameCount')},
                  'capture': {'startMono': round(t0, 3), 'endMono': round(t1, 3)},
                  'directorTimeEstimate': round(estimate, 4) if estimate is not None else None,
                  'directorSpan': round(ta - tb, 4) if tb is not None and ta is not None else None}
@@ -986,6 +1122,7 @@ class Dumper:
         windows = {'clips': [{k: w[k] for k in ('start', 'end', 'prefab', 'track', 'sampled')} for w in self.windows],
                    'runs': self.window_runs}
         return {'records': {'frame': self.frames, 'full': self.fulls}, 'coverage': self.coverage(),
+                'frameClocks': self.frame_clocks(),
                 'partCoverage': self.part_coverage(), 'windows': windows,
                 'faces': [{k: f[k] for k in ('slot', 'key')} for f in self.faces],
                 'passes': self.passes + ([dict({'pass': self.current['pass'], 'startedAt': self.current['startedAt'], 'complete': False,
@@ -1004,6 +1141,7 @@ class Dumper:
     def assemble(self, release, dispatcher):
         self.mark_census_collisions()
         records = sorted(self.records, key=lambda r: r['seq'])
+        self.attach_frame_neighbours(records)
         return {'schema': codec.SCHEMA, 'side': 'game', 'header': self.header(), 'records': records,
                 'trailer': self.trailer(release, dispatcher)}
 
@@ -1076,10 +1214,11 @@ class Dumper:
                'windows': [len((doc['trailer'].get('windows') or {}).get('clips') or []), len((doc['trailer'].get('windows') or {}).get('runs') or [])],
                'probe': {'found': len(header['probe']['classesFound']), 'missing': len(header['probe']['classesMissing']),
                          'layoutOk': header['probe']['layoutSelfCheck'].get('ok')},
+               'frameClock': {k: (doc['trailer'].get('frameClocks') or {}).get(k) for k in ('frames', 'missing', 'dropped', 'errors')},
                'rebinds': len(self.rebind_log), 'errors': len(self.errors), 'bytes': doc['trailer'].get('bytes'),
                'dropped': ((doc['trailer'].get('truncation') or {}).get('dropped')) or []}
         text = json.dumps(out, separators=(',', ':'), default=str)
-        for key in ('partLast', 'windows', 'passes', 'probe', 'dropped', 'quality', 'cost'):
+        for key in ('partLast', 'windows', 'passes', 'probe', 'frameClock', 'dropped', 'quality', 'cost'):
             if len(text) <= SUMMARY_LIMIT:
                 break
             out.pop(key, None)
@@ -1137,6 +1276,16 @@ class Dumper:
 
     def finish(self):
         release, dispatcher = [], None
+        # The frame clock's tick keeps a dispatcher ticket outstanding: stop it first, so a main-thread
+        # stall after the MV (result screen load) cannot time a ticket out before the end reads.
+        try:
+            if self.stop_reason not in ('observer-lost', 'game-lost') and self.c.get('agent') and self.c['agent']() is not None \
+                    and (self.c['observer_status']() or {}).get('state') == 'READY':
+                self.stop_frame_clock()
+        except AssertionError:
+            raise
+        except Exception as error:
+            self.errors.append({'seq': self.seq, 'where': 'frame-clock-stop', 'error': f'{type(error).__name__}: {str(error)[:200]}'})
         try:
             self.end_reads = self.host_fov_reads('dump-end')
             if self.stop_reason not in ('observer-lost', 'game-lost') and self.c.get('agent') and self.c['agent']() is not None:
@@ -1156,6 +1305,7 @@ class Dumper:
         except Exception as error:
             self.errors.append({'seq': self.seq, 'where': 'end-reads', 'error': f'{type(error).__name__}: {str(error)[:200]}'})
         try:
+            self.shot_frames()
             self.result['runtime_shots'] = {'count': len(self.shots), 'interval': self.cfg.shot_interval,
                                             'file': 'mv-runtime-shots.json'}
             (self.evidence / 'mv-runtime-shots.json').write_text(json.dumps(self.shots, indent=1) + '\n')

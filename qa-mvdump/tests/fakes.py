@@ -18,6 +18,7 @@ import types
 
 HERE = Path(__file__).resolve().parent
 QA_MVDUMP = HERE.parent
+FRAME_CLOCK_FIELDS = ('frameCount', 'directorTime', 'musicTime', 'unityTime', 'deltaTime', 'realtimeSinceStartup', 'source')
 DEFAULT_R8 = '/tmp/claude-0/-home-user/dc5429c4-d1a3-5925-9def-449194025faf/scratchpad/r8tree/qa'
 
 
@@ -141,6 +142,9 @@ class ScriptedAgent:
             return {'ready': True, 'dispatcher': {'state': 'READY', 'counts': {}}}
         if method == 'dispose':
             return {'redirected': True, 'handlesFreed': 2}
+        if method == 'mvruntimeclock':
+            return {'kind': 'frameClock', 'frameClock': {'fields': list(FRAME_CLOCK_FIELDS), 'rows': [], 'running': False,
+                                                         'stopped': bool(options.get('stop')), 'ticks': 0, 'dropped': 0}}
         state = self.scenario(self.clock.now)
         clock = {'directorTime': state['directorTime'] if state.get('director', True) else None, 'frameCount': 1, 'deltaTime': 1 / 15}
         cost = {'elapsedMs': 5.0, 'calls': 10, 'objects': 1, 'truncated': False, 'truncatedSections': [], 'budgetMs': {'soft': 15, 'hard': 30}}

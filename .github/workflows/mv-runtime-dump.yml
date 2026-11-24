@@ -3,13 +3,37 @@ name: MV runtime value dump (real GL client, Redroid)
 # Same device, client, toolkit and navigation as mv-game-export.yml. Instead of the MP4 export it
 # samples read-only Unity runtime values of the playing MV in landscape (sifas-mv-runtime-dump/1),
 # for the per-asset-type editor comparison (modtools tests/mv_runtime_compare.py).
-# Disjoint trigger paths and its own concurrency group: it never cancels an mv-game-export run.
+# Disjoint trigger paths and its own concurrency group per live: it never cancels an mv-game-export
+# run, nor a dump of another song.
+# Songs: live_id picks the MV; its stage bindings and shader keys come from
+# qa-mvdump/keys/mvdump-keys-<live>.json (the sampler loads the file of the live the navigation
+# actually opened, so a fallback_live gets its own keys; a live without a key file stops before Android).
+#   12035 I'm Still... (Special Stage bg0006_01, 1203503): the reference dumps 2-4.
+#   12023 Yagate Hitotsu no Monogatari (Special Stage bg0025_04, 1202303): the stage and effect classes
+#   12035 lacks (LiveStageEmissiveTrack, LiveStageSingleAmbientTrack, AS/MatCap/Transparent effects,
+#   a Skybox/Procedural stage), 19 rows above the list start against 12035's 4 (search backward).
 on:
   push:
     branches: [ccr-110b9f74-r8cj0y]
     paths: [.github/workflows/mv-runtime-dump.yml, qa-mvdump/**]
   workflow_dispatch:
     inputs:
+      live_id:
+        description: MV live id (m_live.live_id); qa-mvdump/keys/mvdump-keys-<live_id>.json must exist
+        required: false
+        default: '12035'
+      fallback_live:
+        description: Live opened once when live_id is locked or not listed (empty = none; it needs its own key file)
+        required: false
+        default: ''
+      search_direction:
+        description: Song list search direction from the start row (backward reveals the rows above it)
+        required: false
+        default: backward
+      frame_clock:
+        description: Per-frame clock ring (every rendered frame's director/music/Time.time), 1 or 0
+        required: false
+        default: '1'
       quality:
         description: Live 3D quality to pre-seed (10 Max, 20 High, 30 Middle, 40 Low; empty = 10)
         required: false
@@ -43,7 +67,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: mv-runtime-dump
+  group: mv-runtime-dump-${{ inputs.live_id || '12035' }}
   cancel-in-progress: true
 
 jobs:
@@ -57,15 +81,17 @@ jobs:
       OMP_THREAD_LIMIT: "1"
       TOOLKIT_REF: codex/android-client-qa-gl-native-hit-20261114-r8
       EXPORT_RELEASE_ID: "449172870"
-      MV_EXPORT_LIVE: "12035"
+      MV_EXPORT_LIVE: ${{ inputs.live_id || '12035' }}
       MV_NAVIGATION_SECONDS: "1500"
       MV_FOV_ORIENTATION: portrait
       MV_EXPORT_LANDSCAPE: "1"
       MV_EXPORT_STAGE: Special Stage
-      # The song list is circular and sorted by display order; 12035 sits a few rows above the start.
-      MV_EXPORT_SEARCH_DIRECTION: backward
-      # No MV_EXPORT_FALLBACK_LIVE: the stage bindings and shader keys below are 12035's. A run that
-      # cannot open 12035 ends BLOCKED_BEFORE_MV; the sampler also withholds song keys on a mismatch.
+      # The song list is circular and sorted by display order; 12035 sits 4 rows and 12023 19 rows
+      # above the start (GL m_live.display_order over the m_live_mv lives).
+      MV_EXPORT_SEARCH_DIRECTION: ${{ inputs.search_direction || 'backward' }}
+      # Empty unless asked for. The sampler loads the key file of the live actually opened
+      # (MV_RUNTIME_DUMP_KEYS {live}) and withholds song keys when the keys name another song.
+      MV_EXPORT_FALLBACK_LIVE: ${{ inputs.fallback_live || '' }}
       MV_RUNTIME_DUMP: "1"
       MV_RUNTIME_DUMP_INTERVAL: ${{ inputs.frame_interval || '0.5' }}
       MV_RUNTIME_DUMP_SECONDS: ${{ inputs.wall_seconds || '900' }}
@@ -84,7 +110,8 @@ jobs:
       # 10 = Max 3D turns every stage/member feature on. The dump header shows what was applied.
       MV_PRESEED_QUALITY: ${{ inputs.quality || '10' }}
       MV_RUNTIME_DUMP_LOG_CAP: "3500000"
-      MV_RUNTIME_DUMP_KEYS: qa/mvdump-keys-12035.json
+      MV_RUNTIME_DUMP_KEYS: qa/mvdump-keys-{live}.json
+      MV_RUNTIME_DUMP_FRAME_CLOCK: ${{ inputs.frame_clock || '1' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,6 +128,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20.18.1'
+
+      - name: Check the song inputs and their key files (fail fast, before Android)
+        run: |
+          set -euo pipefail
+          for live in "$MV_EXPORT_LIVE" ${MV_EXPORT_FALLBACK_LIVE:+"$MV_EXPORT_FALLBACK_LIVE"}; do
+            [[ "$live" =~ ^[0-9]{5}$ ]] || { echo "live id '$live' is not five digits"; exit 1; }
+            test -f "self/qa-mvdump/keys/mvdump-keys-$live.json" || { echo "no key file for live $live"; exit 1; }
+            python3 -c "import json,sys;k=json.load(open(sys.argv[1]));assert int(k['song'])==int(sys.argv[2]),k['song']" \
+              "self/qa-mvdump/keys/mvdump-keys-$live.json" "$live"
+          done
+          [[ "$MV_EXPORT_SEARCH_DIRECTION" =~ ^(forward|backward)$ ]] || { echo "search_direction is forward or backward"; exit 1; }
+          [[ "$MV_RUNTIME_DUMP_FRAME_CLOCK" =~ ^[01]$ ]] || { echo "frame_clock is 0 or 1"; exit 1; }
 
       - name: Build the dump agent and run the offline dump tests (fail fast, before Android)
         run: |
@@ -233,7 +272,7 @@ jobs:
           set -euo pipefail
           # Unchanged copy of the navigation module; the hook is applied to this copy only.
           cp self/qa-mv/mv_export_focus.py toolkit/qa/
-          cp self/qa-mvdump/mvdump_sampler.py self/qa-mvdump/rtdump_codec.py self/qa-mvdump/mvdump_prefs.py self/qa-mvdump/keys/mvdump-keys-12035.json toolkit/qa/
+          cp self/qa-mvdump/mvdump_sampler.py self/qa-mvdump/rtdump_codec.py self/qa-mvdump/mvdump_prefs.py self/qa-mvdump/keys/mvdump-keys-*.json toolkit/qa/
           # Exactly the four mv-game-export.yml edits plus RUNTIME_DUMPED; every anchor must occur once.
           python3 self/qa-mvdump/apply_hooks.py --qa toolkit/qa --evidence toolkit/evidence
           "$RUNNER_TEMP/qa-venv/bin/python" -m py_compile toolkit/qa/mv_export_focus.py toolkit/qa/native_ocr_control.py \
@@ -304,7 +343,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mv-runtime-dump-evidence
+          name: mv-runtime-dump-evidence-${{ env.MV_EXPORT_LIVE }}
           path: toolkit/evidence/
           retention-days: 7
 
