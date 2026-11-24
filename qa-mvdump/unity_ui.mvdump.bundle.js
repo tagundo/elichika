@@ -4982,7 +4982,7 @@ function splashFadeRGBA(splash) {
   "use strict";
   var H = globalThis.QA_MVDUMP_HOST;
   if (!H) throw new Error("MVDUMP_HOST_MISSING");
-  var EXT_VERSION = 3;
+  var EXT_VERSION = 4;
   var PARTS = ["frame", "timeline", "census", "quality", "fovmodNative", "renderers", "materials", "lightingRefs", "members",
     "springs", "stageNodes", "particles", "post"];
   // Defaults only: the sampler sends the budgets it uses (MV_RUNTIME_DUMP_FRAME_BUDGET_MS /
@@ -6130,6 +6130,150 @@ function splashFadeRGBA(splash) {
       cutin: d.cutin };
   }
 
+  // ------------------------------------------------------------------ frame clock ring
+  // Every rendered frame's clock, so the editor knows the director time of the frames before and
+  // after each record instead of estimating them (options.frameClock on any action; the
+  // mvruntimeclock RPC drains or stops it). One tiny read-only action per frame (clockTick) goes
+  // through the same cached dispatcher as every record and re-arms itself while its lease lasts:
+  //  - the dispatcher posts to UnitySynchronizationContext; Exec (GL 3.12.0 libil2cpp 0x440bcb4)
+  //    moves m_AsyncWorkQueue into m_CurrentFrameWork under its lock (0x440bd10-0x440bd68) and then
+  //    invokes only that list (0x440bd7c-0x440bdf0), so a tick posted while a tick runs runs in
+  //    the next ExecuteTasks: one tick per player loop, i.e. per rendered frame. frameCount makes
+  //    a missed or repeated frame visible (rows keep the first read of a frame);
+  //  - the lease (leaseMs of wall time and leaseFrames of frames after the last action that asked
+  //    for it) ends the loop soon after the sampler stops calling; a dispatcher that is not READY
+  //    rejects the tick and ends it too. No object survives a tick: the music machine is re-read
+  //    from its static field every time;
+  //  - a row is [frameCount, directorTime, musicTime, unityTime, deltaTime, realtimeSinceStartup,
+  //    source] (source 0 = tick, 1 = a record's own clock section). directorTime is
+  //    PlayableDirector.time of the director LiveTimeSynchronizer drives: LiveMusicMachine is a
+  //    MonoSingleton (static instance), UpdateMusic (0x299f3dc) sets musicPlayingTime (ms) and
+  //    calls OnSyncMusicTime, which LiveTimeSynchronizer.Initialize (0x20f7a30) combines with its
+  //    SyncMusicPlayingTime; that sets timelineDirector.time = clamp(ms * .001, 0, duration)
+  //    (0x20f7c3c-0x20f7ca8). Without that chain directorTime is null and musicTime remains.
+  var FRAME_CLOCK_FIELDS = ["frameCount", "directorTime", "musicTime", "unityTime", "deltaTime", "realtimeSinceStartup", "source"];
+  var FRAME_CLOCK_RING = 2048, FRAME_CLOCK_ERRORS = 16, SYNCHRONIZER = "LLAS.Scene.Live.LiveTimeSynchronizer";
+  var CLOCK = { ring: [], dropped: 0, duplicates: 0, running: false, armed: false, stopped: false, leaseFrame: -1, leaseUntil: 0,
+    ticks: 0, starts: 0, errors: 0, lastError: null, lastFrame: null, director: null };
+  var staticFields = {};
+  function clampInt(value, low, high, fallback) {
+    var n = Number(value);
+    return isFinite(n) ? Math.max(low, Math.min(high, Math.round(n))) : fallback;
+  }
+  // A static field's value through its cached Field metadata (il2cpp_class_get_field_from_name walks
+  // the parents, so LiveMusicMachine finds MonoSingleton`1<LiveMusicMachine>.instance).
+  function staticValue(klass, name) {
+    var key = klass.handle.toString() + "::" + name, field = staticFields[key];
+    if (field === undefined) {
+      field = null;
+      try { var found = klass.tryField(name); if (found && found.isStatic) field = found; } catch (_) {}
+      staticFields[key] = field;
+    }
+    return field ? field.value : undefined;
+  }
+  function liveRef(value) {
+    var object = refValue(value);
+    return object && (!unityObjectClass(object.class) || alive(object)) ? object : null;
+  }
+  function synchronizerOf(machine) {
+    var callback = refValue(fv(machine, "<OnSyncMusicTime>k__BackingField"));
+    if (!callback) return null;
+    var list = [callback], combined = fv(callback, "delegates");
+    if (combined instanceof Il2Cpp.Array && !combined.isNull()) list = items(combined, 4);
+    for (var i = 0; i < list.length; i++) {
+      var target = isObj(list[i]) ? refValue(fv(list[i], "m_target")) : null;
+      if (target && klassName(target.class) === SYNCHRONIZER) return target;
+    }
+    return null;
+  }
+  function clockRow(ctx) {
+    var T = "UnityEngine.Time", row = [null, null, null, null, null, null, 0];
+    row[0] = num(ctx, inv(ctx, T, "get_frameCount", null, []), "frameClock.frameCount");
+    row[3] = num(ctx, inv(ctx, T, "get_time", null, []), "frameClock.unityTime", 9);
+    row[4] = num(ctx, inv(ctx, T, "get_deltaTime", null, []), "frameClock.deltaTime", 9);
+    row[5] = num(ctx, inv(ctx, T, "get_realtimeSinceStartup", null, []), "frameClock.realtimeSinceStartup", 9);
+    var klass = cls(ctx, "LiveMusicMachine"), machine = klass ? liveRef(staticValue(klass, "instance")) : null;
+    if (!machine) return row;
+    var ms = fv(machine, "musicPlayingTime");
+    if (typeof ms === "number") row[2] = num(ctx, ms, "frameClock.musicTime", 9);
+    var sync = synchronizerOf(machine), director = sync ? liveRef(fv(sync, "timelineDirector")) : null;
+    if (director) {
+      row[1] = num(ctx, inv(ctx, "UnityEngine.Playables.PlayableDirector", "get_time", director, []), "frameClock.directorTime", 9);
+      var id = iid(director);
+      if (!CLOCK.director || CLOCK.director.instanceId !== id) CLOCK.director = { source: SYNCHRONIZER + ".timelineDirector", instanceId: id };
+    }
+    return row;
+  }
+  // Rows stay in frame order; a frame already listed keeps its first row.
+  function clockPush(row) {
+    if (typeof row[0] !== "number") return;
+    if (CLOCK.lastFrame !== null && row[0] <= CLOCK.lastFrame) { CLOCK.duplicates++; return; }
+    CLOCK.lastFrame = row[0];
+    CLOCK.ring.push(row);
+    if (CLOCK.ring.length > FRAME_CLOCK_RING) { CLOCK.ring.shift(); CLOCK.dropped++; }
+  }
+  function clockArm() {
+    CLOCK.armed = true; CLOCK.running = true;
+    H.onMain(clockTick).then(null, function (error) { CLOCK.armed = false; CLOCK.running = false; CLOCK.lastError = short(error); });
+  }
+  function clockTick() {
+    CLOCK.armed = false;
+    if (CLOCK.stopped) { CLOCK.running = false; return true; }
+    var ctx = new Ctx("frame", { budget: { soft: 10, hard: 20 } }), row = null;
+    try { row = clockRow(ctx); } catch (error) { CLOCK.errors++; CLOCK.lastError = short(error); }
+    if (ctx.errors.length) { CLOCK.errors++; CLOCK.lastError = ctx.errors[0].at + ": " + ctx.errors[0].error; }
+    if (row) clockPush(row);
+    CLOCK.ticks++;
+    var frame = row ? row[0] : null;
+    if (CLOCK.stopped || Date.now() > CLOCK.leaseUntil || (typeof frame === "number" && frame > CLOCK.leaseFrame) || CLOCK.errors > FRAME_CLOCK_ERRORS) {
+      CLOCK.running = false;
+      return true;
+    }
+    clockArm();
+    return true;
+  }
+  function clockState() {
+    return { running: CLOCK.running, stopped: CLOCK.stopped, ticks: CLOCK.ticks, starts: CLOCK.starts, errors: CLOCK.errors,
+      lastError: CLOCK.lastError, dropped: CLOCK.dropped, duplicates: CLOCK.duplicates, director: CLOCK.director, ring: FRAME_CLOCK_RING };
+  }
+  function clockDrain() {
+    var out = clockState();
+    out.fields = FRAME_CLOCK_FIELDS.slice();
+    out.rows = CLOCK.ring;
+    CLOCK.ring = [];
+    CLOCK.dropped = 0; CLOCK.duplicates = 0;
+    return out;
+  }
+  // Renews the lease from `frame` and starts the tick loop when it is not running.
+  function clockLease(spec, frame) {
+    CLOCK.stopped = false;
+    CLOCK.leaseUntil = Date.now() + clampInt(spec.leaseMs, 500, 60000, 5000);
+    if (typeof frame === "number") CLOCK.leaseFrame = frame + clampInt(spec.leaseFrames, 1, 7200, 600);
+    if (CLOCK.errors > FRAME_CLOCK_ERRORS) CLOCK.errors = 0;
+    if (!CLOCK.running && !CLOCK.armed) { CLOCK.starts++; clockArm(); }
+  }
+  // A record's own clock as a row, the lease renewed, and every row since the last drain.
+  function frameClockSection(spec, clock) {
+    var row = null;
+    if (clock && typeof clock.frameCount === "number") {
+      row = [clock.frameCount, typeof clock.directorTime === "number" ? clock.directorTime : null,
+        typeof clock.musicTime === "number" ? clock.musicTime : null, typeof clock.unityTime === "number" ? clock.unityTime : null,
+        typeof clock.deltaTime === "number" ? clock.deltaTime : null,
+        typeof clock.realtimeSinceStartup === "number" ? clock.realtimeSinceStartup : null, 1];
+      clockPush(row);
+    }
+    clockLease(spec && typeof spec === "object" ? spec : {}, row ? row[0] : null);
+    return clockDrain();
+  }
+  function clockControl(options) {
+    if (options.stop === true) { CLOCK.stopped = true; CLOCK.leaseUntil = 0; }
+    else if (options.lease && typeof options.lease === "object") {
+      var ctx = new Ctx("frame", { budget: { soft: 10, hard: 20 } });
+      clockLease(options.lease, num(ctx, inv(ctx, "UnityEngine.Time", "get_frameCount", null, []), "frameClock.frameCount"));
+    }
+    return { kind: "frameClock", frameClock: clockDrain() };
+  }
+
   // ------------------------------------------------------------------ record runner
   function section(ctx, record, name, fn, mode) {
     if (mode !== "always" && (ctx.pastHard() || (mode === "optional" && ctx.pastSoft()))) { ctx.cut(name); return; }
@@ -6174,6 +6318,7 @@ function splashFadeRGBA(splash) {
     section(ctx, record, "renderSettings", function () { return readRenderSettings(ctx, record); }, "optional");
     section(ctx, record, "lights", function () { return readLights(ctx, record); }, "optional");
     section(ctx, record, "clockEnd", function () { return readClockEnd(ctx, directors); }, "always");
+    if (options.frameClock) section(ctx, record, "frameClock", function () { return frameClockSection(options.frameClock, record.clock); }, "always");
     return finish(ctx, record);
   }
 
@@ -6936,6 +7081,7 @@ function splashFadeRGBA(splash) {
     Object.keys(body).forEach(function (k) { record[k] = body[k]; });
     if (record.next === undefined) record.next = null;
     section(ctx, record, "clockEnd", function () { return readClockEnd(ctx, directors); }, "always");
+    if (options.frameClock) section(ctx, record, "frameClock", function () { return frameClockSection(options.frameClock, record.clock); }, "always");
     return finish(ctx, record);
   }
 
@@ -7025,7 +7171,7 @@ function splashFadeRGBA(splash) {
 
   globalThis.QA_MVDUMP_EXT = Object.freeze({ version: EXT_VERSION, parts: PARTS.slice(), deny: DENY.source,
     allow: JSON.parse(JSON.stringify(ALLOW)), icalls: JSON.parse(JSON.stringify(ICALLS)), deferredRoots: DEFERRED_ROOTS.slice(), classTable: JSON.parse(JSON.stringify(CLASS_TABLE)), caps: JSON.parse(JSON.stringify(CAPS)),
-    budgets: JSON.parse(JSON.stringify(BUDGET)) });
+    budgets: JSON.parse(JSON.stringify(BUDGET)), frameClock: { fields: FRAME_CLOCK_FIELDS.slice(), ring: FRAME_CLOCK_RING } });
   rpc.exports.mvruntimeprobe = function (options) {
     requireReady();
     options = options || {};
@@ -7036,5 +7182,12 @@ function splashFadeRGBA(splash) {
     options = options || {};
     if (PARTS.indexOf(String(options.part || "frame")) < 0) throw new Error("MVDUMP_UNKNOWN_PART:" + options.part);
     return H.onMain(function () { return sample(options); });
+  };
+  // The frame clock ring alone: {lease: {leaseMs, leaseFrames}} starts or renews it, {stop: true}
+  // ends it; both return (and empty) the rows read since the last drain.
+  rpc.exports.mvruntimeclock = function (options) {
+    requireReady();
+    options = options || {};
+    return H.onMain(function () { return clockControl(options); });
   };
 })();

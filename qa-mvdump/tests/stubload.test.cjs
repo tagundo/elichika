@@ -1,7 +1,7 @@
 'use strict';
 // Stub-load test (promoted from the prototype): the patched observer + extension evaluate
-// against a minimal Proxy-based Il2Cpp; the original 11 RPCs keep their order, mvruntimeprobe
-// and mvruntime are added, both refuse before enablecached (no perform, no dispatch), and
+// against a minimal Proxy-based Il2Cpp; the original 11 RPCs keep their order, mvruntimeprobe,
+// mvruntime and mvruntimeclock are added, all refuse before enablecached (no perform, no dispatch), and
 // afterwards use the same cached dispatcher with exactly one 'main' perform.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -30,14 +30,15 @@ function makeContext() {
 }
 const ORIGINAL = ['enablecached', 'beginintrotrace', 'endintrotrace', 'status', 'dispose', 'initialize', 'snapshot', 'features', 'pick', 'pickmv', 'classes'];
 
-test('original RPC set unchanged; additive mvruntimeprobe and mvruntime', () => {
+test('original RPC set unchanged; additive mvruntimeprobe, mvruntime and mvruntimeclock', () => {
   const { ctx } = makeContext();
-  assert.deepEqual(Object.keys(ctx.rpc.exports), [...ORIGINAL, 'mvruntimeprobe', 'mvruntime']);
+  assert.deepEqual(Object.keys(ctx.rpc.exports), [...ORIGINAL, 'mvruntimeprobe', 'mvruntime', 'mvruntimeclock']);
 });
 test('mvruntime / mvruntimeprobe refuse before enablecached and never touch the cold scheduler', () => {
   const { ctx, calls } = makeContext();
   assert.throws(() => ctx.rpc.exports.mvruntime({}), /MVDUMP_DISPATCHER_NOT_READY/);
   assert.throws(() => ctx.rpc.exports.mvruntimeprobe({}), /MVDUMP_DISPATCHER_NOT_READY/);
+  assert.throws(() => ctx.rpc.exports.mvruntimeclock({}), /MVDUMP_DISPATCHER_NOT_READY/);
   assert.deepEqual(calls.perform, []); assert.equal(calls.dispatch, 0);
 });
 test('after enablecached the extension dispatches through the same cached dispatcher', async () => {
