@@ -31,6 +31,7 @@ import shutil
 import sqlite3
 import tempfile
 import time
+import unicodedata
 
 import mv_studio_native_assets as native
 
@@ -241,9 +242,17 @@ def _require_server_stopped():
 
 # ---------------------------------------------------------------- input validation (no database open)
 
+# Control characters (C0, DEL, C1 such as U+0085), lone surrogates and the Unicode line and paragraph separators.
+_NOT_ONE_LINE = frozenset(("Cc", "Cs", "Zl", "Zp"))
+
+
+def _one_line(value):
+    """Text for one line of the song list; other spaces (U+3000, NBSP) and emoji joiners stay allowed."""
+    return isinstance(value, str) and not any(unicodedata.category(char) in _NOT_ONE_LINE for char in value)
+
+
 def _title(value):
-    if (not isinstance(value, str) or any(ord(char) < 32 or char == "\x7f" for char in value)
-            or not 1 <= len(value.strip()) <= MAX_TITLE):
+    if not _one_line(value) or not 1 <= len(value.strip()) <= MAX_TITLE:
         raise ValueError("Enter a song title between 1 and 160 characters.")
     return value.strip()
 
@@ -251,8 +260,7 @@ def _title(value):
 def _credit(value):
     if value is None:
         return None
-    if (not isinstance(value, str) or any(ord(char) < 32 or char == "\x7f" for char in value)
-            or len(value.strip()) > MAX_CREDIT):
+    if not _one_line(value) or len(value.strip()) > MAX_CREDIT:
         raise ValueError("Enter a credit of at most 200 characters on one line.")
     return value.strip() or None
 

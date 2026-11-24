@@ -580,7 +580,13 @@ class RegisterTests(StudioCase):
             ({"title": ""}, "between 1 and 160"),
             ({"title": "x" * 161}, "between 1 and 160"),
             ({"title": "line\nbreak"}, "between 1 and 160"),
+            ({"title": "하나\u2028둘"}, "between 1 and 160"),
+            ({"title": "para\u2029graph"}, "between 1 and 160"),
+            ({"title": "next\u0085line"}, "between 1 and 160"),
+            ({"title": "lone \ud800 surrogate"}, "between 1 and 160"),
             ({"credit": "x" * 201}, "at most 200"),
+            ({"credit": "words\u2028music"}, "on one line"),
+            ({"credit": "tab\tstop"}, "on one line"),
             ({"audio": {"music": (b"ACB:music_0abc", None)}}, "music_XXXX"),
             ({"audio": {"music": (b"ACB:music_93000", None), "preview": (b"ACB:music_93000_PRE", None)}}, "_SABI"),
             ({"fingerprints": {"android": 5}}, "Fingerprints"),
@@ -593,6 +599,15 @@ class RegisterTests(StudioCase):
         self.assertEqual(native.jacket_format(png(400, 400)), "png")
         with self.assertRaisesRegex(ValueError, "exactly 400x400"):
             native.jacket_format(jpeg(400, 401))
+
+    def test_titles_keep_wide_spaces_and_emoji(self):
+        title = "春\u3000夏\u00a0秋 👩\u200d🎤"
+        song = self.register(title=f"  {title} ", credit="作詞\u3000テスト")["song"]
+        self.assertEqual((song["title"], song["credit"]), (title, "作詞\u3000テスト"))
+        result = self.update(93000, title="겨울", credit=None)
+        self.assertEqual((result["song"]["title"], result["song"]["credit"]), ("겨울", None))
+        with self.assertRaisesRegex(ValueError, "between 1 and 160"):
+            self.update(93000, title="겨\u2028울")
 
     def test_base_must_be_a_stock_3d_mv(self):
         with self.assertRaisesRegex(ValueError, "stock 3D song"):
