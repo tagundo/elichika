@@ -253,6 +253,22 @@ class TestIntegration(SamplerCase):
         self.assertEqual(codec.merge([full, codec.decode_blob(blobs[codec.CORE])])['trailer']['frameClocks'], clocks)
         self.assert_world_clean()
 
+    def test_frame_clock_stops_before_the_end_reads(self):
+        """Its tick keeps a ticket outstanding: the end stops it before the host and agent end reads."""
+        agents = []
+        clock = FakeClock()
+        c = make_context(self.tmp.name, clock, lambda label: agents.append(ScriptedAgent(clock, normal_mv(duration=20))) or agents[-1])
+        reads = c['read_fov_state']
+        c['read_fov_state'] = lambda: (agents[0].calls.append(('host-fov-read', None)), reads())[1]
+        with mock.patch.dict(os.environ, sampler_env(), clear=True):
+            mvdump_sampler.run_dump(c)
+        calls = agents[0].calls
+        stop = calls.index(('mvruntimeclock', None))
+        self.assertEqual(calls[stop:], [('mvruntimeclock', None), ('host-fov-read', None), ('mvruntime', 'fovmodNative')])
+        self.assertEqual(agents[0].sent[[i for i, call in enumerate(calls) if call[0] != 'host-fov-read'].index(stop)], {'stop': True})
+        self.assertTrue(all(options.get('frameClock') == {'leaseMs': 5000, 'leaseFrames': 8} for options in agents[0].sent
+                            if isinstance(options, dict) and options.get('part') not in (None, 'fovmodNative') and 'chunk' not in options))
+
     def test_frame_clock_off(self):
         agents = []
         clock = FakeClock()

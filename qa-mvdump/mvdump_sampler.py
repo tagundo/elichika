@@ -1276,13 +1276,22 @@ class Dumper:
 
     def finish(self):
         release, dispatcher = [], None
+        # The frame clock's tick keeps a dispatcher ticket outstanding: stop it first, so a main-thread
+        # stall after the MV (result screen load) cannot time a ticket out before the end reads.
+        try:
+            if self.stop_reason not in ('observer-lost', 'game-lost') and self.c.get('agent') and self.c['agent']() is not None \
+                    and (self.c['observer_status']() or {}).get('state') == 'READY':
+                self.stop_frame_clock()
+        except AssertionError:
+            raise
+        except Exception as error:
+            self.errors.append({'seq': self.seq, 'where': 'frame-clock-stop', 'error': f'{type(error).__name__}: {str(error)[:200]}'})
         try:
             self.end_reads = self.host_fov_reads('dump-end')
             if self.stop_reason not in ('observer-lost', 'game-lost') and self.c.get('agent') and self.c['agent']() is not None:
                 status = self.c['observer_status']() or {}
                 dispatcher = {'state': status.get('state'), 'lastCode': status.get('lastCode'), 'counts': status.get('counts')}
                 if status.get('state') == 'READY':
-                    self.stop_frame_clock()
                     try:
                         body = self.call('mvruntime', {'part': 'fovmodNative', 'budget': self.cfg.full_budget})
                         config = ((body or {}).get('fovmodNative') or {}).get('config') or {}
