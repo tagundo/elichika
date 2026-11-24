@@ -1247,7 +1247,8 @@ def _describe(database, region, song):
 
 
 def describe_mv_song(repo_root, *, region, live_id):
-    """One registered song (v1 rows are adopted in memory; the next write persists the adoption)."""
+    """One registered song (v1 rows are adopted in memory; the next update or chart attach persists the
+    adoption once the base asset is known)."""
     _positive(live_id, "Select a song registered by MV Studio.")
     with _read_master(repo_root, region) as database:
         return _describe(database, region, _load_song(database, live_id))

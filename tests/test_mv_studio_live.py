@@ -1,6 +1,8 @@
 """Compatibility wrapper, chart templates and chart attachment (replacing the placeholder type 30 in place)."""
 
+from contextlib import closing
 import json
+import sqlite3
 import unittest
 from unittest.mock import patch
 
@@ -175,7 +177,24 @@ class MVStudioLiveTests(StudioCase):
                                                     "placeholder": False}])
         self.assertEqual(query(self.gl / "masterdata.db", "SELECT live_3d_asset_master_id FROM m_live_difficulty WHERE "
                                                          "live_difficulty_id=93000301"), [(2502,)])
-        self.assertTrue(manage.describe_mv_song(self.root, region="gl", live_id=93000)["legacy"])
+        # The attach persisted the adoption (as an update does): v2 bookkeeping with the found base asset.
+        described = manage.describe_mv_song(self.root, region="gl", live_id=93000)
+        self.assertEqual((described["legacy"], described["revision"], described["templateAssetId"], described["actions"]),
+                         (False, 1, 2102, ["open", "remove"]))
+        self.assertEqual(described["difficulties"], [{"id": 93000301, "type": 30, "placeholder": False}])
+        self.assertEqual(query(self.gl / "masterdata.db", "SELECT schema_version,template_asset_id FROM "
+                                                         "_elichika_mv_studio_song WHERE live_id=93000"), [(2, 2102)])
+
+    def test_legacy_song_with_an_unknown_base_stays_v1_after_attach(self):
+        write_legacy_song(self.root, custom_timeline=False)
+        _ = query(self.gl / "masterdata.db", "UPDATE m_live_3d_asset SET quality_setitng_set_id=9 WHERE id=2502")
+        self.attach(93000, backup=False)
+        described = manage.describe_mv_song(self.root, region="gl", live_id=93000)
+        self.assertEqual((described["legacy"], described["templateAssetId"], described["actions"]),
+                         (True, None, ["remove"]))
+        with closing(sqlite3.connect(self.gl / "masterdata.db")) as database:
+            self.assertEqual(manage._columns(database, "main", "_elichika_mv_studio_song"),
+                             ["live_id", "source_live_id", "asset_3d_id", "title"])
 
 
 if __name__ == "__main__":

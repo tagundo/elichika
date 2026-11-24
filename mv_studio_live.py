@@ -262,7 +262,9 @@ def attach_live_charts(repo_root, *, region, live_id, charts, backup=True):
                 manage._write_stage(stages, new_id, {"live_difficulty_id": new_id, **data}, created)
                 flags[new_id] = {"id": new_id, "type": difficulty, "const": new_id, "placeholder": False,
                                  "template": template_id, "gimmicks": []}
-            if not song["legacy"]:
+            # Like update, this write persists a v1 song's in-memory adoption once its base asset is known;
+            # a v1 song with an unknown base stays v1 so the next read can still adopt it.
+            if song["template_asset_id"] is not None:
                 manage._write_bookkeeping(
                     database, region, live_id, title=song["title"], template_live_id=song["template_live_id"],
                     template_asset_id=song["template_asset_id"], asset_id=song["asset_id"], credit=song["credit"],
