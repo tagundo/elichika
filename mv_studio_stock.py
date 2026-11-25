@@ -23,6 +23,11 @@ a restorable backup in the ``database_backup`` layout (``mv_studio_manage._backu
 three MV Studio backups are kept, and a dropped pack moves into the backups that name it). The
 caller holds ``database_maintenance.guard``; an app that manages the game server stops it around
 the write. Every user-facing error is a constant listed in ``MESSAGES``.
+
+An override is region-local: it changes the MV of one region's catalogs only. The JP to GL
+content merge at server start (clientdb/upgrades/jp_global_mv_studio.go) leaves out the
+bookkeeping table and every catalog row of a JP override, and a JP-only MV it copies into GL
+plays its stock timeline there.
 """
 
 import hashlib
