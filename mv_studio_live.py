@@ -1,8 +1,9 @@
 """Register a studio MV, then attach native rhythm charts to the same live ID.
 
-The registration, update, listing and removal API lives in ``mv_studio_manage``
-and is re-exported here, together with ``MESSAGES``: every user-facing error
-string of the three MV Studio modules, which the tools UI translates.
+The registration, update, listing and removal API lives in ``mv_studio_manage``,
+the stock MV timeline API ("게임에 적용": describe, validate, apply, restore) in
+``mv_studio_stock``; both are re-exported here, together with ``MESSAGES``: every
+user-facing error string of the MV Studio modules, which the tools UI translates.
 """
 
 import json
@@ -17,11 +18,16 @@ from mv_studio_manage import (  # re-exported API, see __all__
 )
 import mv_studio_manage as manage
 from mv_studio_native_assets import PLATFORMS, _read, prepare_audio
+from mv_studio_stock import (  # re-exported API, see __all__
+    MESSAGES as _STOCK_MESSAGES, apply_mv_timeline, describe_mv_timeline, list_mv_timelines, restore_mv_timeline,
+    validate_mv_timelines,
+)
 
 
-__all__ = ("KEEP", "MESSAGES", "attach_live_charts", "chart_templates", "describe_mv_song", "list_mv_songs",
-           "list_mv_studio_songs", "next_mv_song_id", "plan_remove_mv_song", "prune_mv_studio_backups",
-           "register_mv_only", "register_mv_song", "remove_mv_song", "update_mv_song")
+__all__ = ("KEEP", "MESSAGES", "apply_mv_timeline", "attach_live_charts", "chart_templates", "describe_mv_song",
+           "describe_mv_timeline", "list_mv_songs", "list_mv_studio_songs", "list_mv_timelines", "next_mv_song_id",
+           "plan_remove_mv_song", "prune_mv_studio_backups", "register_mv_only", "register_mv_song", "remove_mv_song",
+           "restore_mv_timeline", "update_mv_song", "validate_mv_timelines")
 _REGIONS = manage.REGIONS
 _SONGS = manage.SONGS
 _INT32 = 2**31 - 1
@@ -289,7 +295,7 @@ def attach_live_charts(repo_root, *, region, live_id, charts, backup=True):
     return result
 
 
-MESSAGES = tuple(dict.fromkeys(_MANAGE_MESSAGES + (
+MESSAGES = tuple(dict.fromkeys(_MANAGE_MESSAGES + _STOCK_MESSAGES + (
     "Choose the exact source stage before installing a replacement timeline.",
     "The chart exceeds the supported file size.",
     "Provide a complete native stage chart, with its own note list.",
