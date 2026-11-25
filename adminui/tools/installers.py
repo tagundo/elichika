@@ -49,6 +49,11 @@ INSTALLERS = {
                 "scans": ["~/storage/downloads/sukusta/livetimeline", "assets/package/livetimeline"], "ext": ".zip"},
     "db":      {"module": "elichika_db_importer", "folder": "sql",
                 "scans": ["~/storage/downloads/sukusta/sql", "assets/package/sql"], "ext": ".sql"},
+    # MV timeline packs (.sifasmv) and old livetimeline zips: adminui.tools.mv_timeline, no legacy module.
+    "mvpack":  {"module": None, "folder": "mvtimeline",
+                "scans": ["~/storage/downloads/sukusta/mvtimeline", "assets/package/mvtimeline",
+                          "~/storage/downloads/sukusta/livetimeline", "assets/package/livetimeline"],
+                "ext": (".sifasmv", ".zip")},
 }
 
 

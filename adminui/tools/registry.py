@@ -24,6 +24,9 @@ from adminui.tools.installers import (
     options_for, run_camera, run_card, run_costume, run_db, run_dictionary, run_live, run_tower,
 )
 from adminui.tools.restore import restore_options, run_restore
+from adminui.tools.mv_timeline import override_options, pack_options
+from adminui.tools.mv_timeline import run_install as run_mv_timeline_pack
+from adminui.tools.mv_timeline import run_restore as run_mv_timeline_restore
 
 _BACKUP = {"name": "backup", "label": "Back up the database first", "type": "checkbox", "default": True}
 _STOP = {"name": "stop_server", "label": "Stop the elichika server first", "type": "checkbox",
@@ -282,6 +285,52 @@ TOOLS = [
         "run": run_camera,
         "options": options_for("camera"),
         "fields": [_addon("livetimeline", multi=True), _BACKUP, _STOP],
+    },
+    {
+        "id": "install_mv_timeline_pack",
+        "label": "Install MV timeline pack (.sifasmv)",
+        "description": ("Install an MV timeline pack from MV Studio (or an old live camera timeline zip) into a "
+                        "3D MV slot, per region and platform, with a backup. It can be undone with Restore MV "
+                        "timeline. Drop the file into sukusta/mvtimeline."),
+        "run": run_mv_timeline_pack,
+        "options": pack_options,
+        "fields": [
+            {"name": "addon", "label": "File to install", "type": "dynamic_select", "source": "addon",
+             "required": True,
+             "file_add": {"extensions": ["sifasmv", "zip"], "max_files": 128, "max_bytes": 512 * 1024 * 1024,
+                          "max_total_bytes": 8 * 1024 * 1024 * 1024},
+             "help": "Files in sukusta/{folder} and …/addons appear here.", "help_folder": "mvtimeline"},
+            {"name": "target", "label": "Target 3D MV slot", "type": "dynamic_select", "depends_on": "addon",
+             "help": "The pack's own target comes first; the pack's details are shown with it."},
+            {"name": "target_custom", "label": "Other target 3D asset ID (optional)", "type": "text", "default": "",
+             "help": "Any 3D MV of the region, e.g. 1012001. Overrides the slot above."},
+            {"name": "region", "label": "Region", "type": "select", "default": "gl",
+             "options": [{"value": "gl", "label": "GL"}, {"value": "jp", "label": "JP"},
+                         {"value": "both", "label": "GL and JP"}]},
+            {"name": "apply_stage", "label": "Change the stage too (recommended)", "type": "checkbox",
+             "default": True,
+             "help": ("Puts the pack's stage, stage effect, props, quality and shader into the slot with the "
+                      "timeline. Off: the slot keeps its own stage, and the timeline's stage-bound tracks (stage "
+                      "effects, stage lights) may address objects that stage does not have.")},
+            {"name": "convert", "label": "Convert a missing platform's timeline", "type": "checkbox",
+             "default": True,
+             "help": ("Uses MV timeline platform conversion from the asset editing tools for a platform the "
+                      "pack has no timeline for. Off, or without those tools: that platform plays the source "
+                      "MV's original timeline.")},
+            _BACKUP, _STOP,
+        ],
+    },
+    {
+        "id": "restore_mv_timeline",
+        "label": "Restore MV timeline",
+        "description": ("Put back the original timeline and stage of a 3D MV that MV Studio's \"apply to game\" or "
+                        "an MV timeline pack replaced. A backup is taken first."),
+        "run": run_mv_timeline_restore,
+        "options": override_options,
+        "fields": [
+            {"name": "override", "label": "Replaced MV timeline", "type": "dynamic_select", "required": True},
+            _BACKUP, _STOP,
+        ],
     },
     {
         "id": "install_db",

@@ -422,10 +422,12 @@ def _timeline_override(database, asset_id):
     row = database.execute(f"SELECT * FROM {TIMELINES} WHERE asset_id=?", (asset_id,)).fetchone()
     if row is None:
         return None
+    columns = row.keys()
+    optional = {name: _json(row[name], {}) if name in columns else {} for name in ("source", "stage", "extras")}
     return {"asset_id": row["asset_id"], "stock_key": row["stock_key"], "timeline_key": row["timeline_key"],
             "revision": row["revision"] or 0, "updated_at": row["updated_at"], "packs": _json(row["packs"], {}),
             "content": _json(row["content"], {}), "fingerprints": _json(row["fingerprints"], {}),
-            "packages": _json(row["packages"], {}), "lives": _json(row["lives"], [])}
+            "packages": _json(row["packages"], {}), "lives": _json(row["lives"], []), **optional}
 
 
 def _override_packs(record):
@@ -458,6 +460,10 @@ def _template(database, template_live_id, template_asset_id, *, require_stock=Tr
     # A base whose timeline MV Studio replaced still gives a new song its TRUE stock: the override is
     # the base's own edit, and restoring the base later must not change the song.
     override = _timeline_override(database, template_asset_id)
+    original_stage = (override or {}).get("stage", {}).get("original")
+    if isinstance(original_stage, dict) and original_stage:
+        # The same for a stage the override swapped (mv_studio_stock "stage"): the stock stage.
+        asset = dict(asset, **{name: value for name, value in original_stage.items() if name in asset.keys()})
     return {"live": live, "asset": asset, "live_id": template_live_id, "asset_id": template_asset_id,
             "stock_key": override["stock_key"] if override else asset["timeline"], "layout": layout,
             "override_packs": _override_packs(override)}

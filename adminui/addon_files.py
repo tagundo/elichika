@@ -30,7 +30,8 @@ CHUNK = 64 * 1024
 IDLE_TIMEOUT = 30
 UPLOAD_TIMEOUT = 5 * 60
 TOOL_KEYS = {"install_costume": "costume", "install_live": "live", "install_card": "card",
-             "install_tower": "tower", "install_camera": "camera", "install_db": "db"}
+             "install_tower": "tower", "install_camera": "camera", "install_db": "db",
+             "install_mv_timeline_pack": "mvpack"}
 _PUBLISH_LOCK = threading.Lock()
 
 
@@ -113,8 +114,10 @@ def _name(value, extension):
         size = len(value.encode("utf-8"))
     except UnicodeError:
         raise UploadError("The chosen filename is not valid UTF-8.") from None
-    require(size <= 240 and value.lower().endswith(extension) and len(value) > len(extension),
-            "Choose a " + extension + " file with a filename of at most 240 UTF-8 bytes.")
+    extensions = extension if isinstance(extension, tuple) else (extension,)
+    matched = next((item for item in extensions if value.lower().endswith(item)), None)
+    require(size <= 240 and matched is not None and len(value) > len(matched),
+            "Choose a " + " or ".join(extensions) + " file with a filename of at most 240 UTF-8 bytes.")
     return value
 
 

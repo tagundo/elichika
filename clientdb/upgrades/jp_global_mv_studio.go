@@ -29,7 +29,13 @@ const jpGlobalStockTimelines = "_elichika_mv_studio_timeline"
 type jpGlobalOverride struct {
 	asset                 int64
 	stockKey, timelineKey string
+	// The asset's stage fields before the override (stage column {"original": {...}}), when it has one.
+	originalStage map[string]any
 }
+
+// jpGlobalStageFields are the m_live_3d_asset stage fields an override may swap (mv_studio_stock.STAGE_FIELDS).
+var jpGlobalStageFields = []string{"live_stage_master_id", "stage_effect_asset_path", "live_prop_skeleton_asset_path",
+	"quality_setitng_set_id", "shader_variant_asset_path"}
 
 type jpGlobalOverrides struct {
 	items []jpGlobalOverride
@@ -64,7 +70,16 @@ func readJPGlobalOverrides(path string) (jpGlobalOverrides, error) {
 	if err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? COLLATE NOCASE)", jpGlobalStockTimelines).Scan(&exists); err != nil || !exists {
 		return result, err
 	}
-	rows, err := db.Query("SELECT asset_id, stock_key, timeline_key, packs FROM " + quoteJPGlobalIdentifier(jpGlobalStockTimelines) + " ORDER BY asset_id")
+	// Overrides written before the cross-slot version have no stage column.
+	var hasStage bool
+	if err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM pragma_table_info(?) WHERE name = 'stage')", jpGlobalStockTimelines).Scan(&hasStage); err != nil {
+		return result, err
+	}
+	stageColumn := "'{}'"
+	if hasStage {
+		stageColumn = "stage"
+	}
+	rows, err := db.Query("SELECT asset_id, stock_key, timeline_key, packs, " + stageColumn + " FROM " + quoteJPGlobalIdentifier(jpGlobalStockTimelines) + " ORDER BY asset_id")
 	if err != nil {
 		return result, fmt.Errorf("%s: %w", jpGlobalStockTimelines, err)
 	}
@@ -72,9 +87,15 @@ func readJPGlobalOverrides(path string) (jpGlobalOverrides, error) {
 	keys, packs := map[string]bool{}, map[string]bool{}
 	for rows.Next() {
 		var item jpGlobalOverride
-		var encoded string
-		if err = rows.Scan(&item.asset, &item.stockKey, &item.timelineKey, &encoded); err != nil {
+		var encoded, stage string
+		if err = rows.Scan(&item.asset, &item.stockKey, &item.timelineKey, &encoded, &stage); err != nil {
 			return result, fmt.Errorf("%s: %w", jpGlobalStockTimelines, err)
+		}
+		var stages struct {
+			Original map[string]any `json:"original"`
+		}
+		if stage != "" && json.Unmarshal([]byte(stage), &stages) == nil {
+			item.originalStage = stages.Original
 		}
 		// {"android": [pack, size] | null, "ios": [pack, size] | null}
 		var platforms map[string][]any
@@ -137,15 +158,16 @@ func (o jpGlobalOverrides) exclusion(table jpGlobalTable) (string, []any) {
 }
 
 // restoreStockTimelines points a JP-only 3D MV that the merge copied with its JP override key back
-// at its stock key. An MV with GL's own override keeps it.
+// at its stock key, and puts back the stage fields the override swapped. An MV with GL's own
+// override keeps it.
 func (o jpGlobalOverrides) restoreStockTimelines(tx *sql.Tx, plan []jpGlobalTable) error {
 	if len(o.items) == 0 {
 		return nil
 	}
 	found := false
+	columns := map[string]bool{}
 	for _, table := range plan {
 		if strings.EqualFold(table.name, "m_live_3d_asset") {
-			columns := map[string]bool{}
 			for _, column := range table.columns {
 				columns[strings.ToLower(column.name)] = true
 			}
@@ -163,11 +185,21 @@ func (o jpGlobalOverrides) restoreStockTimelines(tx *sql.Tx, plan []jpGlobalTabl
 		if item.timelineKey == item.stockKey {
 			continue
 		}
-		query := "UPDATE main.m_live_3d_asset SET timeline = ? WHERE id = ? AND timeline = ?"
+		set, args := "timeline = ?", []any{item.stockKey}
+		for _, field := range jpGlobalStageFields {
+			if value, ok := item.originalStage[field]; ok && columns[field] {
+				if number, isNumber := value.(float64); isNumber {
+					value = int64(number)
+				}
+				set += ", " + quoteJPGlobalIdentifier(field) + " = ?"
+				args = append(args, value)
+			}
+		}
+		query := "UPDATE main.m_live_3d_asset SET " + set + " WHERE id = ? AND timeline = ?"
 		if own {
 			query += " AND NOT EXISTS (SELECT 1 FROM main." + quoteJPGlobalIdentifier(jpGlobalStockTimelines) + " WHERE asset_id = ?)"
 		}
-		args := []any{item.stockKey, item.asset, item.timelineKey}
+		args = append(args, item.asset, item.timelineKey)
 		if own {
 			args = append(args, item.asset)
 		}

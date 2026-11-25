@@ -298,6 +298,21 @@ class ValidatedTimelines:
             self._items.clear()
 
 
+ORIGINAL_MISSING = ("Install the base MV's original timeline for this platform locally, or allow the download, to "
+                    "verify the edit.")
+
+
+class OriginalMissing(ValueError):
+    """The base MV's original timeline for ``platform`` is not local and the caller supplied none.
+
+    A ValueError with the fixed ORIGINAL_MISSING message; ``platform`` lets a caller that can fetch
+    the original (mv_timeline_pack.install_pack) supply it and validate again."""
+
+    def __init__(self, platform):
+        super().__init__(ORIGINAL_MISSING)
+        self.platform = platform
+
+
 def _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id, platform, payload, original,
                      memo=None):
     """Validate ``payload`` against every distinct stock row of its platform. ``memo`` (ValidatedTimelines)
@@ -320,8 +335,7 @@ def _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id
         stock = _stock_timeline(repo_root, row, physical, deadline)
         if stock is None:
             if original is None:
-                raise ValueError("Install the base MV's original timeline for this platform locally, or allow the "
-                                 "download, to verify the edit.")
+                raise OriginalMissing(platform)
             if len(original) != row["size"] or not original.startswith(_UNITYFS):
                 raise ValueError("The supplied original timeline does not match the base MV's catalogued size.")
             stock = original
@@ -345,21 +359,22 @@ def unique_key(database, schemas):
 
 
 def install_timelines(repo_root, database, schemas, stock_key, template_asset_id, timelines, publish, originals=None,
-                      memo=None):
+                      memo=None, always_new=False):
     """Write one new timeline key across every regional catalog of both platforms.
 
     ``timelines`` maps a platform to plaintext UnityFS bytes (validated against that
     platform's own stock, then published as a whole-file pack) or to an existing
     ``(pack_name, size)`` custom pack that is kept. A platform without an entry
     aliases the stock row. Dependencies (choreography) are copied from the stock
-    key. With no entry at all nothing is written and the stock key is returned.
-    ``memo`` is passed to ``_verify_timeline``.
+    key. With no entry at all nothing is written and the stock key is returned, unless
+    ``always_new`` asks for a new key aliasing every stock row (a stock MV played in another
+    asset's slot). ``memo`` is passed to ``_verify_timeline``.
     Returns ``(key, {platform: (pack_name, size) | None}, {platform: sha256})``.
     """
     if not isinstance(timelines, dict) or timelines.keys() - PLATFORMS.keys():
         raise ValueError("Provide a native timeline for Android, iOS or both.")
     originals = originals or {}
-    if not timelines:
+    if not timelines and not always_new:
         return stock_key, {platform: None for platform in PLATFORMS}, {}
     stock_rows = {}
     for schema in schemas:

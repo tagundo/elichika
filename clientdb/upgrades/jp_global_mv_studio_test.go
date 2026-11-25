@@ -1,6 +1,7 @@
 package upgrades
 
 import (
+	"path/filepath"
 	"testing"
 )
 
@@ -129,4 +130,42 @@ func TestJapaneseContentRefusesAnUnreadableStockOverrideRecord(t *testing.T) {
 		t.Fatal("an unreadable override record must refuse the merge")
 	}
 	assertJapaneseContentSnapshot(t, before)
+}
+
+// A JP override that also swapped the stage (mv_studio_stock "stage"): a JP-only MV the merge copies
+// into GL gets its stock timeline AND its original stage fields back.
+func TestJapaneseContentPutsBackTheStageOfAJPOverride(t *testing.T) {
+	dir := t.TempDir()
+	jpPath, glPath := filepath.Join(dir, "jp.db"), filepath.Join(dir, "gl.db")
+	jp := testDatabase(t, jpPath)
+	execTestSQL(t, jp,
+		`CREATE TABLE _elichika_mv_studio_timeline (asset_id INTEGER PRIMARY KEY, stock_key TEXT NOT NULL, timeline_key TEXT NOT NULL, revision INTEGER NOT NULL, updated_at INTEGER NOT NULL, packs TEXT NOT NULL, content TEXT NOT NULL, fingerprints TEXT NOT NULL, packages TEXT NOT NULL, lives TEXT NOT NULL, source TEXT NOT NULL DEFAULT '{}', stage TEXT NOT NULL DEFAULT '{}', extras TEXT NOT NULL DEFAULT '{}')`,
+		`INSERT INTO _elichika_mv_studio_timeline VALUES (4200101, 'stock042', 'beef5678', 1, 0, '{"android":null,"ios":null}', '{}', '{}', '{}', '[]', '{"assetId":4200103,"stockKey":"stock043"}', '{"original":{"live_stage_master_id":101,"stage_effect_asset_path":"E101","live_prop_skeleton_asset_path":null,"quality_setitng_set_id":1,"shader_variant_asset_path":null}}', '{}')`)
+	jp.Close()
+	overrides, err := readJPGlobalOverrides(jpPath)
+	if err != nil || len(overrides.items) != 1 {
+		t.Fatalf("overrides=%+v err=%v", overrides, err)
+	}
+	gl := testDatabase(t, glPath)
+	execTestSQL(t, gl,
+		`CREATE TABLE m_live_3d_asset (id INTEGER NOT NULL PRIMARY KEY, timeline TEXT NOT NULL, live_stage_master_id INTEGER NOT NULL, stage_effect_asset_path TEXT NOT NULL, live_prop_skeleton_asset_path TEXT, quality_setitng_set_id INTEGER NOT NULL, shader_variant_asset_path TEXT)`,
+		`INSERT INTO m_live_3d_asset VALUES (4200101, 'beef5678', 202, 'E202', 'P202', 3, 'S202')`)
+	var columns []jpGlobalColumn
+	for _, name := range []string{"id", "timeline", "live_stage_master_id", "stage_effect_asset_path", "live_prop_skeleton_asset_path", "quality_setitng_set_id", "shader_variant_asset_path"} {
+		columns = append(columns, jpGlobalColumn{name: name})
+	}
+	tx, err := gl.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = overrides.restoreStockTimelines(tx, []jpGlobalTable{{name: "m_live_3d_asset", columns: columns}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	gl.Close()
+	assertJapaneseContentRows(t, glPath, `SELECT * FROM m_live_3d_asset`, [][]any{
+		{int64(4200101), "stock042", int64(101), "E101", nil, int64(1), nil},
+	})
 }
