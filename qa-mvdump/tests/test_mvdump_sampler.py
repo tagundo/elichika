@@ -924,7 +924,7 @@ class TestWorkflow(unittest.TestCase):
 
     def test_every_key_file_names_its_song(self):
         files = sorted((HERE.parent / 'keys').glob('mvdump-keys-*.json'))
-        self.assertGreaterEqual([f.name for f in files], ['mvdump-keys-12023.json', 'mvdump-keys-12035.json'])
+        self.assertGreaterEqual({f.name for f in files}, {'mvdump-keys-12023.json', 'mvdump-keys-12035.json'})
         for path in files:
             keys = json.loads(path.read_text())
             self.assertEqual(f'mvdump-keys-{keys["song"]}.json', path.name)
