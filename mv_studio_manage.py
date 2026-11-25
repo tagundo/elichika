@@ -66,6 +66,8 @@ MV_STAGE_ROWS = 1
 DEFAULT_LAST_LIVE_DIFFICULTY = 10001101
 BACKUPS_KEPT = 3
 SONGS = "_elichika_mv_studio_song"
+# Stock 3D MVs whose timeline MV Studio replaced (mv_studio_stock): one row per asset, in masterdata.
+TIMELINES = "_elichika_mv_studio_timeline"
 SCHEMA_VERSION = 2
 MAX_TITLE = 160
 MAX_CREDIT = 200
@@ -410,6 +412,28 @@ def next_mv_song_id(repo_root, *, region):
 
 # ---------------------------------------------------------------- template and song state
 
+def _timeline_override(database, asset_id):
+    """The MV Studio timeline override of a stock 3D asset (mv_studio_stock), or None.
+
+    ``stock_key`` is the asset's timeline before the first apply: the true stock that every
+    later apply, a restore and an MV-only song made from this base are checked against."""
+    if not _table_exists(database, "main", TIMELINES):
+        return None
+    row = database.execute(f"SELECT * FROM {TIMELINES} WHERE asset_id=?", (asset_id,)).fetchone()
+    if row is None:
+        return None
+    return {"asset_id": row["asset_id"], "stock_key": row["stock_key"], "timeline_key": row["timeline_key"],
+            "revision": row["revision"] or 0, "updated_at": row["updated_at"], "packs": _json(row["packs"], {}),
+            "content": _json(row["content"], {}), "fingerprints": _json(row["fingerprints"], {}),
+            "packages": _json(row["packages"], {}), "lives": _json(row["lives"], [])}
+
+
+def _override_packs(record):
+    """The pack names a timeline override added to its asset's live:<asset> package."""
+    packs = (record or {}).get("packs") or {}
+    return {pack[0] for pack in packs.values() if isinstance(pack, list) and pack and isinstance(pack[0], str)}
+
+
 def _template(database, template_live_id, template_asset_id, *, require_stock=True):
     live = database.execute("SELECT * FROM m_live WHERE live_id=?", (template_live_id,)).fetchone()
     if (live is None or live["is_2d_live"] or not live["bgm_path"] or live["live_member_mapping_id"] is None):
@@ -431,8 +455,12 @@ def _template(database, template_live_id, template_asset_id, *, require_stock=Tr
     for stage_id, _, _ in layout:
         if not database.execute("SELECT 1 FROM m_live_stage WHERE id=?", (stage_id,)).fetchone():
             raise ValueError("An MV position refers to an unknown stage.")
+    # A base whose timeline MV Studio replaced still gives a new song its TRUE stock: the override is
+    # the base's own edit, and restoring the base later must not change the song.
+    override = _timeline_override(database, template_asset_id)
     return {"live": live, "asset": asset, "live_id": template_live_id, "asset_id": template_asset_id,
-            "stock_key": asset["timeline"], "layout": layout}
+            "stock_key": override["stock_key"] if override else asset["timeline"], "layout": layout,
+            "override_packs": _override_packs(override)}
 
 
 def _legacy_template_asset(database, row):
@@ -809,7 +837,8 @@ def _sync_packages(database, region, live_id, asset_id, template, state, previou
     for schema in _asset_schemas(region):
         platform = _platform(schema)
         live_package = f"live:{template['asset_id']}"
-        replaced, extras = set(), []
+        # The base's own timeline override packs are never part of a song's package.
+        replaced, extras = set(template.get("override_packs", ())), []
         custom = state["timeline"][platform]
         if custom is not None:
             stock = database.execute(f"SELECT pack_name FROM {schema}.live_timeline WHERE asset_path=?",
@@ -1484,7 +1513,8 @@ def register_mv_song(repo_root, *, region, live_id, template_live_id, template_a
 # ---------------------------------------------------------------- update
 
 def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timelines=KEEP, originals=None,
-                   audio=KEEP, jacket=KEEP, add_placeholder=False, fingerprints=None, backup=True, log=print):
+                   audio=KEEP, jacket=KEEP, add_placeholder=False, fingerprints=None, backup=True, log=print,
+                   expected_timeline=None):
     """Change parts of a registered song in place; ids never change.
 
     Each part is KEEP (unchanged), None (back to the base MV's part) or new data.
@@ -1492,6 +1522,8 @@ def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timel
     the stock timeline and whose KEEP values keep that platform. A part whose
     content or caller fingerprint is unchanged is skipped; with nothing to change
     there are no writes, packs or backup and the result has ``changed: False``.
+    ``expected_timeline`` (optional) is the song's timeline key the caller checked: another key
+    means the song changed since, and the update is refused (TIMELINE_STALE).
     Clean-up after the commit (moving dropped packs, pruning old backups) never fails
     the call: a failure adds FILES_NOT_CLEANED or BACKUPS_NOT_PRUNED to ``warnings``.
     """
@@ -1507,6 +1539,8 @@ def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timel
     fingerprints = _fingerprints(fingerprints)
     if type(add_placeholder) is not bool or type(backup) is not bool:
         raise ValueError("Choose the update options explicitly.")
+    if expected_timeline is not None and (not isinstance(expected_timeline, str) or not expected_timeline):
+        raise ValueError(TIMELINE_STALE)
     log = log or (lambda message: None)
     created, dropped, folder, parts = [], set(), None, set()
     try:
@@ -1519,6 +1553,8 @@ def update_mv_song(repo_root, *, region, live_id, title=KEEP, credit=KEEP, timel
             live, content = state["live"], dict(song["content"])
             if live is None or state["asset"] is None:
                 raise ValueError("The registered song is incomplete in the game catalog. Remove it and register again.")
+            if expected_timeline is not None and state["asset"]["timeline"] != expected_timeline:
+                raise ValueError(TIMELINE_STALE)
             stored = dict(song["fingerprints"])
             key = _SONG_KEY.format(live_id)
 
@@ -1694,6 +1730,7 @@ USERS_NOT_CLEANED = ("The song was removed, but players' records for it could no
 FILES_NOT_CLEANED = ("The change was saved, but some files it no longer needs could not be moved or deleted. "
                      "The game does not use them.")
 BACKUPS_NOT_PRUNED = "The change was saved, but older MV Studio backups could not be deleted."
+TIMELINE_STALE = "The game's timeline changed after the check. Check it again, then apply."
 
 
 def _user_tables(database):
@@ -1961,4 +1998,5 @@ MESSAGES = native.MESSAGES + (
     USERS_NOT_CLEANED,
     FILES_NOT_CLEANED,
     BACKUPS_NOT_PRUNED,
+    TIMELINE_STALE,
 )

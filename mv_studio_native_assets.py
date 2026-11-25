@@ -4,6 +4,7 @@ Every user-facing error message raised here is a constant string listed in
 ``mv_studio_manage.MESSAGES`` so the tools UI can translate it.
 """
 
+from collections import OrderedDict
 from contextlib import contextmanager
 import hashlib
 import os
@@ -13,6 +14,7 @@ import secrets
 import stat
 import struct
 import tempfile
+import threading
 import time
 
 from live_install_core import encrypt_bytes
@@ -272,7 +274,34 @@ def _stock_timeline(repo_root, row, physical, deadline):
     return game.load_asset(repo_root, descriptor, deadline=deadline)
 
 
-def _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id, platform, payload, original):
+class ValidatedTimelines:
+    """Payloads this process already validated against a stock timeline: (payload sha256, stock sha256,
+    Unity platform). The validator is a pure function of those bytes, so a store call that validated a
+    payload before writing need not parse it again inside the same write (about 3 s per platform)."""
+
+    def __init__(self, size=16):
+        self._items, self._size, self._lock = OrderedDict(), size, threading.Lock()
+
+    def __contains__(self, key):
+        with self._lock:
+            return key in self._items
+
+    def add(self, key):
+        with self._lock:
+            self._items[key] = True
+            self._items.move_to_end(key)
+            while len(self._items) > self._size:
+                self._items.popitem(last=False)
+
+    def clear(self):
+        with self._lock:
+            self._items.clear()
+
+
+def _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id, platform, payload, original,
+                     memo=None):
+    """Validate ``payload`` against every distinct stock row of its platform. ``memo`` (ValidatedTimelines)
+    skips a payload already validated against the same stock bytes in this process."""
     label, native_platform = PLATFORMS[platform]
     package = f"live:{template_asset_id}"
     verified = set()
@@ -296,7 +325,11 @@ def _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id
             if len(original) != row["size"] or not original.startswith(_UNITYFS):
                 raise ValueError("The supplied original timeline does not match the base MV's catalogued size.")
             stock = original
-        _validate_timeline(payload, stock, native_platform, deadline)
+        key = (hashlib.sha256(payload).digest(), hashlib.sha256(stock).digest(), native_platform)
+        if memo is None or key not in memo:
+            _validate_timeline(payload, stock, native_platform, deadline)
+            if memo is not None:
+                memo.add(key)
         verified.add(identity)
 
 
@@ -311,7 +344,8 @@ def unique_key(database, schemas):
             return key
 
 
-def install_timelines(repo_root, database, schemas, stock_key, template_asset_id, timelines, publish, originals=None):
+def install_timelines(repo_root, database, schemas, stock_key, template_asset_id, timelines, publish, originals=None,
+                      memo=None):
     """Write one new timeline key across every regional catalog of both platforms.
 
     ``timelines`` maps a platform to plaintext UnityFS bytes (validated against that
@@ -319,6 +353,7 @@ def install_timelines(repo_root, database, schemas, stock_key, template_asset_id
     ``(pack_name, size)`` custom pack that is kept. A platform without an entry
     aliases the stock row. Dependencies (choreography) are copied from the stock
     key. With no entry at all nothing is written and the stock key is returned.
+    ``memo`` is passed to ``_verify_timeline``.
     Returns ``(key, {platform: (pack_name, size) | None}, {platform: sha256})``.
     """
     if not isinstance(timelines, dict) or timelines.keys() - PLATFORMS.keys():
@@ -337,7 +372,7 @@ def install_timelines(repo_root, database, schemas, stock_key, template_asset_id
         if isinstance(target, (bytes, bytearray)):
             payload = bytes(target)
             _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id, platform, payload,
-                             originals.get(platform))
+                             originals.get(platform), memo)
             packs[platform] = publish(encrypt_bytes(payload))
             digests[platform] = hashlib.sha256(payload).hexdigest()
         else:
