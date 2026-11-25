@@ -292,7 +292,8 @@ def _template_of(database, asset_id, source_id):
     return source_id, key, record
 
 
-def validate_mv_timelines(repo_root, *, region, asset_id, timelines, originals=None, source_asset_id=None):
+def validate_mv_timelines(repo_root, *, region, asset_id, timelines, originals=None, source_asset_id=None,
+                          stage=KEEP):
     """Validate new timelines against the 3D MV's TRUE stock. Writes nothing.
 
     ``asset_id`` is a stock 3D MV (an MV-only song's base asset validates that song's timelines).
@@ -300,10 +301,11 @@ def validate_mv_timelines(repo_root, *, region, asset_id, timelines, originals=N
     ``originals`` holds plaintext stock timelines the caller downloaded, used only when the local
     stock pack is absent. ``source_asset_id`` names another 3D MV of the region the timelines were
     made from; they are then validated against THAT asset's TRUE stock (``originals`` are its
-    originals). Returns {assetId, timelineKey, validated: [platforms], sourceAssetId}."""
+    originals). ``stage`` (as for apply_mv_timeline) is checked against this region's catalogs.
+    Returns {assetId, timelineKey, validated: [platforms], sourceAssetId}."""
     manage._regional_root(repo_root, region)
     manage._positive(asset_id, CHOOSE_ASSET)
-    source_id = _source_input(source_asset_id, asset_id)
+    source_id, stage = _source_input(source_asset_id, asset_id), _stage_input(stage)
     payloads, originals = _payloads(timelines), manage._originals(originals)
     with manage._read_master(repo_root, region) as database:
         asset = _asset(database, asset_id)
@@ -311,6 +313,10 @@ def validate_mv_timelines(repo_root, *, region, asset_id, timelines, originals=N
             raise ValueError(SONG_ASSET)
         template, stock_key, _ = _template_of(database, asset_id, source_id)
         schemas = manage._asset_schemas(region)
+        if stage is not KEEP:
+            now = _stage_of(asset)
+            original = _original_stage(manage._timeline_override(database, asset_id), asset)
+            _check_stage(database, schemas, dict(original) if stage is None else dict(original, **stage), now)
         stock_rows = _stock_rows(database, schemas, stock_key)
         for platform, payload in sorted(payloads.items()):
             native._verify_timeline(repo_root, database, schemas, stock_rows, template, platform, payload,
