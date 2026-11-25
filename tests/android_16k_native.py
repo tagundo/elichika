@@ -336,11 +336,20 @@ def prepare(args, report):
 
     # Ubuntu's static ARM64 BusyBox supplies only initramfs mount/poweroff tools.
     ports_base = os.environ.get("ELICHIKA_UBUNTU_PORTS_BASE", "https://ports.ubuntu.com/ubuntu-ports").rstrip("/")
+
+    def mirror_get(url):
+        # The ports mirror's CDN answers pool files with 403 Forbidden for the
+        # default Python-urllib User-Agent, but serves the same bytes to a
+        # named client. Integrity still comes from the SHA256 in the index.
+        request = urllib.request.Request(url, headers={"User-Agent": "elichika-ci/1.0"})
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.read()
+
     index_url = ports_base + "/dists/noble/main/binary-arm64/Packages.gz"
-    index = gzip.decompress(urllib.request.urlopen(index_url, timeout=60).read()).decode()
+    index = gzip.decompress(mirror_get(index_url)).decode()
     block = next(block for block in index.split("\n\n") if block.startswith("Package: busybox-static\n"))
     fields = dict(line.split(": ", 1) for line in block.splitlines() if ": " in line and not line.startswith(" "))
-    deb_data = urllib.request.urlopen(ports_base + "/" + fields["Filename"], timeout=60).read()
+    deb_data = mirror_get(ports_base + "/" + fields["Filename"])
     assert sha(deb_data) == fields["SHA256"], "BusyBox archive integrity failure"
     deb = args.work / "busybox.deb"
     deb.write_bytes(deb_data)
