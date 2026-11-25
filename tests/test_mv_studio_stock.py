@@ -18,6 +18,10 @@ from tests.test_mv_studio_manage import dump, query, region_paths, timeline
 
 
 TABLE = manage.TIMELINES
+STAGE_2101 = {"live_stage_master_id": 101, "stage_effect_asset_path": "E2101", "live_prop_skeleton_asset_path": "P2101",
+              "quality_setitng_set_id": 3, "shader_variant_asset_path": None}
+STAGE_2102 = {"live_stage_master_id": 102, "stage_effect_asset_path": "E2102", "live_prop_skeleton_asset_path": None,
+              "quality_setitng_set_id": 3, "shader_variant_asset_path": None}
 
 
 def version(rows):
@@ -106,7 +110,10 @@ class ApplyTests(StockCase):
         self.assertEqual(described, {"assetId": 2102, "region": "gl", "stockKey": "A2102", "timelineKey": key,
                                      "override": True, "platforms": {"android": "custom", "ios": "custom"},
                                      "revision": 1, "updatedAt": described["updatedAt"],
-                                     "fingerprints": {"android": "fa", "ios": "fi"}, "lives": [21], "song": False})
+                                     "fingerprints": {"android": "fa", "ios": "fi"}, "lives": [21],
+                                     "usage": {"mv": [[21, 2]], "rhythm": [[21, 21301], [21, 21302]]}, "song": False,
+                                     "source": None, "stage": {"current": STAGE_2102, "stock": STAGE_2102,
+                                                               "changed": False}})
         self.assertEqual(result["timeline"], described)
         self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [described])
         self.assertEqual(stock.list_mv_timelines(self.root, region="jp"), [])
@@ -226,7 +233,8 @@ class ApplyTests(StockCase):
         android = timeline("a1")
         result = stock.validate_mv_timelines(self.root, region="gl", asset_id=2102,
                                              timelines={"android": android, "ios": studio.KEEP})
-        self.assertEqual(result, {"assetId": 2102, "timelineKey": "A2102", "validated": ["android"]})
+        self.assertEqual(result, {"assetId": 2102, "timelineKey": "A2102", "validated": ["android"],
+                                  "sourceAssetId": None})
         self.assertEqual(self.validated, [(android, b"UnityFS\0stock:tl2102", 13)])
         self.assertEqual(self.databases(), before)
         self.apply(timelines={"android": android})
@@ -370,6 +378,120 @@ class OrderAndKeepTests(StockCase):
         result = self.apply(timelines={"android": timeline("a2"), "ios": studio.KEEP})
         self.assertEqual((result["parts"], result["timeline"]["platforms"]), (["android"], {"android": "custom",
                                                                                          "ios": "stock"}))
+
+
+class CrossSlotTests(StockCase):
+    """A timeline made from asset 2101 (and its stage) put into the slot of asset 2102."""
+
+    def master_row(self, asset_id=2102, region="gl"):
+        folder = self.gl if region == "gl" else self.jp
+        return query(folder / "masterdata.db", "SELECT * FROM m_live_3d_asset WHERE id=?", (asset_id,))
+
+    def test_cross_slot_with_stage_applies_and_restores_every_row_exactly(self):
+        before = self.databases()
+        android = timeline("from-2101")
+        result = self.apply(timelines={"android": android}, source_asset_id=2101, stage=dict(STAGE_2101))
+        self.assertEqual((result["changed"], result["parts"], result["stageChanged"]), (True, ["android", "ios"], True))
+        # Validated against the SOURCE's true stock, not the target's.
+        self.assertEqual(self.validated, [(android, b"UnityFS\0stock:tl2101", 13)])
+        key = self.key(2102)
+        self.assertEqual(self.master_row(), [(2102, key, 101, "E2101", "P2101", 3, None)])
+        pack, = self.static_files()
+        for catalog in self.catalogs():
+            is_android = "asset_a_" in catalog.name
+            # The source's dependencies (dance01, stage01), not the target's stock dance02.
+            self.assertEqual(query(catalog, "SELECT dependency FROM live_timeline_dependency WHERE asset_path=? "
+                                            "ORDER BY dependency", (key,)), [("dance01",), ("stage01",)])
+            row = query(catalog, "SELECT pack_name,head,size,key1,key2 FROM live_timeline WHERE asset_path=?", (key,))
+            # iOS has no payload: it plays the SOURCE's original timeline (same stage as the slot now).
+            self.assertEqual(row, [(pack, 0, len(android), 0, 0)] if is_android else [("tl2101i", 0, 512, 4, 7)])
+            mapping, header = self.package(catalog)
+            suffix = "" if is_android else "i"
+            # live:2102 keeps its stock packs and gains the source package's packs (and the override pack).
+            expected = [("fx2101", 4096, None, 0, 0), ("fx2102", 4097, None, 0, 0), ("tl2101" + suffix, 2048, None, 0, 0),
+                        ("tl2102" + suffix, 1040, None, 0, 0)]
+            if is_android:
+                expected.append((pack, len(android), None, 0, 0))
+            self.assertEqual(mapping, sorted(expected))
+            self.assertEqual(header, [(version([(item[0], item[1]) for item in mapping]), len(mapping))])
+        described = result["timeline"]
+        self.assertEqual(described["source"], {"assetId": 2101, "stockKey": "A2101"})
+        self.assertEqual(described["stage"], {"current": STAGE_2101, "stock": STAGE_2102, "changed": True})
+        self.assertEqual(described["platforms"], {"android": "custom", "ios": "stock"})
+        record = query(self.gl / "masterdata.db", f"SELECT source,stage,extras FROM {TABLE} WHERE asset_id=2102")[0]
+        self.assertEqual(json.loads(record[0]), {"assetId": 2101, "stockKey": "A2101"})
+        self.assertEqual(json.loads(record[1]), {"original": STAGE_2102})
+        self.assertEqual(json.loads(record[2]), {catalog.stem: ["fx2101", "tl2101" + ("" if "asset_a_" in catalog.name
+                                                                                       else "i")]
+                                                 for catalog in self.catalogs()})
+        # The source asset itself is untouched.
+        self.assertEqual(self.master_row(2101), [(2101, "A2101", 101, "E2101", "P2101", 3, None)])
+        restored = self.restore()
+        self.assertEqual((restored["changed"], restored["stageChanged"]), (True, True))
+        self.assertEqual(self.databases(skip={TABLE}), before)
+        self.assertEqual(query(self.gl / "masterdata.db", f"SELECT COUNT(*) FROM {TABLE}"), [(0,)])
+        self.assertEqual(self.static_files(), [])
+
+    def test_stage_off_keeps_the_target_stage_and_a_stock_source_needs_no_payload(self):
+        result = self.apply(timelines=None, source_asset_id=2101)
+        self.assertEqual((result["parts"], result["stageChanged"]), (["android", "ios"], False))
+        self.assertEqual(self.static_files(), [])
+        key = self.key(2102)
+        self.assertNotIn(key, ("A2101", "A2102"), "A new key, never the source's own")
+        self.assertEqual(self.master_row()[0][2:], (102, "E2102", None, 3, None))
+        self.assertEqual(result["timeline"]["stage"]["changed"], False)
+        for catalog in self.catalogs():
+            self.assertEqual(query(catalog, "SELECT pack_name FROM live_timeline WHERE asset_path=?", (key,)),
+                             [("tl2101" + ("" if "asset_a_" in catalog.name else "i"),)])
+        # Switching back to the asset's own MV refuses KEEP (the kept pack belongs to another source).
+        with self.assertRaisesRegex(ValueError, "source changes"):
+            self.apply(timelines={"android": studio.KEEP})
+        self.restore()
+        self.assertEqual(self.key(2102), "A2102")
+
+    def test_a_stage_only_change_keeps_the_timeline_and_restores(self):
+        before = self.databases()
+        result = self.apply(timelines={"android": studio.KEEP}, stage={"live_stage_master_id": 101,
+                                                                       "stage_effect_asset_path": "E2101"})
+        self.assertEqual((result["changed"], result["parts"], result["stageChanged"]), (True, [], True))
+        self.assertEqual(self.master_row(), [(2102, "A2102", 101, "E2101", None, 3, None)])
+        self.assertTrue(result["timeline"]["override"])
+        # KEEP keeps the changed stage; None puts the original back and ends the override.
+        self.assertFalse(self.apply(timelines={"android": studio.KEEP})["changed"])
+        self.apply(timelines=None, stage=None)
+        self.assertEqual(self.databases(skip={TABLE}), before)
+        self.assertEqual(query(self.gl / "masterdata.db", f"SELECT COUNT(*) FROM {TABLE}"), [(0,)])
+
+    def test_stage_and_source_inputs_are_refused_before_anything_is_written(self):
+        before = self.databases()
+        cases = [({"stage": {"live_stage_master_id": None}}, "Choose the stage explicitly"),
+                 ({"stage": {"unknown": 1}}, "Choose the stage explicitly"),
+                 ({"stage": {"stage_effect_asset_path": ""}}, "Choose the stage explicitly"),
+                 ({"stage": {"quality_setitng_set_id": "3"}}, "Choose the stage explicitly"),
+                 ({"stage": {"live_stage_master_id": 999}}, "not in this region"),
+                 ({"stage": {"stage_effect_asset_path": "E9999"}}, "not in this region"),
+                 ({"source_asset_id": 4242}, "made from"),
+                 ({"source_asset_id": "2101"}, "made from")]
+        for arguments, message in cases:
+            with self.subTest(arguments=arguments), self.assertRaisesRegex(ValueError, message):
+                self.apply(timelines={"android": timeline("x")}, **arguments)
+        self.assertEqual((self.databases(), self.static_files(), self.backups()), (before, [], []))
+        song = self.register()["song"]
+        with self.assertRaisesRegex(ValueError, "MV-only song"):
+            self.apply(timelines={"android": timeline("x")}, source_asset_id=song["assetId"])
+
+    def test_validate_checks_against_the_source_and_reports_usage(self):
+        result = stock.validate_mv_timelines(self.root, region="gl", asset_id=2102, timelines={"ios": timeline("v")},
+                                             source_asset_id=2101)
+        self.assertEqual(result["sourceAssetId"], 2101)
+        self.assertEqual(self.validated, [(timeline("v"), b"UnityFS\0stock:tl2101i", 9)])
+        usage = stock.describe_mv_timeline(self.root, region="gl", asset_id=2101)["usage"]
+        self.assertEqual(usage, {"mv": [[21, 1]], "rhythm": [[21, 21101]]})
+
+    def test_a_song_made_from_a_base_with_a_swapped_stage_gets_the_stock_stage(self):
+        self.apply(timelines={"android": timeline("a")}, source_asset_id=2101, stage=dict(STAGE_2101))
+        song = self.register(template=(21, 2102))["song"]
+        self.assertEqual(self.master_row(song["assetId"])[0][1:], ("A2102", 102, "E2102", None, 3, None))
 
 
 class SongInterplayTests(StockCase):

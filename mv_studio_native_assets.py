@@ -345,21 +345,22 @@ def unique_key(database, schemas):
 
 
 def install_timelines(repo_root, database, schemas, stock_key, template_asset_id, timelines, publish, originals=None,
-                      memo=None):
+                      memo=None, always_new=False):
     """Write one new timeline key across every regional catalog of both platforms.
 
     ``timelines`` maps a platform to plaintext UnityFS bytes (validated against that
     platform's own stock, then published as a whole-file pack) or to an existing
     ``(pack_name, size)`` custom pack that is kept. A platform without an entry
     aliases the stock row. Dependencies (choreography) are copied from the stock
-    key. With no entry at all nothing is written and the stock key is returned.
-    ``memo`` is passed to ``_verify_timeline``.
+    key. With no entry at all nothing is written and the stock key is returned, unless
+    ``always_new`` asks for a new key aliasing every stock row (a stock MV played in another
+    asset's slot). ``memo`` is passed to ``_verify_timeline``.
     Returns ``(key, {platform: (pack_name, size) | None}, {platform: sha256})``.
     """
     if not isinstance(timelines, dict) or timelines.keys() - PLATFORMS.keys():
         raise ValueError("Provide a native timeline for Android, iOS or both.")
     originals = originals or {}
-    if not timelines:
+    if not timelines and not always_new:
         return stock_key, {platform: None for platform in PLATFORMS}, {}
     stock_rows = {}
     for schema in schemas:
