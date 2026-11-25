@@ -290,6 +290,88 @@ class ApplyTests(StockCase):
             stock.describe_mv_timeline(self.root, region="gl", asset_id=4242)
 
 
+class OrderAndKeepTests(StockCase):
+    """The write order (validate, then back up, then write), the validation memo and KEEP next to new bytes."""
+
+    def test_every_payload_is_validated_before_the_backup(self):
+        events = []
+        backup = manage._backup
+
+        def validate(raw, original, platform, deadline):
+            events.append(("validate", platform))
+
+        def recorded_backup(*args, **kwargs):
+            events.append(("backup",))
+            return backup(*args, **kwargs)
+
+        with patch.object(native, "_validate_timeline", side_effect=validate), \
+                patch.object(manage, "_backup", side_effect=recorded_backup):
+            self.apply(timelines={"android": timeline("a1"), "ios": timeline("i1")})
+        self.assertEqual(events, [("validate", 13), ("validate", 9), ("backup",)])
+        # A refused payload never reaches the backup (nothing to remove afterwards).
+        events.clear()
+
+        def refuse(raw, original, platform, deadline):
+            events.append(("validate", platform))
+            raise ValueError("The timeline changes a serialized game type used by the stage.")
+
+        with patch.object(native, "_validate_timeline", side_effect=refuse), \
+                patch.object(manage, "_backup", side_effect=recorded_backup):
+            with self.assertRaisesRegex(ValueError, "serialized game type"):
+                self.apply(timelines={"android": timeline("a2")})
+        self.assertEqual(events, [("validate", 13)])
+
+    def test_the_validation_memo_is_keyed_by_the_stock_bytes_too(self):
+        payload = timeline("a1")
+        stock.validate_mv_timelines(self.root, region="gl", asset_id=2102, timelines={"android": payload})
+        stock.validate_mv_timelines(self.root, region="gl", asset_id=2102, timelines={"android": payload})
+        self.assertEqual(len(self.validated), 1, "The same payload against the same stock is validated once")
+        # Other stock bytes for the same row (a reinstalled or downloaded original): validated again.
+        self.stock["tl2102"] = b"UnityFS\0another stock:tl2102"
+        stock.validate_mv_timelines(self.root, region="gl", asset_id=2102, timelines={"android": payload})
+        self.assertEqual([entry[1] for entry in self.validated],
+                         [b"UnityFS\0stock:tl2102", b"UnityFS\0another stock:tl2102"])
+        # And on another Unity platform the same bytes are a new check as well.
+        stock.validate_mv_timelines(self.root, region="gl", asset_id=2102, timelines={"ios": payload})
+        self.assertEqual(self.validated[-1][2], 9)
+
+    def test_a_failure_after_the_backup_removes_it_and_writes_nothing(self):
+        self.apply(timelines={"android": timeline("a1")})
+        before = {path: path.read_bytes() for path in region_paths(self.root, "gl")}
+        files, backups = self.static_files(), self.backups()
+        taken = []
+        backup = manage._backup
+
+        def recorded_backup(*args, **kwargs):
+            folder = backup(*args, **kwargs)
+            taken.append(folder)
+            return folder
+
+        with patch.object(manage, "_backup", side_effect=recorded_backup), \
+                patch.object(manage, "_sync_pack_rows", side_effect=RuntimeError("disk full")):
+            with self.assertRaisesRegex(RuntimeError, "disk full"):
+                self.apply(timelines={"android": timeline("a2"), "ios": timeline("i2")})
+        self.assertEqual(len(taken), 1)
+        self.assertFalse(Path(taken[0]).exists(), "The failed write's backup folder is removed")
+        self.assertEqual({path: path.read_bytes() for path in region_paths(self.root, "gl")}, before)
+        self.assertEqual((self.static_files(), self.backups()), (files, backups))
+
+    def test_keep_for_a_stock_platform_next_to_new_bytes_keeps_it_at_stock(self):
+        result = self.apply(timelines={"android": timeline("a1"), "ios": studio.KEEP})
+        self.assertEqual(result["parts"], ["android"])
+        described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        self.assertEqual(described["platforms"], {"android": "custom", "ios": "stock"})
+        for catalog in self.catalogs():
+            if "asset_i_" in catalog.name:
+                self.assertEqual(query(catalog, "SELECT pack_name FROM live_timeline WHERE asset_path=?",
+                                       (described["timelineKey"],)), [("tl2102i",)])
+                self.assertEqual(self.package(catalog)[1], [("l2102-v", 2)])
+        # Again on the override: the iOS stock alias stays, Android moves to its new bytes.
+        result = self.apply(timelines={"android": timeline("a2"), "ios": studio.KEEP})
+        self.assertEqual((result["parts"], result["timeline"]["platforms"]), (["android"], {"android": "custom",
+                                                                                         "ios": "stock"}))
+
+
 class SongInterplayTests(StockCase):
     def test_a_song_registered_on_an_overridden_base_gets_the_true_stock(self):
         self.apply(timelines={"android": timeline("base-a"), "ios": timeline("base-i")})
