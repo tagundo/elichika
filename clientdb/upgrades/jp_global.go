@@ -209,7 +209,8 @@ func jpGlobalTables(query jpGlobalQueryer, schema string) (map[string]string, er
 			return nil, err
 		}
 		key := strings.ToLower(name)
-		if strings.HasPrefix(key, "sqlite_") || key == "assetversion" || key == jpGlobalMarker {
+		// MV Studio's stock MV bookkeeping is region-local (jp_global_mv_studio.go).
+		if strings.HasPrefix(key, "sqlite_") || key == "assetversion" || key == jpGlobalMarker || key == jpGlobalStockTimelines {
 			continue
 		}
 		tables[key] = name
@@ -368,6 +369,11 @@ func mergeJPGlobalPair(pair jpGlobalPair, fingerprint string) (int64, int64, err
 	if err != nil {
 		return 0, 0, err
 	}
+	// JP's MV Studio stock overrides stay in JP (jp_global_mv_studio.go).
+	overrides, err := readJPGlobalOverrides(jpGlobalMasterPath(pair))
+	if err != nil {
+		return 0, 0, err
+	}
 	before := map[string]int64{}
 	if pair.asset {
 		rows, err := tx.Query("SELECT package_key, COUNT(*) FROM main.m_asset_package_mapping GROUP BY package_key")
@@ -396,7 +402,8 @@ func mergeJPGlobalPair(pair jpGlobalPair, fingerprint string) (int64, int64, err
 			columns = append(columns, quoteJPGlobalIdentifier(column.name))
 		}
 		list := strings.Join(columns, ", ")
-		result, err := tx.Exec("INSERT INTO main." + quoteJPGlobalIdentifier(table.name) + " (" + list + ") SELECT " + list + " FROM jp_content." + quoteJPGlobalIdentifier(table.sourceName) + " WHERE true ON CONFLICT DO NOTHING")
+		exclusion, args := overrides.exclusion(table)
+		result, err := tx.Exec("INSERT INTO main."+quoteJPGlobalIdentifier(table.name)+" ("+list+") SELECT "+list+" FROM jp_content."+quoteJPGlobalIdentifier(table.sourceName)+" WHERE true"+exclusion+" ON CONFLICT DO NOTHING", args...)
 		if err != nil {
 			return 0, 0, fmt.Errorf("%s: %w", table.name, err)
 		}
@@ -412,6 +419,8 @@ func mergeJPGlobalPair(pair jpGlobalPair, fingerprint string) (int64, int64, err
 		if err != nil {
 			return 0, 0, err
 		}
+	} else if err = overrides.restoreStockTimelines(tx, plan); err != nil {
+		return 0, 0, err
 	}
 	if _, err = tx.Exec("CREATE TABLE IF NOT EXISTS " + quoteJPGlobalIdentifier(jpGlobalMarker) + " (id INTEGER PRIMARY KEY CHECK(id = 1), source_sha TEXT NOT NULL, algorithm_version TEXT NOT NULL)"); err != nil {
 		return 0, 0, err
