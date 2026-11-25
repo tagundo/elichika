@@ -82,8 +82,11 @@ WARN_STAGE = ("The stage is not applied. The timeline's stage-bound tracks (stag
               "objects of the source MV's stage, which this slot's stage may not have: they may not play or may "
               "show errors.")
 WARN_SHARED = "Other MV slots or 3D rhythm-game lives use this 3D MV too; they change with it."
+ORIGINAL_UNAVAILABLE = ("The source MV's original timeline is not on this server. Install the asset editing tools "
+                        "(modtools) so Elichika can download it, then install again.")
+ORIGINAL_DOWNLOAD = "The source MV's original timeline could not be downloaded. Check the connection, then install again."
 MESSAGES = (INVALID, TOO_LARGE, BAD_ENTRY, BAD_TIMELINE, NO_TIMELINE, NEWER, LEGACY_INVALID, CHOOSE_REGION,
-            CHOOSE_TARGET, SOURCE_MISSING)
+            CHOOSE_TARGET, SOURCE_MISSING, ORIGINAL_UNAVAILABLE, ORIGINAL_DOWNLOAD)
 
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 _LEGACY_UNITY = re.compile(r"[0-9]{1,10}(android|ios)?\.unity\Z", re.IGNORECASE)
@@ -345,7 +348,10 @@ def read_legacy_livetimeline_zip(pack):
             text = _read_entry(archive, entries[texts[0]], MAX_TXT_BYTES).decode("utf-8-sig")
         except UnicodeError:
             raise ValueError(LEGACY_INVALID) from None
-        values = parse_modinstall_txt(text)
+        try:
+            values = parse_modinstall_txt(text)
+        except (MemoryError, RecursionError):  # a crafted txt can overflow the literal parser
+            raise ValueError(LEGACY_INVALID) from None
         file_name, target = values.get("live_timeline_file"), values.get("live_timeline_num")
         if not isinstance(file_name, str) or file_name not in entries or not _positive(target):
             raise ValueError(LEGACY_INVALID)
@@ -386,7 +392,9 @@ def _source_asset(repo_root, region, pack, target):
         source = manifest["source"]["assetId"]
         try:
             stock.describe_mv_timeline(repo_root, region=region, asset_id=source)
-        except ValueError:
+        except ValueError as error:
+            if str(error) not in (stock.NO_TIMELINE, stock.CHOOSE_ASSET):
+                raise  # e.g. incomplete databases: their own message
             raise ValueError(SOURCE_MISSING) from None
         return source
     key = manifest.get("legacyTimelineKey")
@@ -429,8 +437,41 @@ def plan_install(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
             "packStage": manifest["stage"], "regions": plans}
 
 
+def _fetch_original(fetch, region, source, platform, log):
+    """The source MV's TRUE stock timeline for ``platform`` from the caller's provider (plaintext UnityFS)."""
+    log(f"[{region}] The original {platform} timeline of 3D {source} is not on this server: fetching it")
+    if fetch is None:
+        raise ValueError(ORIGINAL_UNAVAILABLE)
+    try:
+        raw = fetch(region, source, platform)
+    except Exception as error:  # noqa: BLE001 - the provider's own refusal or a network error
+        log(f"[{region}] {error}")
+        raw = None
+    if raw is None:
+        raise ValueError(ORIGINAL_DOWNLOAD)
+    try:
+        return native.timeline_bytes(raw)
+    except ValueError:
+        raise ValueError(ORIGINAL_DOWNLOAD) from None
+
+
+def _validate_region(repo_root, region, target, source, source_id, timelines, stage, fetch, log):
+    """Validate one region's payloads against the source's TRUE stock. A platform whose stock pack is
+    not local is fetched with ``fetch`` and validated again; returns {platform: original} fetched."""
+    fetched = {}
+    while True:
+        try:
+            stock.validate_mv_timelines(repo_root, region=region, asset_id=target, timelines=timelines,
+                                        originals=fetched or None, source_asset_id=source_id, stage=stage)
+            return fetched
+        except native.OriginalMissing as error:
+            if error.platform in fetched or error.platform not in timelines:
+                raise
+            fetched[error.platform] = _fetch_original(fetch, region, source, error.platform, log)
+
+
 def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=True, convert=None, backup=True,
-                 log=print, around_writes=None, stage_tracks=None):
+                 log=print, around_writes=None, stage_tracks=None, originals=None):
     """Install an MV timeline pack (a read_pack/read_legacy_livetimeline_zip result, bytes or a path).
 
     Per region of ``regions`` ("gl", "jp" or both): the target slot (``target_asset_id``, default the
@@ -447,6 +488,13 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     ``src_platform`` timeline), using the stock timeline of 3D MV ``asset_id`` (the SOURCE asset) on
     ``dst_platform`` as its template, or raises ValueError with a user-facing message. Its result is
     validated like any payload.
+
+    Payloads are validated against the source MV's TRUE stock timeline of each region (GL and JP
+    keep the same timeline in different packs). When that stock pack is not on this server,
+    ``originals(region, source_asset_id, platform) -> bytes | None`` supplies it (modtools'
+    ``mv_timeline_platform.template(..., download=True)``: the same original a conversion uses as
+    its template); without a provider, or when it gives nothing, the install is refused with
+    ORIGINAL_UNAVAILABLE or ORIGINAL_DOWNLOAD. The fetched bytes go to the write as well.
 
     Every payload of every region is validated before ``around_writes()`` (a context manager factory
     the caller uses to stop a managed game server, e.g. adminui's installation_server) is entered;
@@ -495,19 +543,18 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
             warnings.append({"region": region, "code": "shared-asset", "usage": item["usage"], "text": WARN_SHARED})
         source_id, stage = (source if source != target else None), item["stage"]
         log(f"[{region}] Checking the timelines against the original MV {source}")
-        stock.validate_mv_timelines(repo_root, region=region, asset_id=target, timelines=timelines,
-                                    source_asset_id=source_id, stage=stage)
-        jobs.append((item, timelines, converted, missing, source_id, stage))
+        fetched = _validate_region(repo_root, region, target, source, source_id, timelines, stage, originals, log)
+        jobs.append((item, timelines, converted, missing, source_id, stage, fetched))
     results = []
     with (around_writes() if around_writes is not None else nullcontext()):
         with database_maintenance.guard(repo_root):
-            for item, timelines, converted, missing, source_id, stage in jobs:
+            for item, timelines, converted, missing, source_id, stage, fetched in jobs:
                 region, target = item["region"], item["assetId"]
                 log(f"[{region}] Installing into 3D MV {target}")
                 try:
                     result = stock.apply_mv_timeline(
                         repo_root, region=region, asset_id=target, timelines=timelines, expected_key=item["timelineKey"],
-                        backup=backup, log=log, source_asset_id=source_id, stage=stage)
+                        originals=fetched or None, backup=backup, log=log, source_asset_id=source_id, stage=stage)
                 except BaseException:
                     if results:
                         log("Installed before the failure: " + ", ".join(entry["region"] for entry in results))

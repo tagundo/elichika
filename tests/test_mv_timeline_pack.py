@@ -169,6 +169,13 @@ class MaliciousPackTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 packs.read_legacy_livetimeline_zip(broken)
 
+    def test_a_txt_that_overflows_the_literal_parser_is_refused_cleanly(self):
+        for text in ("live_timeline_file = 'x.unity'\nlive_timeline_num = 1\nx = " + "-" * 60000 + "1\n",
+                     "x = " + "[" * 5000 + "]" * 5000 + "\n"):
+            data = rezip([("livetimeline.txt", text.encode()), ("x.unity", timeline("x"))])
+            with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.LEGACY_INVALID) + "$"):
+                packs.read_legacy_livetimeline_zip(data)
+
 
 class ReplacerTests(unittest.TestCase):
     def test_the_legacy_tool_parses_its_txt_without_exec(self):
@@ -266,6 +273,63 @@ class InstallTests(stock_tests.StockCase):
             packs.install_pack(self.root, make_pack(), regions=["kr"], log=None)
         self.assertEqual((stops, self.databases(), self.static_files()), ([], before, []))
 
+    def test_a_source_original_that_is_not_local_is_fetched_per_region(self):
+        """The source's stock packs (tl2101, tl2101i) are not on this server: the check fetches them."""
+        self.stock.update({"tl2101": None, "tl2101i": None})
+        before = self.databases()
+        stops = []
+        pack = make_pack(timelines={"android": timeline("far-a")})
+        # No provider: a clear refusal before the server stops; nothing is written.
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.ORIGINAL_UNAVAILABLE) + "$"):
+            packs.install_pack(self.root, pack, regions=("gl", "jp"), log=None, around_writes=lambda: stops.append(1))
+        # A provider that cannot get it.
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.ORIGINAL_DOWNLOAD) + "$"):
+            packs.install_pack(self.root, pack, regions=("gl",), log=None, originals=lambda *a: None,
+                               around_writes=lambda: stops.append(1))
+
+        def broken(region, asset_id, platform):
+            raise OSError("network down")
+
+        with self.assertRaisesRegex(ValueError, "could not be downloaded"):
+            packs.install_pack(self.root, pack, regions=("gl",), log=None, originals=broken,
+                               around_writes=lambda: stops.append(1))
+        self.assertEqual((stops, self.databases(), self.static_files()), ([], before, []))
+        # The provider (modtools' template(..., download=True)) gives the source's TRUE stock per region and platform.
+        asked = []
+        originals = {"android": b"UnityFS\0" + b"a" * 504, "ios": b"UnityFS\0" + b"i" * 504}
+
+        def fetch(region, asset_id, platform):
+            asked.append((region, asset_id, platform))
+            return originals[platform]
+
+        def convert(raw, src, dst, region, asset_id):
+            return timeline("far-i")
+
+        log = []
+        result = packs.install_pack(self.root, pack, regions=("gl", "jp"), convert=convert, originals=fetch,
+                                    log=log.append)
+        self.assertEqual(asked, [("gl", 2101, "android"), ("gl", 2101, "ios"), ("jp", 2101, "android"),
+                                 ("jp", 2101, "ios")])
+        self.assertEqual([entry["region"] for entry in result["regions"]], ["gl", "jp"])
+        # Each payload was checked against the fetched original of its own platform.
+        self.assertIn((timeline("far-a"), originals["android"], 13), self.validated)
+        self.assertIn((timeline("far-i"), originals["ios"], 9), self.validated)
+        self.assertTrue(any("is not on this server" in line for line in log), log)
+        for region in ("gl", "jp"):
+            described = stock.describe_mv_timeline(self.root, region=region, asset_id=2102)
+            self.assertEqual((described["source"]["assetId"], described["platforms"]),
+                             (2101, {"android": "custom", "ios": "custom"}))
+        # A local original is never fetched.
+        self.stock.clear()
+        asked.clear()
+        for region in ("gl", "jp"):
+            described = stock.describe_mv_timeline(self.root, region=region, asset_id=2102)
+            with self.guard():
+                stock.restore_mv_timeline(self.root, region=region, asset_id=2102,
+                                          expected_key=described["timelineKey"], log=None)
+        packs.install_pack(self.root, pack, regions=("gl",), originals=fetch, log=None)
+        self.assertEqual(asked, [])
+
     def test_a_legacy_zip_installs_through_the_same_path(self):
         text = ("live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'A2101'\n"
                 "live_stage_master_id = 101\nstage_effect_asset_path = 'E2101'\nquality_setitng_set_id = 3\n"
@@ -294,7 +358,7 @@ class AdminTests(stock_tests.StockCase):
                                     (mv_timeline, "_candidate_dirs", lambda key: [str(self.drop)]),
                                     (mv_timeline, "repo_root", lambda: self.root),
                                     (mv_timeline, "installation_server", lambda *a, **k: nullcontext()),
-                                    (mv_timeline, "_modtools", lambda: (None, None, None))):
+                                    (mv_timeline, "_modtools", lambda: (None, None, None, None))):
             patcher = patch.object(target, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -329,6 +393,70 @@ class AdminTests(stock_tests.StockCase):
         self.assertEqual(self.tool.override_options({}), [])
         with self.assertRaisesRegex(ValueError, "설치할 3D MV 슬롯"):
             self.tool.run_install(self.Job(), {"addon": "edit.sifasmv", "target_custom": "abc", "lang": "ko"})
+        # A wrong typed asset id is refused in the job's language.
+        with self.assertRaisesRegex(ValueError, "^選択したMVはこの地域に3Dタイムラインがありません。$"):
+            self.tool.run_install(self.Job(), {"addon": "edit.sifasmv", "target_custom": "4242", "lang": "ja"})
+
+    def test_install_fetches_a_source_original_that_is_not_local(self):
+        """Server content binds modtools' original provider; the stage-bound count is logged before the write."""
+        from contextlib import contextmanager
+        from unittest.mock import patch
+        self.stock.update({"tl2101": None})
+        (self.drop / "far.sifasmv").write_bytes(make_pack(timelines={"android": timeline("adm-far")}))
+        params = {"addon": "far.sifasmv", "region": "gl", "apply_stage": False, "convert": False, "lang": "ko"}
+        job = self.Job()
+        with self.assertRaisesRegex(ValueError, "에셋 편집툴\\(modtools\\)을 설치한 뒤 다시 설치하세요"):
+            self.tool.run_install(job, params)
+        self.assertTrue(any("modtools" in line for line in job.lines), job.lines)
+        self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [])
+        asked, events = [], []
+
+        def fetch(region, asset_id, platform):
+            asked.append((region, asset_id, platform))
+            return b"UnityFS\0" + b"o" * 504
+
+        @contextmanager
+        def server(*args, **kwargs):
+            events.append("stop")
+            yield
+
+        job = self.Job()
+        job.log = lambda line: events.append(line)
+        with patch.object(self.tool, "_modtools", lambda: (None, lambda raw: 7, None, fetch)), \
+                patch.object(self.tool, "installation_server", server):
+            self.tool.run_install(job, dict(params, lang="en"))
+        self.assertEqual(asked, [("gl", 2101, "android")])
+        counted = events.index("Stage-bound tracks in this timeline: 7")
+        self.assertLess(counted, events.index("stop"))
+        self.assertTrue(events[counted + 1].startswith("⚠ [gl] The stage is not applied."), events)
+        self.assertEqual(sum(line.startswith("⚠ [gl] The stage is not applied.") for line in events if
+                             isinstance(line, str)), 1)
+        self.assertEqual(stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)["platforms"],
+                         {"android": "custom", "ios": "stock"})
+
+    def test_every_refusal_of_the_mv_timeline_tools_translates(self):
+        from adminui import i18n
+        import mv_studio_native_assets as native
+        messages = set(packs.MESSAGES) | set(stock.MESSAGES) | {
+            packs.WARN_MISSING_PLATFORM, packs.WARN_STAGE, packs.WARN_SHARED}
+        messages |= {message for message in native.MESSAGES if "timeline" in message.lower() or "Unity" in message}
+        messages |= {"The region's game databases are incomplete.", "Select the GL or JP catalog.",
+                     "Close the database editor so MV Studio can update all catalogs in one transaction.",
+                     "The installed game database layout does not support this MV.",
+                     "A game catalog is missing a complete package of the base MV.",
+                     "A game catalog is missing its main package.", "Provide the original timelines per platform.",
+                     "Choose add-on filenames from the installer list, without filesystem paths.",
+                     "Choose an installed MV timeline to restore.",
+                     "Select a file first (drop it into Download/sukusta/mvtimeline or …/addons)."}
+        try:  # modtools' platform conversion, when it is installed next to Elichika
+            from webtools.core import mv_timeline_platform
+            messages |= set(mv_timeline_platform.MESSAGES)
+        except ImportError:
+            messages |= {"Choose Android or iOS.", "This file is not a native live timeline.",
+                         "The converted timeline would differ from the source, so nothing was converted:"}
+        for language in ("ko", "ja"):
+            missing = sorted(message for message in messages if i18n.tr(message, language) == message)
+            self.assertEqual(missing, [], language)
 
 
 if __name__ == "__main__":

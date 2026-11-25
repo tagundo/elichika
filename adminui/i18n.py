@@ -601,3 +601,82 @@ _MV_TIMELINE_PACK_STRINGS = {
 for _source, _values in _MV_TIMELINE_PACK_STRINGS.items():
     for _lang, _text in zip(("ko", "ja"), _values):
         _TABLES[_lang][_source] = _text
+
+# Every other refusal the MV timeline tools can show (mv_studio_stock, mv_studio_native_assets and
+# mv_studio_manage store messages, and modtools' MV timeline platform conversion, whose ko/ja match
+# modtools' own), so a job never falls back to English.
+_MV_TIMELINE_REFUSAL_STRINGS = {
+    "The asset editing tools (modtools) are not installed: a source MV original that is not on this server cannot be downloaded.": [
+        "에셋 편집툴(modtools)이 설치되어 있지 않아, 이 서버에 없는 원본 MV의 원래 타임라인은 내려받을 수 없습니다.",
+        "アセット編集ツール（modtools）がインストールされていないため、このサーバーにない元MVの元のタイムラインはダウンロードできません。"],
+    "The source MV's original timeline is not on this server. Install the asset editing tools (modtools) so Elichika can download it, then install again.": [
+        "원본 MV의 원래 타임라인이 이 서버에 없습니다. Elichika가 내려받을 수 있도록 에셋 편집툴(modtools)을 설치한 뒤 다시 설치하세요.",
+        "元MVの元のタイムラインがこのサーバーにありません。Elichikaがダウンロードできるようアセット編集ツール（modtools）をインストールしてから、もう一度インストールしてください。"],
+    "The source MV's original timeline could not be downloaded. Check the connection, then install again.": [
+        "원본 MV의 원래 타임라인을 내려받지 못했습니다. 연결을 확인한 뒤 다시 설치하세요.",
+        "元MVの元のタイムラインをダウンロードできませんでした。接続を確認してから、もう一度インストールしてください。"],
+    "Choose a 3D MV of this region.": ["이 지역의 3D MV를 고르세요.", "この地域の3D MVを選んでください。"],
+    "This MV belongs to an MV-only song. Update the song instead.": [
+        "이 MV는 MV 전용 곡의 것입니다. 곡을 업데이트하세요.", "このMVはMV専用曲のものです。曲を更新してください。"],
+    "Fingerprints must be short text values for android or ios.": [
+        "지문 값은 android 또는 ios용 짧은 문자열이어야 합니다.", "フィンガープリントはandroidかios用の短い文字列にしてください。"],
+    "Provide each native timeline as an unpacked UnityFS bundle.": [
+        "게임용 타임라인은 압축을 푼 UnityFS 번들로 넣어 주세요.", "ゲーム用タイムラインは展開済みのUnityFSバンドルで指定してください。"],
+    "The native timeline exceeds the supported file size.": [
+        "게임용 타임라인이 지원하는 파일 크기를 넘습니다.", "ゲーム用タイムラインが対応するファイルサイズを超えています。"],
+    "The selected Unity file has no unique native timeline container.": [
+        "선택한 Unity 파일에 게임용 타임라인 컨테이너가 하나만 있지 않습니다.", "選んだUnityファイルにゲーム用タイムラインのコンテナーが1つだけではありません。"],
+    "The selected Unity timeline container is empty.": [
+        "선택한 Unity 타임라인 컨테이너가 비어 있습니다.", "選んだUnityタイムラインのコンテナーが空です。"],
+    "The timeline changes a serialized game type used by the stage.": [
+        "타임라인이 무대가 쓰는 게임 데이터 형식을 바꿉니다.", "タイムラインがステージで使うゲームのデータ形式を変えています。"],
+    "The timeline changes native container, script or resource data.": [
+        "타임라인이 게임 컨테이너, 스크립트 또는 리소스 데이터를 바꿉니다.", "タイムラインがゲームのコンテナー・スクリプト・リソースのデータを変えています。"],
+    "The timeline introduces a reference outside the selected stage template.": [
+        "타임라인이 원본 MV 밖을 참조합니다.", "タイムラインが元MVの外を参照しています。"],
+    "The native Unity timeline could not be read against the selected stage template.": [
+        "게임용 Unity 타임라인을 원본 MV와 비교해 읽지 못했습니다.", "ゲーム用Unityタイムラインを、元MVと照らし合わせて読み込めませんでした。"],
+    "A game catalog is missing the base MV's native timeline pack.": [
+        "게임 목록에 원본 MV의 타임라인 팩이 없습니다.", "ゲームの一覧に元MVのタイムラインパックがありません。"],
+    "A game catalog is missing the base MV's native timeline.": [
+        "게임 목록에 원본 MV의 타임라인이 없습니다.", "ゲームの一覧に元MVのタイムラインがありません。"],
+    "The supplied original timeline does not match the base MV's catalogued size.": [
+        "받은 원래 타임라인이 게임 목록에 적힌 원본 MV의 크기와 다릅니다.", "取得した元のタイムラインが、ゲームの一覧にある元MVのサイズと一致しません。"],
+    "Provide a native timeline for Android, iOS or both.": [
+        "Android, iOS 또는 둘 다의 게임용 타임라인을 넣어 주세요.", "Android、iOS、または両方のゲーム用タイムラインを指定してください。"],
+    "Provide the original timelines per platform.": [
+        "원래 타임라인을 플랫폼별로 넣어 주세요.", "元のタイムラインをプラットフォームごとに指定してください。"],
+    "A game catalog is missing a complete package of the base MV.": [
+        "게임 목록에 원본 MV의 패키지가 온전히 있지 않습니다.", "ゲームの一覧に元MVのパッケージがそろっていません。"],
+    "A game catalog is missing its main package.": ["게임 목록에 main 패키지가 없습니다.", "ゲームの一覧にmainパッケージがありません。"],
+    "The region's game databases are incomplete.": [
+        "이 지역의 게임 데이터베이스가 완전하지 않습니다.", "この地域のゲームデータベースがそろっていません。"],
+    "Close the database editor so MV Studio can update all catalogs in one transaction.": [
+        "모든 게임 목록을 한 번에 고칠 수 있도록 데이터베이스 편집기를 닫으세요.", "すべてのゲームの一覧を一度に更新できるよう、データベースエディターを閉じてください。"],
+    "Select the GL or JP catalog.": ["GL 또는 JP 목록을 고르세요.", "GLまたはJPの一覧を選んでください。"],
+    "The installed game database layout does not support this MV.": [
+        "설치된 게임 데이터베이스 구조가 이 MV를 지원하지 않습니다.", "インストール済みのゲームデータベースの構造がこのMVに対応していません。"],
+    "Choose add-on filenames from the installer list, without filesystem paths.": [
+        "설치 목록에서 파일을 고르세요(경로 없이 파일 이름만).", "インストール一覧からファイルを選んでください（パスなしのファイル名のみ）。"],
+    # modtools' MV timeline platform conversion (a missing platform converted during the install)
+    "Choose Android or iOS.": ["Android 또는 iOS를 선택하세요.", "AndroidかiOSを選んでください。"],
+    "Enter the 3D asset ID of the MV this timeline belongs to.": [
+        "이 타임라인이 속한 MV의 3D 에셋 ID를 입력하세요.", "このタイムラインのMVの3DアセットIDを入力してください。"],
+    "The timeline is already for the output platform.": ["이미 변환할 플랫폼용 타임라인입니다.", "すでに変換先のプラットフォーム用のタイムラインです。"],
+    "The timeline is not for the chosen source platform.": [
+        "선택한 원래 플랫폼용 타임라인이 아닙니다.", "選んだ変換元のプラットフォーム用のタイムラインではありません。"],
+    "This file is not a native live timeline.": ["이 파일은 게임의 라이브 타임라인이 아닙니다.", "このファイルはゲームのライブタイムラインではありません。"],
+    "This 3D MV is not in the game catalog of this region.": [
+        "이 3D MV는 이 지역의 게임 카탈로그에 없습니다.", "この3D MVはこの地域のゲームカタログにありません。"],
+    "The game catalog has no original timeline of this 3D MV for the output platform.": [
+        "게임 카탈로그에 이 3D MV의 변환할 플랫폼용 원본 타임라인이 없습니다.", "ゲームカタログにこの3D MVの変換先プラットフォーム用の元のタイムラインがありません。"],
+    "The original timeline of this 3D MV for the output platform is not available locally. Allow the download.": [
+        "이 3D MV의 변환할 플랫폼용 원본 타임라인이 로컬에 없습니다. 다운로드를 허용하세요.",
+        "この3D MVの変換先プラットフォーム用の元のタイムラインがローカルにありません。ダウンロードを許可してください。"],
+    "The timeline does not belong to this 3D MV:": ["이 3D MV의 타임라인이 아닙니다:", "この3D MVのタイムラインではありません："],
+    "The converted timeline would differ from the source, so nothing was converted:": [
+        "변환 결과가 원래 타임라인과 달라지므로 변환하지 않았습니다:", "変換結果が元のタイムラインと異なるため、変換しませんでした："],
+}
+for _source, _values in _MV_TIMELINE_REFUSAL_STRINGS.items():
+    for _lang, _text in zip(("ko", "ja"), _values):
+        _TABLES[_lang][_source] = _text

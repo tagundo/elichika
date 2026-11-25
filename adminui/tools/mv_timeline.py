@@ -6,8 +6,12 @@ pack), then the game server is stopped with installation_server (as the add-on i
 mv_timeline_pack.install_pack / mv_studio_stock.restore_mv_timeline write under the database
 maintenance guard, with a restorable backup. A platform the pack has no timeline for is converted
 with modtools' "MV timeline platform conversion" when that is installed and the option is on.
+The source MV's original timelines the check needs (and the conversion uses as its template) are
+read from this server, or downloaded through modtools when they are not here.
 """
 import functools
+import hashlib
+import inspect
 import os
 import zipfile
 
@@ -29,22 +33,48 @@ def _modules():
 
 
 def _modtools():
-    """(convert(src, src_platform, dst_platform, region, asset_id), stage track counter, platform detector)
-    from modtools' MV timeline platform conversion, or Nones when it is not installed."""
+    """(convert(src, src_platform, dst_platform, region, asset_id), stage track counter, platform detector,
+    original(region, asset_id, platform)) from modtools' MV timeline platform conversion, or Nones
+    when it is not installed.
+
+    ``original`` is the 3D MV's TRUE stock timeline for a platform, read from this server or
+    downloaded; one job fetches each original once, so the conversion's template and the check's
+    original are the same download."""
     try:
         from adminui.tools.assets_extract import _ensure_modtools_on_path
         _ensure_modtools_on_path()
         from webtools.core import mv_studio_timeline as timeline
         from webtools.core import mv_timeline_platform as platform
     except Exception:  # noqa: BLE001 - optional companion
-        return None, None, None
+        return None, None, None, None
     root = str(repo_root())
-    convert = functools.partial(platform.convert_timeline, root=root, download=True)
+    cache = {}
+
+    def original(region, asset_id, platform_name):
+        key = (region, asset_id, platform_name)
+        if key not in cache:
+            cache[key] = platform.template(root, region, asset_id, platform_name, download=True)
+        return cache[key]
+
+    try:
+        shares = "template_bytes" in inspect.signature(platform.convert_timeline).parameters
+    except (TypeError, ValueError):
+        shares = False
+
+    def convert(raw, src_platform, dst_platform, region, asset_id):
+        extra = {"template_bytes": original(region, asset_id, dst_platform)} if shares else {}
+        return platform.convert_timeline(raw, src_platform, dst_platform, region, asset_id, root=root, download=True,
+                                         **extra)
+
+    counted = {}
 
     def tracks(raw):
-        return len(platform.stage_bound_tracks(timeline.parse_timeline(raw, "pack")["tracks"]))
+        key = hashlib.sha256(raw).digest()
+        if key not in counted:
+            counted[key] = len(platform.stage_bound_tracks(timeline.parse_timeline(raw, "pack")["tracks"]))
+        return counted[key]
 
-    return convert, tracks, platform.blob_platform
+    return convert, tracks, platform.blob_platform, original
 
 
 def _is_pack(path):
@@ -135,6 +165,16 @@ def _target(params, pack):
     return int(chosen)
 
 
+def _stage_count(tracks, pack):
+    """The most stage-bound tracks of the pack's timelines, or None (no counter, or unreadable)."""
+    if tracks is None:
+        return None
+    try:
+        return max(int(tracks(raw)) for raw in pack["timelines"].values())
+    except Exception:  # noqa: BLE001 - the count is advisory
+        return None
+
+
 def _relabel_legacy(pack, detect):
     """An old livetimeline zip names no platform: the Unity build target of its file decides."""
     if not pack.get("legacy") or detect is None:
@@ -158,6 +198,9 @@ def _translated(run):
             return run(job, params)
         except ValueError as error:
             text = str(error)
+            labels = getattr(error, "labels", None)
+            if labels:  # a refused conversion names the tracks concerned
+                job.log(", ".join(str(label) for label in labels))
             translated = i18n.tr(text, params.get("lang"))
             if translated == text:
                 raise
@@ -177,7 +220,7 @@ def run_install(job, params):
     regions = REGION_CHOICES.get(params.get("region") or "gl")
     if regions is None:
         raise ValueError("Choose GL, JP or both.")
-    convert, tracks, detect = _modtools()
+    convert, tracks, detect, original = _modtools()
     pack = _relabel_legacy(_read(name), detect)
     target = _target(params, pack)
     apply_stage = bool(params.get("apply_stage", True))
@@ -196,13 +239,25 @@ def run_install(job, params):
                 + " · MV " + ", ".join(f"{live}/{position}" for live, position in usage["mv"])
                 + (" · " + i18n.tr("3D lives", lang) + " " + ", ".join(sorted({str(live) for live, _ in usage["rhythm"]}))
                    if usage["rhythm"] else ""))
+    # The stage-bound track count, before anything is written or the server stops.
+    count = _stage_count(tracks, pack)
+    if count is not None and any(item["crossSlot"] for item in plan["regions"]):
+        job.log(i18n.tr("Stage-bound tracks in this timeline: ", lang) + str(count))
+        for item in plan["regions"]:
+            if item["stageWarning"]:
+                job.log(f"⚠ [{item['region']}] " + i18n.tr(pack_module.WARN_STAGE, lang))
+    if original is None:
+        job.log(i18n.tr("The asset editing tools (modtools) are not installed: a source MV original that is not on "
+                        "this server cannot be downloaded.", lang))
     job.progress(0, 1)
     result = pack_module.install_pack(
         repo_root(), pack, regions=regions, target_asset_id=target, apply_stage=apply_stage,
         convert=convert if use_convert else None, backup=bool(params.get("backup", True)), log=job.log,
         around_writes=lambda: installation_server(job.log, stop=params.get("stop_server", True), restart=False),
-        stage_tracks=tracks)
+        stage_tracks=tracks, originals=original)
     for warning in result["warnings"]:
+        if warning["code"] == "stage-not-applied" and count is not None:
+            continue  # logged with its count before the write
         detail = f" ({warning['platform']})" if warning.get("platform") else ""
         if warning.get("stageBoundTracks") is not None:
             detail = " (" + i18n.tr("Stage-bound tracks in this timeline: ", lang) + str(warning["stageBoundTracks"]) + ")"

@@ -298,6 +298,21 @@ class ValidatedTimelines:
             self._items.clear()
 
 
+ORIGINAL_MISSING = ("Install the base MV's original timeline for this platform locally, or allow the download, to "
+                    "verify the edit.")
+
+
+class OriginalMissing(ValueError):
+    """The base MV's original timeline for ``platform`` is not local and the caller supplied none.
+
+    A ValueError with the fixed ORIGINAL_MISSING message; ``platform`` lets a caller that can fetch
+    the original (mv_timeline_pack.install_pack) supply it and validate again."""
+
+    def __init__(self, platform):
+        super().__init__(ORIGINAL_MISSING)
+        self.platform = platform
+
+
 def _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id, platform, payload, original,
                      memo=None):
     """Validate ``payload`` against every distinct stock row of its platform. ``memo`` (ValidatedTimelines)
@@ -320,8 +335,7 @@ def _verify_timeline(repo_root, database, schemas, stock_rows, template_asset_id
         stock = _stock_timeline(repo_root, row, physical, deadline)
         if stock is None:
             if original is None:
-                raise ValueError("Install the base MV's original timeline for this platform locally, or allow the "
-                                 "download, to verify the edit.")
+                raise OriginalMissing(platform)
             if len(original) != row["size"] or not original.startswith(_UNITYFS):
                 raise ValueError("The supplied original timeline does not match the base MV's catalogued size.")
             stock = original
