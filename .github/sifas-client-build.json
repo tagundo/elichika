@@ -1,0 +1,5 @@
+{
+  "client_ref": "8ecadeee34d97ba619a1aa028183eb48b748e043",
+  "android": {"build": true, "version": "2026.11.26.1", "sign": false, "signing_cert_sha256": ""},
+  "playcover": {"build": true, "version": "2026.11.26.1"}
+}
