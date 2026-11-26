@@ -9,6 +9,8 @@ name: SIFAS client build (Android FOVMOD and PlayCover)
 #   SIFAS_CLIENT_READ_TOKEN  fine-grained token, SIFAS-Client Contents: read-only
 #   CLIENT_KEYSTORE_B64, CLIENT_KEYSTORE_PASSWORD, CLIENT_KEY_ALIAS,
 #   CLIENT_KEY_PASSWORD      only when the request asks for a signed APK
+# android.signing_cert_sha256 in the request pins the signing certificate;
+# the build fails if the secrets hold a different key.
 # Artifacts are kept for 3 days.
 
 on:
@@ -33,6 +35,7 @@ jobs:
       android: ${{ steps.read.outputs.android }}
       android_version: ${{ steps.read.outputs.android_version }}
       android_sign: ${{ steps.read.outputs.android_sign }}
+      android_cert: ${{ steps.read.outputs.android_cert }}
       playcover: ${{ steps.read.outputs.playcover }}
       playcover_version: ${{ steps.read.outputs.playcover_version }}
     steps:
@@ -59,6 +62,9 @@ jobs:
           print(f"android={'true' if android.get('build') else 'false'}")
           print(f"android_version={android.get('version', '')}")
           print(f"android_sign={'true' if android.get('sign') else 'false'}")
+          cert = android.get('signing_cert_sha256', '').replace(':', '').lower()
+          assert not cert or re.fullmatch(r'[0-9a-f]{64}', cert), 'signing_cert_sha256 must be a SHA-256 digest'
+          print(f'android_cert={cert}')
           print(f"playcover={'true' if playcover.get('build') else 'false'}")
           print(f"playcover_version={playcover.get('version', '')}")
           PY
@@ -146,6 +152,7 @@ jobs:
         if: needs.request.outputs.android_sign == 'true'
         env:
           BUILD_VERSION: ${{ needs.request.outputs.android_version }}
+          EXPECTED_CERT: ${{ needs.request.outputs.android_cert }}
           CLIENT_KEYSTORE_B64: ${{ secrets.CLIENT_KEYSTORE_B64 }}
           CLIENT_KEYSTORE_PASSWORD: ${{ secrets.CLIENT_KEYSTORE_PASSWORD }}
           CLIENT_KEY_ALIAS: ${{ secrets.CLIENT_KEY_ALIAS }}
@@ -154,17 +161,26 @@ jobs:
           set -euo pipefail
           umask 077
           delivery="$RUNNER_TEMP/client-delivery"
-          export CLIENT_KEYSTORE_FILE
-          CLIENT_KEYSTORE_FILE=$(mktemp "$RUNNER_TEMP/client-signing.XXXXXXXX.p12")
-          trap 'unlink "$CLIENT_KEYSTORE_FILE"' EXIT
-          printf '%s' "$CLIENT_KEYSTORE_B64" | base64 --decode > "$CLIENT_KEYSTORE_FILE"
+          tools="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          unsigned="$delivery/LLAS_GL_FOVMOD_$BUILD_VERSION-unsigned.apk"
+          signed="$delivery/LLAS_GL_FOVMOD_$BUILD_VERSION.apk"
+          keystore=$(mktemp "$RUNNER_TEMP/client-signing.XXXXXXXX.p12")
+          trap 'unlink "$keystore"' EXIT
+          printf '%s' "$CLIENT_KEYSTORE_B64" | base64 --decode --ignore-garbage > "$keystore"
           unset CLIENT_KEYSTORE_B64
-          # sign-android.sh refuses any certificate other than the 21.4 one.
-          scripts/sign-android.sh "$ANDROID_SDK_ROOT" \
-            "$delivery/LLAS_GL_FOVMOD_$BUILD_VERSION-unsigned.apk" \
-            "$delivery/LLAS_GL_FOVMOD_$BUILD_VERSION.apk"
-          rm "$delivery/LLAS_GL_FOVMOD_$BUILD_VERSION-unsigned.apk"
-          (cd "$delivery" && sha256sum LLAS_GL_FOVMOD_$BUILD_VERSION.apk > SHA256SUMS)
+          "$tools/zipalign" -c 4 "$unsigned"
+          "$tools/apksigner" sign --ks "$keystore" --ks-pass env:CLIENT_KEYSTORE_PASSWORD \
+            --ks-key-alias "$CLIENT_KEY_ALIAS" --key-pass env:CLIENT_KEY_PASSWORD \
+            --v4-signing-enabled false --out "$signed" "$unsigned"
+          observed=$("$tools/apksigner" verify --print-certs "$signed" |
+            sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          echo "Signing certificate SHA-256: $observed"
+          if [[ -n "$EXPECTED_CERT" && "$observed" != "$EXPECTED_CERT" ]]; then
+            echo "::error::The signing secrets hold a different key than the request pins."
+            rm -f "$signed"; exit 1
+          fi
+          rm "$unsigned"
+          (cd "$delivery" && sha256sum "$(basename "$signed")" > SHA256SUMS)
       - name: Upload the APK and build receipts
         uses: actions/upload-artifact@v4
         with:
