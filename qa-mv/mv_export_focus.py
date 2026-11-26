@@ -810,7 +810,7 @@ def run_mv_focus(context):
 
     def landscape_via_panel(attempt, identity_before):
         """Primary route: the in-game FOV panel. It is a View in the game's own DecorView, so there
-        is no Activity transition, no onPause, no relaunch. 'Save and close' (FovMod$7) re-saves the
+        is no Activity transition, no onPause, no relaunch. 'Save' ('Save and close' before client 2026.11.26) re-saves the
         untouched (grid-exact) sliders, saves orient=2 and calls applyOrientation -> LANDSCAPE."""
         lifetime_check(identity_before, f'landscape-panel-{attempt}')
         nodes, info = first_tree(f'lswitch-{attempt:02d}-start')
@@ -851,7 +851,7 @@ def run_mv_focus(context):
             if now != predicted:
                 close_panel('LSWITCH', attempt)
                 return None
-        save, nodes = reach('LSWITCH', attempt, 'panel', 'find-save', lambda ns: one(find_buttons(ns, {'save and close'})),
+        save, nodes = reach('LSWITCH', attempt, 'panel', 'find-save', lambda ns: one(find_buttons(ns, {'save and close', 'save'})),
                             still=fov_panel)
         visible = orientation_choice(nodes)
         if not save or (visible and label_of(visible[0]) not in LANDSCAPE_LABELS):
