@@ -676,6 +676,15 @@ _MV_TIMELINE_REFUSAL_STRINGS = {
     "The timeline does not belong to this 3D MV:": ["이 3D MV의 타임라인이 아닙니다:", "この3D MVのタイムラインではありません："],
     "The converted timeline would differ from the source, so nothing was converted:": [
         "변환 결과가 원래 타임라인과 달라지므로 변환하지 않았습니다:", "変換結果が元のタイムラインと異なるため、変換しませんでした："],
+    "The timeline holds data MV Studio does not write: it may have been changed outside MV Studio. Open the pack in MV Studio and export it again.": [
+        "타임라인에 MV Studio가 쓰지 않는 데이터가 있습니다. MV Studio 밖에서 바뀌었을 수 있습니다. 팩을 MV Studio에서 열어 다시 내보내세요.",
+        "タイムラインにMV Studioが書き込まないデータがあります。MV Studioの外で変更された可能性があります。パックをMV Studioで開いて書き出し直してください。"],
+    "An old live timeline zip is checked for structure only, not that MV Studio made its values.": [
+        "예전 라이브 타임라인 zip은 구조만 확인하며, 값을 MV Studio가 만들었는지는 확인하지 않습니다.",
+        "古いライブタイムラインzipは構造だけを確認し、値をMV Studioが作ったかどうかは確認しません。"],
+    "The pack's timeline values are checked for structure only: install the asset editing tools (modtools) to check that MV Studio made them.": [
+        "팩 타임라인의 값은 구조만 확인합니다. MV Studio가 만든 값인지 확인하려면 에셋 편집툴(modtools)을 설치하세요.",
+        "パックのタイムラインの値は構造だけを確認します。MV Studioが作った値か確認するには、アセット編集ツール（modtools）をインストールしてください。"],
 }
 for _source, _values in _MV_TIMELINE_REFUSAL_STRINGS.items():
     for _lang, _text in zip(("ko", "ja"), _values):

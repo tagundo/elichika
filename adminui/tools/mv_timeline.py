@@ -34,8 +34,9 @@ def _modules():
 
 def _modtools():
     """(convert(src, src_platform, dst_platform, region, asset_id), stage track counter, platform detector,
-    original(region, asset_id, platform)) from modtools' MV timeline platform conversion, or Nones
-    when it is not installed.
+    original(region, asset_id, platform), check(raw, platform, region, asset_id)) from modtools' MV
+    timeline platform conversion, or Nones when it is not installed (check: None with an older
+    modtools that has no check_editor_bytes).
 
     ``original`` is the 3D MV's TRUE stock timeline for a platform, read from this server or
     downloaded; one job fetches each original once, so the conversion's template and the check's
@@ -46,7 +47,7 @@ def _modtools():
         from webtools.core import mv_studio_timeline as timeline
         from webtools.core import mv_timeline_platform as platform
     except Exception:  # noqa: BLE001 - optional companion
-        return None, None, None, None
+        return None, None, None, None, None
     root = str(repo_root())
     cache = {}
 
@@ -74,7 +75,12 @@ def _modtools():
             counted[key] = len(platform.stage_bound_tracks(timeline.parse_timeline(raw, "pack")["tracks"]))
         return counted[key]
 
-    return convert, tracks, platform.blob_platform, original
+    check = None
+    if hasattr(platform, "check_editor_bytes"):
+        def check(raw, platform_name, region, asset_id):
+            platform.check_editor_bytes(raw, original(region, asset_id, platform_name))
+
+    return convert, tracks, platform.blob_platform, original, check
 
 
 def _is_pack(path):
@@ -220,7 +226,7 @@ def run_install(job, params):
     regions = REGION_CHOICES.get(params.get("region") or "gl")
     if regions is None:
         raise ValueError("Choose GL, JP or both.")
-    convert, tracks, detect, original = _modtools()
+    convert, tracks, detect, original, check = _modtools()
     pack = _relabel_legacy(_read(name), detect)
     target = _target(params, pack)
     apply_stage = bool(params.get("apply_stage", True))
@@ -249,12 +255,19 @@ def run_install(job, params):
     if original is None:
         job.log(i18n.tr("The asset editing tools (modtools) are not installed: a source MV original that is not on "
                         "this server cannot be downloaded.", lang))
+    # What the install checks beyond structure (a shared pack's values could be anything).
+    if pack.get("legacy"):
+        job.log(i18n.tr("An old live timeline zip is checked for structure only, not that MV Studio made its "
+                        "values.", lang))
+    elif check is None:
+        job.log(i18n.tr("The pack's timeline values are checked for structure only: install the asset editing "
+                        "tools (modtools) to check that MV Studio made them.", lang))
     job.progress(0, 1)
     result = pack_module.install_pack(
         repo_root(), pack, regions=regions, target_asset_id=target, apply_stage=apply_stage,
         convert=convert if use_convert else None, backup=bool(params.get("backup", True)), log=job.log,
         around_writes=lambda: installation_server(job.log, stop=params.get("stop_server", True), restart=False),
-        stage_tracks=tracks, originals=original)
+        stage_tracks=tracks, originals=original, check=check)
     for warning in result["warnings"]:
         if warning["code"] == "stage-not-applied" and count is not None:
             continue  # logged with its count before the write

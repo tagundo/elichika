@@ -475,7 +475,7 @@ def _validate_region(repo_root, region, target, source, source_id, timelines, st
 
 
 def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=True, convert=None, backup=True,
-                 log=print, around_writes=None, stage_tracks=None, originals=None):
+                 log=print, around_writes=None, stage_tracks=None, originals=None, check=None):
     """Install an MV timeline pack (a read_pack/read_legacy_livetimeline_zip result, bytes or a path).
 
     Per region of ``regions`` ("gl", "jp" or both): the target slot (``target_asset_id``, default the
@@ -500,6 +500,14 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     its template); without a provider, or when it gives nothing, the install is refused with
     ORIGINAL_UNAVAILABLE or ORIGINAL_DOWNLOAD. The fetched bytes go to the write as well.
 
+    The validation checks structure: the timeline is the source MV's, with its objects, tracks and
+    clips. ``check(raw, platform, region, source_asset_id)`` (modtools' ``mv_timeline_platform.
+    check_editor_bytes`` against the source MV's TRUE stock of that platform) also checks content:
+    it raises ValueError unless a timeline is exactly what MV Studio writes for its own parsed
+    content, so a value changed inside a clip MV Studio does not model (a NaN curve key, an index
+    out of range) is refused. It runs on every timeline a .sifasmv pack carries, in the first
+    region, before anything else; an old livetimeline zip (other tools made it) is not checked.
+
     Every payload of every region is validated before ``around_writes()`` (a context manager factory
     the caller uses to stop a managed game server, e.g. adminui's installation_server) is entered;
     the writes then run under database_maintenance.guard, one region after another. ``stage_tracks``
@@ -518,6 +526,11 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     plan = plan_install(repo_root, pack, regions=regions, target_asset_id=target_asset_id, apply_stage=apply_stage,
                         convert=convert)
     provided = pack["timelines"]
+    if check is not None and not pack.get("legacy"):
+        first = plan["regions"][0]
+        for platform, raw in sorted(provided.items()):
+            log(f"[{first['region']}] Checking that the {platform} timeline is one MV Studio writes")
+            check(raw, platform, first["region"], first["sourceAssetId"])
     jobs, warnings = [], []
     tracks = None
     if stage_tracks is not None:

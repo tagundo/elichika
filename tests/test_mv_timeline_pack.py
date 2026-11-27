@@ -366,6 +366,40 @@ class InstallTests(stock_tests.StockCase):
         packs.install_pack(self.root, pack, regions=("gl",), originals=fetch, log=None)
         self.assertEqual(asked, [])
 
+    def test_the_editor_check_runs_on_every_pack_timeline_before_anything_else(self):
+        """``check`` (modtools' check_editor_bytes): every timeline the pack carries, in the first region,
+        with the source asset; a refusal stops the install before validation, the server stop or a write."""
+        before = self.databases()
+        stops, calls = [], []
+        refused = ("The timeline holds data MV Studio does not write: it may have been changed outside MV Studio. "
+                   "Open the pack in MV Studio and export it again.")
+
+        def refuse(raw, platform, region, asset_id):
+            calls.append((raw, platform, region, asset_id))
+            if platform == "ios":
+                raise ValueError(refused)
+
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(refused) + "$"):
+            packs.install_pack(self.root, make_pack(), regions=("jp", "gl"), log=None, check=refuse,
+                               around_writes=lambda: stops.append(1))
+        self.assertEqual(calls, [(timeline("pack-a"), "android", "jp", 2101), (timeline("pack-i"), "ios", "jp", 2101)])
+        self.assertEqual((stops, self.validated, self.databases(), self.static_files()), ([], [], before, []))
+        # A timeline the check accepts installs as before; a converted platform is MV Studio's own output.
+        calls.clear()
+        result = packs.install_pack(self.root, make_pack(timelines={"android": timeline("ok-a")}), regions=["gl"],
+                                    log=None, check=lambda *args: calls.append(args),
+                                    convert=lambda raw, src, dst, region, asset_id: timeline("ok-i"))
+        self.assertEqual((calls, result["regions"][0]["converted"]), ([(timeline("ok-a"), "android", "gl", 2101)], ["ios"]))
+        # An old livetimeline zip (other tools made it) is not checked.
+        described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        with self.guard():
+            stock.restore_mv_timeline(self.root, region="gl", asset_id=2102, expected_key=described["timelineKey"],
+                                      log=None)
+        text = "live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'A2101'\n"
+        legacy = rezip([("livetimeline.txt", text.encode()), ("2102android.unity", timeline("legacy-a"))])
+        packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=refuse)
+        self.assertEqual(len(calls), 1)
+
     def test_a_legacy_zip_installs_through_the_same_path(self):
         text = ("live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'A2101'\n"
                 "live_stage_master_id = 101\nstage_effect_asset_path = 'E2101'\nquality_setitng_set_id = 3\n"
@@ -394,7 +428,7 @@ class AdminTests(stock_tests.StockCase):
                                     (mv_timeline, "_candidate_dirs", lambda key: [str(self.drop)]),
                                     (mv_timeline, "repo_root", lambda: self.root),
                                     (mv_timeline, "installation_server", lambda *a, **k: nullcontext()),
-                                    (mv_timeline, "_modtools", lambda: (None, None, None, None))):
+                                    (mv_timeline, "_modtools", lambda: (None, None, None, None, None))):
             patcher = patch.object(target, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -458,7 +492,7 @@ class AdminTests(stock_tests.StockCase):
 
         job = self.Job()
         job.log = lambda line: events.append(line)
-        with patch.object(self.tool, "_modtools", lambda: (None, lambda raw: 7, None, fetch)), \
+        with patch.object(self.tool, "_modtools", lambda: (None, lambda raw: 7, None, fetch, None)), \
                 patch.object(self.tool, "installation_server", server):
             self.tool.run_install(job, dict(params, lang="en"))
         self.assertEqual(asked, [("gl", 2101, "android")])
@@ -469,6 +503,36 @@ class AdminTests(stock_tests.StockCase):
                              isinstance(line, str)), 1)
         self.assertEqual(stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)["platforms"],
                          {"android": "custom", "ios": "stock"})
+
+    def test_the_install_says_what_it_checks_beyond_structure(self):
+        """Without modtools' editor check the job says the values are checked for structure only; with it, a
+        refused timeline stops the job in the job's language and nothing is installed."""
+        from unittest.mock import patch
+        (self.drop / "edit.sifasmv").write_bytes(make_pack(timelines={"android": timeline("adm-check")}))
+        params = {"addon": "edit.sifasmv", "region": "gl", "apply_stage": False, "convert": False, "lang": "en"}
+        job = self.Job()
+        self.tool.run_install(job, params)
+        self.assertIn("The pack's timeline values are checked for structure only: install the asset editing tools "
+                      "(modtools) to check that MV Studio made them.", job.lines)
+        described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        with self.guard():
+            stock.restore_mv_timeline(self.root, region="gl", asset_id=2102, expected_key=described["timelineKey"],
+                                      log=None)
+        refused = ("The timeline holds data MV Studio does not write: it may have been changed outside MV Studio. "
+                   "Open the pack in MV Studio and export it again.")
+        checked = []
+
+        def check(raw, platform, region, asset_id):
+            checked.append((platform, region, asset_id))
+            raise ValueError(refused)
+
+        job = self.Job()
+        with patch.object(self.tool, "_modtools", lambda: (None, None, None, None, check)), \
+                self.assertRaisesRegex(ValueError, "^타임라인에 MV Studio가 쓰지 않는 데이터가 있습니다\\."):
+            self.tool.run_install(job, dict(params, lang="ko"))
+        self.assertEqual(checked, [("android", "gl", 2101)])
+        self.assertFalse(any("구조만 확인합니다" in line for line in job.lines), job.lines)
+        self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [])
 
     def test_every_refusal_of_the_mv_timeline_tools_translates(self):
         from adminui import i18n
@@ -483,7 +547,12 @@ class AdminTests(stock_tests.StockCase):
                      "A game catalog is missing its main package.", "Provide the original timelines per platform.",
                      "Choose add-on filenames from the installer list, without filesystem paths.",
                      "Choose an installed MV timeline to restore.",
-                     "Select a file first (drop it into Download/sukusta/mvtimeline or …/addons)."}
+                     "Select a file first (drop it into Download/sukusta/mvtimeline or …/addons).",
+                     "The timeline holds data MV Studio does not write: it may have been changed outside MV Studio. "
+                     "Open the pack in MV Studio and export it again.",
+                     "An old live timeline zip is checked for structure only, not that MV Studio made its values.",
+                     "The pack's timeline values are checked for structure only: install the asset editing tools "
+                     "(modtools) to check that MV Studio made them."}
         try:  # modtools' platform conversion, when it is installed next to Elichika
             from webtools.core import mv_timeline_platform
             messages |= set(mv_timeline_platform.MESSAGES)
