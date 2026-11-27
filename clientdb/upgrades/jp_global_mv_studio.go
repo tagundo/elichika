@@ -237,7 +237,11 @@ func (o jpGlobalOverrides) packExclusion(table jpGlobalTable) (string, []any) {
 // restoreStockTimelines points a JP-only 3D MV that the merge copied with its JP override key back
 // at its stock key, and puts back the stage fields the override swapped. An MV with GL's own
 // override keeps it.
-func (o jpGlobalOverrides) restoreStockTimelines(tx *sql.Tx, plan []jpGlobalTable) error {
+//
+// A stage-only override (the timeline key is the stock key, mv_studio_stock writes one when only the
+// stage changes) has no key of its own to find the copied row by: its stage fields are put back
+// only on a row the merge copied from JP, never on one GL had before (glAssets).
+func (o jpGlobalOverrides) restoreStockTimelines(tx *sql.Tx, plan []jpGlobalTable, glAssets map[int64]bool) error {
 	if len(o.items) == 0 {
 		return nil
 	}
@@ -259,20 +263,28 @@ func (o jpGlobalOverrides) restoreStockTimelines(tx *sql.Tx, plan []jpGlobalTabl
 		return err
 	}
 	for _, item := range o.items {
-		if item.timelineKey == item.stockKey {
+		stageOnly := item.timelineKey == item.stockKey
+		if stageOnly && (len(item.originalStage) == 0 || glAssets[item.asset]) {
 			continue
 		}
-		set, args := "timeline = ?", []any{item.stockKey}
+		var sets []string
+		var args []any
+		if !stageOnly {
+			sets, args = append(sets, "timeline = ?"), append(args, item.stockKey)
+		}
 		for _, field := range jpGlobalStageFields {
 			if value, ok := item.originalStage[field]; ok && columns[field] {
 				if number, isNumber := value.(float64); isNumber {
 					value = int64(number)
 				}
-				set += ", " + quoteJPGlobalIdentifier(field) + " = ?"
+				sets = append(sets, quoteJPGlobalIdentifier(field)+" = ?")
 				args = append(args, value)
 			}
 		}
-		query := "UPDATE main.m_live_3d_asset SET " + set + " WHERE id = ? AND timeline = ?"
+		if len(sets) == 0 {
+			continue
+		}
+		query := "UPDATE main.m_live_3d_asset SET " + strings.Join(sets, ", ") + " WHERE id = ? AND timeline = ?"
 		if own {
 			query += " AND NOT EXISTS (SELECT 1 FROM main." + quoteJPGlobalIdentifier(jpGlobalStockTimelines) + " WHERE asset_id = ?)"
 		}
@@ -285,4 +297,28 @@ func (o jpGlobalOverrides) restoreStockTimelines(tx *sql.Tx, plan []jpGlobalTabl
 		}
 	}
 	return nil
+}
+
+// glAssets lists the stage-only overridden assets GL's m_live_3d_asset has before the merge
+// inserts JP's rows (restoreStockTimelines leaves those rows as GL has them).
+func (o jpGlobalOverrides) glAssets(tx *sql.Tx, plan []jpGlobalTable) (map[int64]bool, error) {
+	assets := map[int64]bool{}
+	found := false
+	for _, table := range plan {
+		found = found || strings.EqualFold(table.name, "m_live_3d_asset")
+	}
+	if !found {
+		return assets, nil
+	}
+	for _, item := range o.items {
+		if item.timelineKey != item.stockKey || len(item.originalStage) == 0 {
+			continue
+		}
+		var exists bool
+		if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM main.m_live_3d_asset WHERE id = ?)", item.asset).Scan(&exists); err != nil {
+			return nil, fmt.Errorf("m_live_3d_asset: %w", err)
+		}
+		assets[item.asset] = exists
+	}
+	return assets, nil
 }

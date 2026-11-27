@@ -158,7 +158,7 @@ func TestJapaneseContentPutsBackTheStageOfAJPOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = overrides.restoreStockTimelines(tx, []jpGlobalTable{{name: "m_live_3d_asset", columns: columns}}); err != nil {
+	if err = overrides.restoreStockTimelines(tx, []jpGlobalTable{{name: "m_live_3d_asset", columns: columns}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.Commit(); err != nil {
