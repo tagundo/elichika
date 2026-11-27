@@ -34,9 +34,13 @@ def _modules():
 
 def _modtools():
     """(convert(src, src_platform, dst_platform, region, asset_id), stage track counter, platform detector,
-    original(region, asset_id, platform), check(raw, platform, region, asset_id)) from modtools' MV
-    timeline platform conversion, or Nones when it is not installed (check: None with an older
-    modtools that has no check_editor_bytes).
+    original(region, asset_id, platform), check(raw, platform, region, asset_id, editor)) from modtools'
+    MV timeline platform conversion, or Nones when it is not installed (check: None with an older
+    modtools whose check_editor_bytes does not answer with UncheckedValues).
+
+    ``check`` is mv_timeline_pack.install_pack's: None when a timeline is exactly what this MV Studio
+    writes, else the English reason it could not be confirmed (a newer MV Studio, data changed
+    elsewhere, or a check that could not run, e.g. without its original).
 
     ``original`` is the 3D MV's TRUE stock timeline for a platform, read from this server or
     downloaded; one job fetches each original once, so the conversion's template and the check's
@@ -76,9 +80,18 @@ def _modtools():
         return counted[key]
 
     check = None
-    if hasattr(platform, "check_editor_bytes"):
-        def check(raw, platform_name, region, asset_id):
-            platform.check_editor_bytes(raw, original(region, asset_id, platform_name))
+    if hasattr(platform, "check_editor_bytes") and hasattr(platform, "UncheckedValues"):
+        def check(raw, platform_name, region, asset_id, editor=None):
+            try:
+                template = original(region, asset_id, platform_name)
+            except Exception:  # noqa: BLE001 - no original: the check says it could not run
+                template = None
+            pack_format = editor.get("timelineFormat") if isinstance(editor, dict) else None
+            try:
+                platform.check_editor_bytes(raw, template, pack_format=pack_format)
+            except platform.UncheckedValues as error:
+                return str(error)
+            return None
 
     return convert, tracks, platform.blob_platform, original, check
 
@@ -199,12 +212,34 @@ def _relabel_legacy(pack, detect):
     return pack
 
 
+class _ConsentNeeded(ValueError):
+    """Nothing was installed: the job needs the user's explicit choice. adminui.jobs puts ``consent``
+    ({code, param, title, message, accept, items}, in the job's language) on the job's done event; the
+    panel asks and runs the job again with ``param`` set to true."""
+
+    def __init__(self, message, consent):
+        super().__init__(message)
+        self.consent = consent
+
+
+def _consent_unchecked(error, lang):
+    """The question for an UncheckedValues answer of install_pack (code UNCHECKED_VALUES)."""
+    items = [f"{item['platform']}: " + i18n.tr(item["text"], lang) for item in error.items]
+    message = i18n.tr(str(error), lang)
+    return _ConsentNeeded(message, {
+        "code": error.code, "param": "accept_unchecked", "message": message, "items": items,
+        "title": i18n.tr("Install without checking the timeline values?", lang),
+        "accept": i18n.tr("Install anyway (values not checked)", lang)})
+
+
 def _translated(run):
     """A refusal's message in the job's language (the stores raise fixed English messages)."""
     @functools.wraps(run)
     def wrapper(job, params):
         try:
             return run(job, params)
+        except _ConsentNeeded:
+            raise  # already in the job's language, with the question for the panel
         except ValueError as error:
             text = str(error)
             labels = getattr(error, "labels", None)
@@ -230,6 +265,8 @@ def run_install(job, params):
     if regions is None:
         raise ValueError("Choose GL, JP or both.")
     convert, tracks, detect, original, check = _modtools()
+    # The user's "Install anyway (values not checked)": only an explicit true, from the consent question.
+    accept_unchecked = params.get("accept_unchecked") is True
     pack = _relabel_legacy(_read(name), detect)
     target = _target(params, pack)
     apply_stage = bool(params.get("apply_stage", True))
@@ -266,17 +303,24 @@ def run_install(job, params):
         job.log(i18n.tr("The pack's timeline values are checked for structure only: install the asset editing "
                         "tools (modtools) to check that MV Studio made them.", lang))
     job.progress(0, 1)
-    result = pack_module.install_pack(
-        repo_root(), pack, regions=regions, target_asset_id=target, apply_stage=apply_stage,
-        convert=convert if use_convert else None, backup=bool(params.get("backup", True)), log=job.log,
-        around_writes=lambda: installation_server(job.log, stop=params.get("stop_server", True), restart=False),
-        stage_tracks=tracks, originals=original, check=check)
+    try:
+        result = pack_module.install_pack(
+            repo_root(), pack, regions=regions, target_asset_id=target, apply_stage=apply_stage,
+            convert=convert if use_convert else None, backup=bool(params.get("backup", True)), log=job.log,
+            around_writes=lambda: installation_server(job.log, stop=params.get("stop_server", True), restart=False),
+            stage_tracks=tracks, originals=original, check=check, accept_unchecked=accept_unchecked)
+    except pack_module.UncheckedValues as error:
+        for item in error.items:
+            job.log(f"⚠ {item['platform']}: " + i18n.tr(item["text"], lang))
+        raise _consent_unchecked(error, lang) from None
     for warning in result["warnings"]:
         if warning["code"] == "stage-not-applied" and count is not None:
             continue  # logged with its count before the write
         detail = f" ({warning['platform']})" if warning.get("platform") else ""
         if warning.get("stageBoundTracks") is not None:
             detail = " (" + i18n.tr("Stage-bound tracks in this timeline: ", lang) + str(warning["stageBoundTracks"]) + ")"
+        if warning.get("reason"):
+            detail += ": " + i18n.tr(warning["reason"], lang)
         job.log(f"⚠ [{warning['region']}] " + i18n.tr(warning["text"], lang) + detail)
     job.progress(1, 1)
     return i18n.tr("MV timeline pack installed — restart the server to apply.", lang)

@@ -100,8 +100,15 @@ WARN_SHARED = "Other MV slots or 3D rhythm-game lives use this 3D MV too; they c
 ORIGINAL_UNAVAILABLE = ("The source MV's original timeline is not on this server. Install the asset editing tools "
                         "(modtools) so Elichika can download it, then install again.")
 ORIGINAL_DOWNLOAD = "The source MV's original timeline could not be downloaded. Check the connection, then install again."
+# The editor check (install_pack ``check``) asks; it never refuses. UNCHECKED_VALUES is the code of that question.
+UNCHECKED_VALUES = "UNCHECKED_VALUES"
+CONSENT_NEEDED = ("Nothing was installed yet: this server could not check the pack's timeline values. Choose Install "
+                  "anyway to install it as it is, or Cancel.")
+CHECK_FAILED = "The pack's timeline values could not be checked."
+WARN_UNCHECKED = "Installed without checking the timeline values (you chose Install anyway)."
 MESSAGES = (INVALID, TOO_LARGE, BAD_ENTRY, BAD_TIMELINE, NO_TIMELINE, NEWER, LEGACY_INVALID, CHOOSE_REGION,
-            CHOOSE_TARGET, SOURCE_MISSING, ORIGINAL_UNAVAILABLE, ORIGINAL_DOWNLOAD)
+            CHOOSE_TARGET, SOURCE_MISSING, ORIGINAL_UNAVAILABLE, ORIGINAL_DOWNLOAD, CONSENT_NEEDED, CHECK_FAILED,
+            WARN_UNCHECKED)
 
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 # What zipfile raises for a damaged or crafted zip besides BadZipFile: an entry whose "version needed to
@@ -112,6 +119,18 @@ _HEX = re.compile(r"[0-9a-f]{64}\Z")
 ZIP_ERRORS = (zipfile.BadZipFile, ValueError, OSError, RuntimeError, EOFError, NotImplementedError, zlib.error,
               lzma.LZMAError, struct.error, IndexError, KeyError, OverflowError)
 _LEGACY_UNITY = re.compile(r"[0-9]{1,10}(android|ios)?\.unity\Z", re.IGNORECASE)
+
+
+class UncheckedValues(ValueError):
+    """install_pack's answer when the editor check could not confirm a timeline and the caller did not
+    consent (``accept_unchecked``): nothing was written. ``items`` [{"platform", "text"}] say why, one
+    per timeline; ``code`` is UNCHECKED_VALUES. Installing it then needs ``accept_unchecked=True``."""
+
+    code = UNCHECKED_VALUES
+
+    def __init__(self, items):
+        super().__init__(CONSENT_NEEDED)
+        self.items = [dict(item) for item in items]
 
 
 # ---------------------------------------------------------------- small checks
@@ -537,8 +556,24 @@ def _validate_region(repo_root, region, target, source, source_id, timelines, st
             fetched[error.platform] = _fetch_original(fetch, region, source, error.platform, log)
 
 
+def _check_values(check, pack, region, source, log):
+    """[{"platform", "text"}] of the pack's timelines the editor check could not confirm."""
+    items = []
+    for platform, raw in sorted(pack["timelines"].items()):
+        log(f"[{region}] Checking that the {platform} timeline is one MV Studio writes")
+        try:
+            text = check(raw, platform, region, source, pack.get("editor"))
+        except Exception as error:  # noqa: BLE001 - the check is advisory: its own failure means "not checked"
+            log(f"[{region}] {error}")
+            text = CHECK_FAILED
+        if text:
+            items.append({"platform": platform, "text": str(text)})
+    return items
+
+
 def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=True, convert=None, backup=True,
-                 log=print, around_writes=None, stage_tracks=None, originals=None, check=None):
+                 log=print, around_writes=None, stage_tracks=None, originals=None, check=None,
+                 accept_unchecked=False):
     """Install an MV timeline pack (a read_pack/read_legacy_livetimeline_zip result, bytes or a path).
 
     Per region of ``regions`` ("gl", "jp" or both): the target slot (``target_asset_id``, default the
@@ -563,13 +598,18 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     its template); without a provider, or when it gives nothing, the install is refused with
     ORIGINAL_UNAVAILABLE or ORIGINAL_DOWNLOAD. The fetched bytes go to the write as well.
 
-    The validation checks structure: the timeline is the source MV's, with its objects, tracks and
-    clips. ``check(raw, platform, region, source_asset_id)`` (modtools' ``mv_timeline_platform.
-    check_editor_bytes`` against the source MV's TRUE stock of that platform) also checks content:
-    it raises ValueError unless a timeline is exactly what MV Studio writes for its own parsed
-    content, so a value changed inside a clip MV Studio does not model (a NaN curve key, an index
-    out of range) is refused. It runs on every timeline a .sifasmv pack carries, in the first
-    region, before anything else; an old livetimeline zip (other tools made it) is not checked.
+    The validation checks structure (the timeline is the source MV's, with its objects, tracks and
+    clips) and is the only gate: a refusal stops the install. ``check(raw, platform, region,
+    source_asset_id, editor)`` (adminui's wrapper of modtools' ``mv_timeline_platform.
+    check_editor_bytes`` against the source MV's TRUE stock of that platform; ``editor`` is the
+    pack's exporter record or None) also looks at content: it returns None when a timeline is
+    exactly what this server's MV Studio writes for its own parsed content, else the reason (a pack
+    made by a newer MV Studio, data changed elsewhere, or a check that could not run). It runs on
+    every timeline the pack (or old livetimeline zip) carries, in the first region, after every
+    region validated. A timeline it could not confirm is never refused: without
+    ``accept_unchecked=True`` the install raises UncheckedValues (code UNCHECKED_VALUES, nothing
+    written) so the caller can ask the user; with it, the install goes on and lists each one as an
+    unchecked-values warning.
 
     Every payload of every region is validated before ``around_writes()`` (a context manager factory
     the caller uses to stop a managed game server, e.g. adminui's installation_server) is entered;
@@ -577,23 +617,18 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     (optional ``callable(bytes) -> int``) counts a timeline's stage-bound tracks for the warning.
     Returns {regions: [{region, assetId, sourceAssetId, converted, missing, stageApplied, result}],
     warnings: [{region, code, text, ...}], stageBoundTracks: int | None}; codes: missing-platform
-    (+platform), stage-not-applied (+stageBoundTracks), shared-asset (+usage), store (the store's
-    own clean-up warnings)."""
+    (+platform), stage-not-applied (+stageBoundTracks), shared-asset (+usage), unchecked-values
+    (+platform, reason), store (the store's own clean-up warnings)."""
     import database_maintenance
 
     if not isinstance(pack, dict):
         pack = read_any(pack)
-    if type(backup) is not bool:
+    if type(backup) is not bool or type(accept_unchecked) is not bool:
         raise ValueError(CHOOSE_TARGET)
     log = log or (lambda message: None)
     plan = plan_install(repo_root, pack, regions=regions, target_asset_id=target_asset_id, apply_stage=apply_stage,
                         convert=convert)
     provided = pack["timelines"]
-    if check is not None and not pack.get("legacy"):
-        first = plan["regions"][0]
-        for platform, raw in sorted(provided.items()):
-            log(f"[{first['region']}] Checking that the {platform} timeline is one MV Studio writes")
-            check(raw, platform, first["region"], first["sourceAssetId"])
     jobs, warnings = [], []
     tracks = None
     if stage_tracks is not None:
@@ -625,6 +660,13 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
         log(f"[{region}] Checking the timelines against the original MV {source}")
         fetched = _validate_region(repo_root, region, target, source, source_id, timelines, stage, originals, log)
         jobs.append((item, timelines, converted, missing, source_id, stage, fetched))
+    if check is not None and not pack.get("legacy"):
+        first = plan["regions"][0]
+        unchecked = _check_values(check, pack, first["region"], first["sourceAssetId"], log)
+        if unchecked and not accept_unchecked:
+            raise UncheckedValues(unchecked)
+        warnings.extend({"region": first["region"], "code": "unchecked-values", "platform": item["platform"],
+                         "reason": item["text"], "text": WARN_UNCHECKED} for item in unchecked)
     results = []
     with (around_writes() if around_writes is not None else nullcontext()):
         with database_maintenance.guard(repo_root):

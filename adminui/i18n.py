@@ -676,9 +676,28 @@ _MV_TIMELINE_REFUSAL_STRINGS = {
     "The timeline does not belong to this 3D MV:": ["이 3D MV의 타임라인이 아닙니다:", "この3D MVのタイムラインではありません："],
     "The converted timeline would differ from the source, so nothing was converted:": [
         "변환 결과가 원래 타임라인과 달라지므로 변환하지 않았습니다:", "変換結果が元のタイムラインと異なるため、変換しませんでした："],
-    "The timeline holds data MV Studio does not write: it may have been changed outside MV Studio. Open the pack in MV Studio and export it again.": [
-        "타임라인에 MV Studio가 쓰지 않는 데이터가 있습니다. MV Studio 밖에서 바뀌었을 수 있습니다. 팩을 MV Studio에서 열어 다시 내보내세요.",
-        "タイムラインにMV Studioが書き込まないデータがあります。MV Studioの外で変更された可能性があります。パックをMV Studioで開いて書き出し直してください。"],
+    "The timeline holds data this server's MV Studio tools do not write: the pack was made by a newer MV Studio or changed elsewhere. Updating Elichika and its asset editing tools (modtools) lets this server check it.": [
+        "타임라인에 이 서버의 MV Studio 도구가 쓰지 않는 데이터가 있습니다. 더 새로운 MV Studio로 만들었거나 다른 곳에서 바뀐 팩입니다. Elichika와 에셋 편집툴(modtools)을 업데이트하면 이 서버에서 확인할 수 있습니다.",
+        "タイムラインに、このサーバーのMV Studioツールが書き込まないデータがあります。より新しいMV Studioで作られたか、ほかの場所で変更されたパックです。Elichikaとアセット編集ツール（modtools）を更新すると、このサーバーで確認できます。"],
+    "The pack was made by a newer MV Studio: its timeline holds data this server's MV Studio tools do not write. Updating Elichika and its asset editing tools (modtools) lets this server check it.": [
+        "더 새로운 MV Studio로 만든 팩입니다. 타임라인에 이 서버의 MV Studio 도구가 쓰지 않는 데이터가 있습니다. Elichika와 에셋 편집툴(modtools)을 업데이트하면 이 서버에서 확인할 수 있습니다.",
+        "より新しいMV Studioで作られたパックです。タイムラインに、このサーバーのMV Studioツールが書き込まないデータがあります。Elichikaとアセット編集ツール（modtools）を更新すると、このサーバーで確認できます。"],
+    "The timeline's values could not be checked: the check ran out of time or memory, or the original timeline was not available.": [
+        "타임라인 값을 확인하지 못했습니다. 확인 시간이나 메모리가 부족했거나 원래 타임라인을 쓸 수 없었습니다.",
+        "タイムラインの値を確認できませんでした。確認の時間かメモリが足りなかったか、元のタイムラインを使えませんでした。"],
+    # the install's question when the values could not be checked (mv_timeline_pack, adminui panel)
+    "Nothing was installed yet: this server could not check the pack's timeline values. Choose Install anyway to install it as it is, or Cancel.": [
+        "아직 아무것도 설치하지 않았습니다. 이 서버에서 팩의 타임라인 값을 확인하지 못했습니다. 그대로 설치하려면 ‘그래도 설치’를, 그만두려면 ‘취소’를 고르세요.",
+        "まだ何もインストールしていません。このサーバーではパックのタイムラインの値を確認できませんでした。そのままインストールするには「それでもインストール」を、やめるには「キャンセル」を選んでください。"],
+    "The pack's timeline values could not be checked.": [
+        "팩의 타임라인 값을 확인하지 못했습니다.", "パックのタイムラインの値を確認できませんでした。"],
+    "Installed without checking the timeline values (you chose Install anyway).": [
+        "타임라인 값을 확인하지 않고 설치했습니다(‘그래도 설치’를 골랐습니다).",
+        "タイムラインの値を確認せずにインストールしました（「それでもインストール」を選びました）。"],
+    "Install without checking the timeline values?": [
+        "타임라인 값을 확인하지 않고 설치할까요?", "タイムラインの値を確認せずにインストールしますか？"],
+    "Install anyway (values not checked)": ["그래도 설치(값 확인 안 함)", "それでもインストール（値は未確認）"],
+    "Not installed — waiting for your choice": ["설치하지 않음 — 선택을 기다리는 중", "未インストール — 選択待ち"],
     "An old live timeline zip is checked for structure only, not that MV Studio made its values.": [
         "예전 라이브 타임라인 zip은 구조만 확인하며, 값을 MV Studio가 만들었는지는 확인하지 않습니다.",
         "古いライブタイムラインzipは構造だけを確認し、値をMV Studioが作ったかどうかは確認しません。"],
