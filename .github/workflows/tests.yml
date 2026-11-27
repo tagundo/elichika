@@ -245,6 +245,7 @@ jobs:
           EVIDENCE_DIR="$EVIDENCE_DIR/costume-delete" node ../tests/adminui_costume_delete_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/tool-log" node ../tests/adminui_log_batch_browser.js
           EVIDENCE_DIR="$EVIDENCE_DIR/costume-cdn" node ../tests/adminui_costume_cdn_browser.js
+          EVIDENCE_DIR="$EVIDENCE_DIR/mv-pack-consent" node ../tests/adminui_mv_pack_consent_browser.js
           PYTHON="$(command -v python3)" CHROMIUM_EXECUTABLE="$(node -e 'process.stdout.write(require("playwright").chromium.executablePath())')" EVIDENCE_DIR="$EVIDENCE_DIR/game-quality" node ../tests/adminui_game_quality_browser.js
           python3 -m webtools --no-browser --host 127.0.0.1 --port 8898 > "$EVIDENCE_DIR/server.log" 2>&1 &
           viewer_server_pid=$!
