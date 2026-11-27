@@ -80,9 +80,34 @@ class FormatTests(unittest.TestCase):
         self.assertNotIn("livetimeline.txt", [name for name, _ in entries_of(only_ios)])
         self.assertNotIn("livetimeline.txt", [name for name, _ in entries_of(make_pack(stage=None))])
 
+    def test_a_partial_stage_is_written_as_read_and_completed_from_the_target_for_the_legacy_layout(self):
+        """write_pack takes what read_pack accepts: a stage naming only some fields stays partial in the manifest
+        (the install fills the rest from the target slot's original stage), and the legacy txt gets that same
+        stage: dict(target_stage, **stage)."""
+        self.assertTrue(packs.PARTIAL_STAGE)
+        target_stage = {"live_stage_master_id": 102, "stage_effect_asset_path": "E2102",
+                        "live_prop_skeleton_asset_path": "P2102", "quality_setitng_set_id": 2,
+                        "shader_variant_asset_path": None}
+        data = make_pack(stage={"quality_setitng_set_id": 3}, target_stage=target_stage)
+        self.assertEqual(packs.read_pack(data)["manifest"]["stage"], {"quality_setitng_set_id": 3})
+        legacy = packs.read_legacy_livetimeline_zip(rezip([(name, body) for name, body in entries_of(data)
+                                                           if name in ("livetimeline.txt", "2102android.unity")]))
+        self.assertEqual(legacy["manifest"]["stage"], {"live_stage_master_id": 102, "stage_effect_asset_path": "E2102",
+                                                       "live_prop_skeleton_asset_path": "P2102",
+                                                       "quality_setitng_set_id": 3})
+        # A complete stage is the legacy stage as it is; a partial one without the target's: no legacy layout.
+        complete = make_pack(target_stage=target_stage)
+        self.assertIn("live_stage_master_id = 101", dict(entries_of(complete))["livetimeline.txt"].decode())
+        self.assertNotIn("livetimeline.txt", dict(entries_of(make_pack(stage={"quality_setitng_set_id": 3}))))
+        # No stage: the target's original stage, as an install without a stage puts it back.
+        self.assertIn("live_stage_master_id = 102",
+                      dict(entries_of(make_pack(stage=None, target_stage=target_stage)))["livetimeline.txt"].decode())
+
     def test_writer_refuses_bad_input(self):
         for changes in ({"timelines": {}}, {"timelines": {"android": b"not unity"}}, {"timelines": {"pc": timeline("x")}},
-                        {"name": ""}, {"name": "two\nlines"}, {"stage": {"live_stage_master_id": 1}},
+                        {"name": ""}, {"name": "two\nlines"}, {"stage": {}}, {"stage": {"live_stage_master_id": "1"}},
+                        {"stage": {"live_stage_master_id": 1, "other": 2}},
+                        {"stage": None, "target_stage": {"live_stage_master_id": 1}},
                         {"source": {"region": "kr", "assetId": 1}}, {"target_asset_id": 0},
                         {"song": {"liveId": "21", "title": "x"}}):
             with self.subTest(changes=sorted(changes)), self.assertRaises(ValueError):
@@ -288,6 +313,31 @@ class InstallTests(stock_tests.StockCase):
             stock.restore_mv_timeline(self.root, region="gl", asset_id=2102, expected_key=described["timelineKey"],
                                       log=None)
         self.assertEqual(self.databases(skip={stock.TABLE}), before)
+
+    def test_a_partial_stage_installs_the_same_stage_after_the_pack_is_written_again(self):
+        """A pack's partial stage gets the target slot's original stage for the fields it leaves out; writing the read
+        pack again (as the platform conversion does, with only a platform added) installs the same stage."""
+        partial = {"live_stage_master_id": 101}
+        original = packs.read_pack(make_pack(stage=partial, timelines={"android": timeline("part-a")}))
+
+        def install(pack):
+            packs.install_pack(self.root, pack, regions=["gl"], log=None)
+            described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+            with self.guard():
+                stock.restore_mv_timeline(self.root, region="gl", asset_id=2102,
+                                          expected_key=described["timelineKey"], log=None)
+            return described["stage"]["current"]
+
+        installed = install(original)
+        self.assertEqual(installed, dict(stock_tests.STAGE_2102, live_stage_master_id=101))
+        manifest = original["manifest"]
+        again = packs.read_pack(packs.write_pack(
+            name=manifest["name"], note=manifest["note"], song=manifest["song"], source=manifest["source"],
+            target_asset_id=manifest["target"]["assetId"], created=manifest["created"], stage=manifest["stage"],
+            timelines={"android": timeline("part-a"), "ios": timeline("part-i")},
+            target_stage=stock_tests.STAGE_2102))
+        self.assertEqual(again["manifest"]["stage"], partial)
+        self.assertEqual(install(again), installed)
 
     def test_stage_off_missing_platform_and_conversion(self):
         pack = packs.read_pack(make_pack(timelines={"android": timeline("only-a")}))

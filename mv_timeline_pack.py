@@ -17,8 +17,8 @@ pack"). Reader and writer live here only; modtools imports this module the way i
                    "ios"?: {"file": "timeline_ios.unity", "sha256": hex, "size": int}}}
 
 ``stage`` is the source MV's stage, written exactly when applied (null writes NULL; a field left
-out of a hand-made manifest keeps the target's original value). The timeline files are plain
-UnityFS bundles as MV Studio's native export writes them.
+out keeps the target slot's original value, as ``mv_studio_stock.apply_mv_timeline`` fills it). The
+timeline files are plain UnityFS bundles as MV Studio's native export writes them.
 
 Legacy layout: a pack with an Android timeline also carries ``livetimeline.txt`` and
 ``<target>android.unity`` for the legacy "Replace Live Camera Timeline" tool
@@ -61,6 +61,10 @@ FILES = {"android": "timeline_android.unity", "ios": "timeline_ios.unity"}
 MANIFEST = "manifest.json"
 LEGACY_TXT = "livetimeline.txt"
 STAGE_FIELDS = stock.STAGE_FIELDS
+
+# write_pack takes a stage naming only some STAGE_FIELDS, as read_pack returns it (modtools passes a read
+# pack's stage through when this is set, instead of completing it).
+PARTIAL_STAGE = True
 
 MAX_PACK_BYTES = 3 * native.MAX_TIMELINE_BYTES + 4 * 1024 * 1024
 MAX_ENTRIES = 16
@@ -165,10 +169,13 @@ def write_pack(*, name, song, source, target_asset_id, timelines, stage=None, no
 
     ``song`` {liveId, title}; ``source`` {region, assetId}: the 3D MV the timelines were made from;
     ``target_asset_id``: the slot it is meant for; ``timelines`` {android?, ios?: plaintext UnityFS
-    bytes}; ``stage``: None, or the source's five STAGE_FIELDS to apply with the timeline.
-    ``target_stage`` (the target slot's current five STAGE_FIELDS) and ``source_timeline_key`` (the
-    source's stock timeline key, whose dependency rows the legacy tool copies) are only used for the
-    legacy layout, which is left out without an Android timeline or a complete stage."""
+    bytes}; ``stage``: None, or the STAGE_FIELDS to apply with the timeline: the source's five, or
+    (a pack read back, e.g. to add a platform) only some, as read_pack accepts them; the install fills
+    the others from the target slot's original stage. ``target_stage`` (the target slot's original
+    five STAGE_FIELDS) and ``source_timeline_key`` (the source's stock timeline key, whose dependency
+    rows the legacy tool copies) are only used for the legacy layout: its stage is
+    ``dict(target_stage, **stage)``, the stage the install gives the target. The layout is left out
+    without an Android timeline or without a complete stage that way."""
     if not _one_line(name, MAX_NAME, empty=False) or not _note(note):
         raise ValueError(INVALID)
     if (not isinstance(song, dict) or set(song) != {"liveId", "title"} or not _positive(song["liveId"])
@@ -177,7 +184,7 @@ def write_pack(*, name, song, source, target_asset_id, timelines, stage=None, no
     if (not isinstance(source, dict) or set(source) != {"region", "assetId"} or source["region"] not in REGIONS
             or not _positive(source["assetId"]) or not _positive(target_asset_id)):
         raise ValueError(INVALID)
-    stage = _stage(stage, complete=True)
+    stage = _stage(stage, complete=False)
     if not isinstance(timelines, dict) or timelines.keys() - set(PLATFORMS):
         raise ValueError(INVALID)
     payloads = {platform: _timeline(data) for platform, data in timelines.items() if data is not None}
@@ -193,7 +200,13 @@ def write_pack(*, name, song, source, target_asset_id, timelines, stage=None, no
                 "target": {"assetId": target_asset_id}, "stage": stage,
                 "platforms": {platform: {"file": FILES[platform], "sha256": hashlib.sha256(data).hexdigest(),
                                          "size": len(data)} for platform, data in sorted(payloads.items())}}
-    legacy_stage = stage or (_stage(target_stage, complete=True) if target_stage is not None else None)
+    target_stage = _stage(target_stage, complete=True) if target_stage is not None else None
+    if stage is not None and set(stage) == set(STAGE_FIELDS):
+        legacy_stage = stage
+    elif target_stage is not None:
+        legacy_stage = dict(target_stage, **(stage or {}))
+    else:
+        legacy_stage = None
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(MANIFEST, json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True))
