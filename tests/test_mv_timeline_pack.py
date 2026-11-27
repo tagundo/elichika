@@ -133,6 +133,34 @@ class FormatTests(unittest.TestCase):
             with self.subTest(editor=editor), self.assertRaisesRegex(ValueError, "not a valid"):
                 make_pack(editor=editor)
 
+    def test_a_damaged_exporter_record_is_absent_not_a_bad_pack(self):
+        """Only mvstudio.json damaged (two compressed bytes flipped: a bad CRC or a corrupt deflate stream): the
+        pack reads with editor None, as the reader without the record reads it; a damaged manifest is still
+        refused."""
+        import struct
+
+        def flip(data, name):
+            raw = bytearray(data)
+            info = zipfile.ZipFile(io.BytesIO(data)).getinfo(name)
+            name_length, extra_length = struct.unpack("<HH", raw[info.header_offset + 26:info.header_offset + 30])
+            start = info.header_offset + 30 + name_length + extra_length
+            for index in (start + 1, start + info.compress_size - 2):
+                raw[index] ^= 0xFF
+            return bytes(raw)
+
+        data = make_pack(editor={"timelineFormat": 2, "modtools": "0.2.0"})
+        self.assertEqual(zipfile.ZipFile(io.BytesIO(data)).getinfo("mvstudio.json").compress_type, zipfile.ZIP_DEFLATED)
+        damaged = flip(data, "mvstudio.json")
+        with self.assertRaises((zipfile.BadZipFile, __import__("zlib").error)):
+            zipfile.ZipFile(io.BytesIO(damaged)).read("mvstudio.json")
+        for read in (packs.read_pack, packs.read_any):
+            with self.subTest(read=read.__name__):
+                pack = read(damaged)
+                self.assertIsNone(pack["editor"])
+                self.assertEqual(pack["timelines"], packs.read_pack(data)["timelines"])
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+            packs.read_pack(flip(data, "manifest.json"))
+
     def test_writer_refuses_bad_input(self):
         for changes in ({"timelines": {}}, {"timelines": {"android": b"not unity"}}, {"timelines": {"pc": timeline("x")}},
                         {"name": ""}, {"name": "two\nlines"}, {"stage": {}}, {"stage": {"live_stage_master_id": "1"}},

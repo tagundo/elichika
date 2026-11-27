@@ -390,7 +390,7 @@ def _manifest(raw):
 
 def read_pack(pack):
     """Read a .sifasmv (bytes or a path) into {manifest, timelines {platform: bytes}, legacy: False, editor}
-    (``editor``: the exporting MV Studio's record, or None).
+    (``editor``: the exporting MV Studio's record, or None, also for a damaged or unreadable record).
 
     Nothing is extracted to disk and nothing in the pack is executed."""
     data = _bytes(pack)
@@ -408,9 +408,12 @@ def read_pack(pack):
             if hashlib.sha256(raw).hexdigest() != item["sha256"]:
                 raise ValueError(BAD_TIMELINE)
             timelines[platform] = _timeline(raw)
-        info = entries.get(EDITOR)
-        editor = (_read_editor(_read_entry(archive, info, MAX_EDITOR_BYTES))
-                  if info is not None and info.file_size <= MAX_EDITOR_BYTES else None)
+        info, editor = entries.get(EDITOR), None
+        if info is not None and info.file_size <= MAX_EDITOR_BYTES:
+            try:
+                editor = _read_editor(_read_entry(archive, info, MAX_EDITOR_BYTES))
+            except ValueError:  # advisory: a damaged record (a bad CRC, a corrupt stream) is absent, not a bad pack
+                editor = None
     return {"manifest": manifest, "timelines": timelines, "legacy": False, "editor": editor}
 
 
