@@ -20,6 +20,12 @@ pack"). Reader and writer live here only; modtools imports this module the way i
 out keeps the target slot's original value, as ``mv_studio_stock.apply_mv_timeline`` fills it). The
 timeline files are plain UnityFS bundles as MV Studio's native export writes them.
 
+``mvstudio.json`` (optional, outside the manifest so that every reader that knows the manifest
+reads the pack): what exported it, ``{"timelineFormat": int, "modtools": str}``: the timeline
+export format of that MV Studio (modtools' ``mv_timeline_platform.EXPORT_FORMAT``) and its version.
+A reader only reads the manifest and the files it names, so a reader that does not know the entry
+ignores it; this one reads it as ``editor`` (unknown keys ignored) for the install's check.
+
 Legacy layout: a pack with an Android timeline also carries ``livetimeline.txt`` and
 ``<target>android.unity`` for the legacy "Replace Live Camera Timeline" tool
 (camera_live_timeline_replacer.py). That tool registers this ONE Android file for both platforms
@@ -59,6 +65,7 @@ PLATFORMS = ("android", "ios")
 REGIONS = ("gl", "jp")
 FILES = {"android": "timeline_android.unity", "ios": "timeline_ios.unity"}
 MANIFEST = "manifest.json"
+EDITOR = "mvstudio.json"  # optional: the exporting MV Studio's timeline export format and version
 LEGACY_TXT = "livetimeline.txt"
 STAGE_FIELDS = stock.STAGE_FIELDS
 
@@ -70,6 +77,7 @@ MAX_PACK_BYTES = 3 * native.MAX_TIMELINE_BYTES + 4 * 1024 * 1024
 MAX_ENTRIES = 16
 MAX_MANIFEST_BYTES = 64 * 1024
 MAX_TXT_BYTES = 64 * 1024
+MAX_EDITOR_BYTES = 4 * 1024
 MAX_NAME = 120
 MAX_NOTE = 2000
 MAX_TITLE = 160
@@ -135,6 +143,32 @@ def _stage(value, *, complete):
         raise ValueError(INVALID) from None
 
 
+def _editor(value):
+    """The exporter record write_pack takes: None or {"timelineFormat": positive int, "modtools"?: str}."""
+    if value is None:
+        return None
+    if (not isinstance(value, dict) or not value.keys() <= {"timelineFormat", "modtools"}
+            or not _positive(value.get("timelineFormat"))
+            or ("modtools" in value and not _one_line(value["modtools"], 64, empty=False))):
+        raise ValueError(INVALID)
+    return {key: value[key] for key in ("timelineFormat", "modtools") if key in value}
+
+
+def _read_editor(raw):
+    """The exporter record of a read pack, or None: it is advisory (the install's check uses it to say a
+    pack is newer), so an unreadable one counts as absent and keys this reader does not know are ignored."""
+    try:
+        value = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, ValueError, RecursionError):
+        return None
+    if not isinstance(value, dict) or not _positive(value.get("timelineFormat")):
+        return None
+    editor = {"timelineFormat": value["timelineFormat"]}
+    if _one_line(value.get("modtools"), 64, empty=False):
+        editor["modtools"] = value["modtools"]
+    return editor
+
+
 def _timeline(data):
     if not isinstance(data, (bytes, bytearray, memoryview)):
         raise ValueError(BAD_TIMELINE)
@@ -164,7 +198,7 @@ def _legacy_txt(target, stage, source_timeline_key):
 
 
 def write_pack(*, name, song, source, target_asset_id, timelines, stage=None, note="", created=None,
-               target_stage=None, source_timeline_key=None):
+               target_stage=None, source_timeline_key=None, editor=None):
     """Return the bytes of a .sifasmv pack.
 
     ``song`` {liveId, title}; ``source`` {region, assetId}: the 3D MV the timelines were made from;
@@ -175,7 +209,8 @@ def write_pack(*, name, song, source, target_asset_id, timelines, stage=None, no
     five STAGE_FIELDS) and ``source_timeline_key`` (the source's stock timeline key, whose dependency
     rows the legacy tool copies) are only used for the legacy layout: its stage is
     ``dict(target_stage, **stage)``, the stage the install gives the target. The layout is left out
-    without an Android timeline or without a complete stage that way."""
+    without an Android timeline or without a complete stage that way. ``editor`` (optional) is the
+    exporting MV Studio's ``{"timelineFormat": int, "modtools": str}``, written as ``mvstudio.json``."""
     if not _one_line(name, MAX_NAME, empty=False) or not _note(note):
         raise ValueError(INVALID)
     if (not isinstance(song, dict) or set(song) != {"liveId", "title"} or not _positive(song["liveId"])
@@ -185,6 +220,7 @@ def write_pack(*, name, song, source, target_asset_id, timelines, stage=None, no
             or not _positive(source["assetId"]) or not _positive(target_asset_id)):
         raise ValueError(INVALID)
     stage = _stage(stage, complete=False)
+    editor = _editor(editor)
     if not isinstance(timelines, dict) or timelines.keys() - set(PLATFORMS):
         raise ValueError(INVALID)
     payloads = {platform: _timeline(data) for platform, data in timelines.items() if data is not None}
@@ -212,6 +248,8 @@ def write_pack(*, name, song, source, target_asset_id, timelines, stage=None, no
         archive.writestr(MANIFEST, json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True))
         for platform, data in sorted(payloads.items()):
             archive.writestr(FILES[platform], data)
+        if editor is not None:
+            archive.writestr(EDITOR, json.dumps(editor, ensure_ascii=False, sort_keys=True))
         if "android" in payloads and legacy_stage is not None:
             archive.writestr(LEGACY_TXT, _legacy_txt(target_asset_id, legacy_stage, source_timeline_key))
             archive.writestr(f"{target_asset_id}android.unity", payloads["android"])
@@ -315,7 +353,8 @@ def _manifest(raw):
 
 
 def read_pack(pack):
-    """Read a .sifasmv (bytes or a path) into {manifest, timelines {platform: bytes}, legacy: False}.
+    """Read a .sifasmv (bytes or a path) into {manifest, timelines {platform: bytes}, legacy: False, editor}
+    (``editor``: the exporting MV Studio's record, or None).
 
     Nothing is extracted to disk and nothing in the pack is executed."""
     data = _bytes(pack)
@@ -333,7 +372,10 @@ def read_pack(pack):
             if hashlib.sha256(raw).hexdigest() != item["sha256"]:
                 raise ValueError(BAD_TIMELINE)
             timelines[platform] = _timeline(raw)
-    return {"manifest": manifest, "timelines": timelines, "legacy": False}
+        info = entries.get(EDITOR)
+        editor = (_read_editor(_read_entry(archive, info, MAX_EDITOR_BYTES))
+                  if info is not None and info.file_size <= MAX_EDITOR_BYTES else None)
+    return {"manifest": manifest, "timelines": timelines, "legacy": False, "editor": editor}
 
 
 def _legacy_stage(values):
@@ -388,7 +430,7 @@ def read_legacy_livetimeline_zip(pack):
                 "platforms": {platform: {"file": file_name, "sha256": hashlib.sha256(raw).hexdigest(),
                                          "size": len(raw)}},
                 "legacyTimelineKey": key if isinstance(key, str) and key and len(key) <= 64 else None}
-    return {"manifest": manifest, "timelines": {platform: raw}, "legacy": True}
+    return {"manifest": manifest, "timelines": {platform: raw}, "legacy": True, "editor": None}
 
 
 def read_any(pack):

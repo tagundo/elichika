@@ -103,6 +103,36 @@ class FormatTests(unittest.TestCase):
         self.assertIn("live_stage_master_id = 102",
                       dict(entries_of(make_pack(stage=None, target_stage=target_stage)))["livetimeline.txt"].decode())
 
+    def test_the_exporting_mv_studio_is_recorded_outside_the_manifest(self):
+        """mvstudio.json records the exporting MV Studio's timeline export format (and version). It is not a
+        manifest key: the manifest reader refuses keys it does not know, while every reader reads only the
+        manifest and the files it names, so a reader that does not know the entry still reads the pack."""
+        data = make_pack(editor={"timelineFormat": 3, "modtools": "0.1.0"})
+        self.assertEqual(json.loads(dict(entries_of(data))["mvstudio.json"]), {"timelineFormat": 3, "modtools": "0.1.0"})
+        pack = packs.read_pack(data)
+        self.assertEqual(pack["editor"], {"timelineFormat": 3, "modtools": "0.1.0"})
+        self.assertNotIn("editor", pack["manifest"])
+        self.assertEqual(packs.read_any(data)["editor"], {"timelineFormat": 3, "modtools": "0.1.0"})
+        self.assertIsNone(packs.read_pack(make_pack())["editor"])
+        # The manifest itself takes no new key (what an additive manifest field would have cost every reader).
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+            packs.read_pack(MaliciousPackTests().manifest(lambda value: value.update(editor={"timelineFormat": 3})))
+        # The record is advisory: keys this reader does not know are ignored, an unreadable or oversized one is
+        # absent, and an entry the reader does not know at all is ignored like mvstudio.json by older readers.
+        for body, expected in ((b'{"timelineFormat": 4, "modtools": "9.9", "future": [1]}', {"timelineFormat": 4, "modtools": "9.9"}),
+                               (b'{"timelineFormat": 4, "modtools": 5}', {"timelineFormat": 4}),
+                               (b'{"timelineFormat": "4"}', None), (b"not json", None), (b"[" * 30000, None),
+                               (b'{"timelineFormat": 4, "pad": "' + b"x" * 5000 + b'"}', None)):
+            changed = rezip([(name, body if name == "mvstudio.json" else value) for name, value in entries_of(data)])
+            with self.subTest(body=body[:40]):
+                self.assertEqual(packs.read_pack(changed)["editor"], expected)
+        future = rezip(entries_of(make_pack()) + [("future-entry.json", b"{}")])
+        self.assertEqual(packs.read_pack(future)["timelines"], packs.read_pack(make_pack())["timelines"])
+        for editor in ({"timelineFormat": 0}, {"timelineFormat": "1"}, {"timelineFormat": 1, "x": 1},
+                       {"timelineFormat": 1, "modtools": "a\nb"}, ["x"]):
+            with self.subTest(editor=editor), self.assertRaisesRegex(ValueError, "not a valid"):
+                make_pack(editor=editor)
+
     def test_writer_refuses_bad_input(self):
         for changes in ({"timelines": {}}, {"timelines": {"android": b"not unity"}}, {"timelines": {"pc": timeline("x")}},
                         {"name": ""}, {"name": "two\nlines"}, {"stage": {}}, {"stage": {"live_stage_master_id": "1"}},
