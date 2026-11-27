@@ -370,7 +370,7 @@ func mergeJPGlobalPair(pair jpGlobalPair, fingerprint string) (int64, int64, err
 		return 0, 0, err
 	}
 	// JP's MV Studio stock overrides stay in JP (jp_global_mv_studio.go).
-	overrides, err := readJPGlobalOverrides(jpGlobalMasterPath(pair))
+	overrides, err := readJPGlobalPairOverrides(pair)
 	if err != nil {
 		return 0, 0, err
 	}

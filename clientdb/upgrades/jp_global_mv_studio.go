@@ -31,6 +31,9 @@ type jpGlobalOverride struct {
 	stockKey, timelineKey string
 	// The asset's stage fields before the override (stage column {"original": {...}}), when it has one.
 	originalStage map[string]any
+	// The source MV's packs a cross-slot override added to live:<asset> (extras column {schema: [pack
+	// names]}, the JP schemas asset_a_ja and asset_i_ja). They are JP stock packs of live:<source>.
+	extras map[string][]string
 }
 
 // jpGlobalStageFields are the m_live_3d_asset stage fields an override may swap (mv_studio_stock.STAGE_FIELDS).
@@ -41,6 +44,8 @@ type jpGlobalOverrides struct {
 	items []jpGlobalOverride
 	keys  []string // override timeline keys (live_timeline, live_timeline_dependency asset_path)
 	packs []string // override pack names (m_asset_package_mapping, m_asset_pack pack_name)
+	// schema is the JP asset catalog of the merge pair (asset_a_ja, asset_i_ja); "" for masterdata.
+	schema string
 }
 
 // jpGlobalMasterPath is the JP masterdata of a merge pair: the source itself, or the masterdata
@@ -50,6 +55,15 @@ func jpGlobalMasterPath(pair jpGlobalPair) string {
 		return pair.source
 	}
 	return filepath.Join(filepath.Dir(pair.source), "masterdata.db")
+}
+
+// readJPGlobalPairOverrides lists the JP overrides for one merge pair (its catalog's extras).
+func readJPGlobalPairOverrides(pair jpGlobalPair) (jpGlobalOverrides, error) {
+	overrides, err := readJPGlobalOverrides(jpGlobalMasterPath(pair))
+	if err == nil && pair.asset {
+		overrides.schema = strings.TrimSuffix(filepath.Base(pair.source), filepath.Ext(pair.source))
+	}
+	return overrides, err
 }
 
 // readJPGlobalOverrides lists the JP region's MV Studio stock overrides. A JP masterdata without
@@ -79,7 +93,15 @@ func readJPGlobalOverrides(path string) (jpGlobalOverrides, error) {
 	if hasStage {
 		stageColumn = "stage"
 	}
-	rows, err := db.Query("SELECT asset_id, stock_key, timeline_key, packs, " + stageColumn + " FROM " + quoteJPGlobalIdentifier(jpGlobalStockTimelines) + " ORDER BY asset_id")
+	var hasExtras bool
+	if err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM pragma_table_info(?) WHERE name = 'extras')", jpGlobalStockTimelines).Scan(&hasExtras); err != nil {
+		return result, err
+	}
+	extrasColumn := "'{}'"
+	if hasExtras {
+		extrasColumn = "extras"
+	}
+	rows, err := db.Query("SELECT asset_id, stock_key, timeline_key, packs, " + stageColumn + ", " + extrasColumn + " FROM " + quoteJPGlobalIdentifier(jpGlobalStockTimelines) + " ORDER BY asset_id")
 	if err != nil {
 		return result, fmt.Errorf("%s: %w", jpGlobalStockTimelines, err)
 	}
@@ -87,9 +109,19 @@ func readJPGlobalOverrides(path string) (jpGlobalOverrides, error) {
 	keys, packs := map[string]bool{}, map[string]bool{}
 	for rows.Next() {
 		var item jpGlobalOverride
-		var encoded, stage string
-		if err = rows.Scan(&item.asset, &item.stockKey, &item.timelineKey, &encoded, &stage); err != nil {
+		var encoded, stage, extras string
+		if err = rows.Scan(&item.asset, &item.stockKey, &item.timelineKey, &encoded, &stage, &extras); err != nil {
 			return result, fmt.Errorf("%s: %w", jpGlobalStockTimelines, err)
+		}
+		if err = json.Unmarshal([]byte(extras), &item.extras); err != nil {
+			return result, fmt.Errorf("%s: asset %d extras: %w", jpGlobalStockTimelines, item.asset, err)
+		}
+		for _, names := range item.extras {
+			for _, name := range names {
+				if name == "" {
+					return result, fmt.Errorf("%s: asset %d has an invalid extra pack name", jpGlobalStockTimelines, item.asset)
+				}
+			}
 		}
 		var stages struct {
 			Original map[string]any `json:"original"`
@@ -131,8 +163,53 @@ func readJPGlobalOverrides(path string) (jpGlobalOverrides, error) {
 	return result, nil
 }
 
-// exclusion is the extra WHERE condition that keeps a JP override's rows out of one table's insert.
+// exclusion is the extra WHERE condition that keeps a JP override's rows out of one table's insert:
+// its keys and packs, and the source packs it added to live:<asset>. Those source packs stay in
+// live:<source> (they are its stock packs) and their m_asset_pack rows are copied as usual: only
+// the live:<asset> mapping rows of that asset are left out, so GL's live:<asset> header and
+// downloads do not change.
 func (o jpGlobalOverrides) exclusion(table jpGlobalTable) (string, []any) {
+	condition, args := o.packExclusion(table)
+	if !strings.EqualFold(table.name, "m_asset_package_mapping") || o.schema == "" {
+		return condition, args
+	}
+	packageColumn, packColumn := jpGlobalColumnName(table, "package_key"), jpGlobalColumnName(table, "pack_name")
+	if packageColumn == "" || packColumn == "" {
+		return condition, args
+	}
+	for _, item := range o.items {
+		var names []string
+		for schema, values := range item.extras {
+			if strings.EqualFold(schema, o.schema) {
+				names = append(names, values...)
+			}
+		}
+		if len(names) == 0 {
+			continue
+		}
+		sort.Strings(names)
+		condition += " AND NOT (" + packageColumn + " = ? AND " + packColumn + " IN (" +
+			strings.TrimSuffix(strings.Repeat("?, ", len(names)), ", ") + "))"
+		args = append(args, fmt.Sprintf("live:%d", item.asset))
+		for _, name := range names {
+			args = append(args, name)
+		}
+	}
+	return condition, args
+}
+
+// jpGlobalColumnName is the quoted name of one of the table's columns, or "" when it has none.
+func jpGlobalColumnName(table jpGlobalTable, name string) string {
+	for _, column := range table.columns {
+		if strings.EqualFold(column.name, name) {
+			return quoteJPGlobalIdentifier(column.name)
+		}
+	}
+	return ""
+}
+
+// packExclusion keeps a JP override's own timeline keys and packs out of one table's insert.
+func (o jpGlobalOverrides) packExclusion(table jpGlobalTable) (string, []any) {
 	var column string
 	var values []string
 	switch strings.ToLower(table.name) {
