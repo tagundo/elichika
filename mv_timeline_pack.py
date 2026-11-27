@@ -40,10 +40,12 @@ from datetime import datetime, timezone
 import hashlib
 import io
 import json
+import lzma
 from pathlib import Path
 import re
 import unicodedata
 import zipfile
+import zlib
 
 import mv_studio_native_assets as native
 import mv_studio_stock as stock
@@ -246,7 +248,9 @@ def _read_entry(archive, info, limit):
     try:
         with archive.open(info) as handle:
             data = handle.read(limit + 1)
-    except (zipfile.BadZipFile, OSError, RuntimeError, EOFError, NotImplementedError):
+    except (zipfile.BadZipFile, OSError, RuntimeError, EOFError, NotImplementedError, zlib.error, lzma.LZMAError):
+        # A corrupt deflate stream raises zlib.error and a corrupt LZMA entry LZMAError: a damaged
+        # pack, refused like any other (bz2's errors are OSError).
         raise ValueError(INVALID) from None
     if len(data) > limit or len(data) != info.file_size:
         raise ValueError(TOO_LARGE if len(data) > limit else INVALID)

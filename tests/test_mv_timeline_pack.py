@@ -144,6 +144,42 @@ class MaliciousPackTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not a valid"):
             packs.read_pack(self.tampered(lambda name, data: b"[" * 30000 if name == "manifest.json" else data))
 
+    def test_a_damaged_compressed_entry_is_refused_as_invalid(self):
+        """A corrupt deflate stream (zlib.error) or LZMA entry (LZMAError) is a ValueError like any damage:
+        the Server content job translates it and modtools' pack-open route answers 400."""
+        import struct
+
+        def damaged(method, mutate):
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w") as archive:
+                for name, data in entries_of(make_pack()):
+                    archive.writestr(name, data, compress_type=method if name == "manifest.json" else zipfile.ZIP_DEFLATED)
+            raw = bytearray(buffer.getvalue())
+            info = zipfile.ZipFile(io.BytesIO(bytes(raw))).getinfo("manifest.json")
+            name_length, extra_length = struct.unpack("<HH", raw[info.header_offset + 26:info.header_offset + 30])
+            mutate(raw, info.header_offset + 30 + name_length + extra_length, info.compress_size)
+            return bytes(raw)
+
+        def invalid_block(raw, start, size):
+            raw[start] = 0x07  # a final deflate block of the reserved type
+
+        def flipped(raw, start, size):
+            for index in range(start + size // 2, start + size // 2 + 8):
+                raw[index] ^= 0xFF
+
+        def lzma_header(raw, start, size):
+            raw[start + 4:start + 9] = b"\xff" * 5  # the LZMA properties: an invalid lc/lp/pb byte
+
+        cases = [(zipfile.ZIP_DEFLATED, invalid_block), (zipfile.ZIP_LZMA, flipped), (zipfile.ZIP_LZMA, lzma_header)]
+        for method, mutate in cases:
+            data = damaged(method, mutate)
+            for read in (packs.read_pack, packs.read_any):
+                with self.subTest(method=method, mutate=mutate.__name__, read=read.__name__), \
+                        self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+                    read(data)
+        # The same entries undamaged read back (the test damages only the compressed bytes).
+        self.assertFalse(packs.read_pack(damaged(zipfile.ZIP_LZMA, lambda raw, start, size: None))["legacy"])
+
     def test_legacy_txt_with_code_never_runs(self):
         marker = ROOT / "tests" / ".mv_pack_executed"
         self.addCleanup(lambda: marker.unlink(missing_ok=True))
