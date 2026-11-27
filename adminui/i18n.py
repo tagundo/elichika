@@ -676,6 +676,40 @@ _MV_TIMELINE_REFUSAL_STRINGS = {
     "The timeline does not belong to this 3D MV:": ["이 3D MV의 타임라인이 아닙니다:", "この3D MVのタイムラインではありません："],
     "The converted timeline would differ from the source, so nothing was converted:": [
         "변환 결과가 원래 타임라인과 달라지므로 변환하지 않았습니다:", "変換結果が元のタイムラインと異なるため、変換しませんでした："],
+    "The timeline holds data this server's MV Studio tools do not write: the pack was made by a newer MV Studio or changed elsewhere. Updating Elichika and its asset editing tools (modtools) lets this server check it.": [
+        "타임라인에 이 서버의 MV Studio 도구가 쓰지 않는 데이터가 있습니다. 더 새로운 MV Studio로 만들었거나 다른 곳에서 바뀐 팩입니다. Elichika와 에셋 편집툴(modtools)을 업데이트하면 이 서버에서 확인할 수 있습니다.",
+        "タイムラインに、このサーバーのMV Studioツールが書き込まないデータがあります。より新しいMV Studioで作られたか、ほかの場所で変更されたパックです。Elichikaとアセット編集ツール（modtools）を更新すると、このサーバーで確認できます。"],
+    "The pack was made by a newer MV Studio: its timeline holds data this server's MV Studio tools do not write. Updating Elichika and its asset editing tools (modtools) lets this server check it.": [
+        "더 새로운 MV Studio로 만든 팩입니다. 타임라인에 이 서버의 MV Studio 도구가 쓰지 않는 데이터가 있습니다. Elichika와 에셋 편집툴(modtools)을 업데이트하면 이 서버에서 확인할 수 있습니다.",
+        "より新しいMV Studioで作られたパックです。タイムラインに、このサーバーのMV Studioツールが書き込まないデータがあります。Elichikaとアセット編集ツール（modtools）を更新すると、このサーバーで確認できます。"],
+    "The timeline's values could not be checked: the check ran out of time or memory, or the original timeline was not available.": [
+        "타임라인 값을 확인하지 못했습니다. 확인 시간이나 메모리가 부족했거나 원래 타임라인을 쓸 수 없었습니다.",
+        "タイムラインの値を確認できませんでした。確認の時間かメモリが足りなかったか、元のタイムラインを使えませんでした。"],
+    # the install's question when the values could not be checked (mv_timeline_pack, adminui panel)
+    "Nothing was installed yet: this server could not check the pack's timeline values. Choose Install anyway to install it as it is, or Cancel.": [
+        "아직 아무것도 설치하지 않았습니다. 이 서버에서 팩의 타임라인 값을 확인하지 못했습니다. 그대로 설치하려면 ‘그래도 설치’를, 그만두려면 ‘취소’를 고르세요.",
+        "まだ何もインストールしていません。このサーバーではパックのタイムラインの値を確認できませんでした。そのままインストールするには「それでもインストール」を、やめるには「キャンセル」を選んでください。"],
+    "The pack's timeline values could not be checked.": [
+        "팩의 타임라인 값을 확인하지 못했습니다.", "パックのタイムラインの値を確認できませんでした。"],
+    "Installed without checking the timeline values (you chose Install anyway).": [
+        "타임라인 값을 확인하지 않고 설치했습니다(‘그래도 설치’를 골랐습니다).",
+        "タイムラインの値を確認せずにインストールしました（「それでもインストール」を選びました）。"],
+    "Install without checking the timeline values?": [
+        "타임라인 값을 확인하지 않고 설치할까요?", "タイムラインの値を確認せずにインストールしますか？"],
+    "Install anyway (values not checked)": ["그래도 설치(값 확인 안 함)", "それでもインストール（値は未確認）"],
+    "Not installed — waiting for your choice": ["설치하지 않음 — 선택을 기다리는 중", "未インストール — 選択待ち"],
+    "The pack's timeline values are checked for structure only: install the asset editing tools (modtools) to check that MV Studio made them.": [
+        "팩 타임라인의 값은 구조만 확인합니다. MV Studio가 만든 값인지 확인하려면 에셋 편집툴(modtools)을 설치하세요.",
+        "パックのタイムラインの値は構造だけを確認します。MV Studioが作った値か確認するには、アセット編集ツール（modtools）をインストールしてください。"],
+    # a missing platform the conversion cannot make: asked about like an unchecked timeline
+    "Not converted: the pack's timeline holds data this server's MV Studio tools cannot convert, possibly from a newer MV Studio. With Install anyway this platform plays the source MV's original timeline, as with \"Convert a missing platform's timeline\" turned off.": [
+        "변환하지 않았습니다. 팩의 타임라인에 이 서버의 MV Studio 도구가 변환할 수 없는 데이터가 있습니다. 더 새로운 MV Studio로 만든 팩일 수 있습니다. ‘그래도 설치’를 고르면 ‘없는 플랫폼의 타임라인 변환’을 끈 것처럼 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
+        "変換していません。パックのタイムラインに、このサーバーのMV Studioツールが変換できないデータがあります。より新しいMV Studioで作られたパックかもしれません。「それでもインストール」を選ぶと、「ないプラットフォームのタイムラインを変換」をオフにしたときと同じく、このプラットフォームは元MVの元のタイムラインを再生します。"],
+    "Not converted (you chose Install anyway): this platform plays the source MV's original timeline.": [
+        "변환하지 않았습니다(‘그래도 설치’를 골랐습니다). 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
+        "変換していません（「それでもインストール」を選びました）。このプラットフォームは元MVの元のタイムラインを再生します。"],
+    "The pack file changed after you were asked, so it is asked about again.": [
+        "질문한 뒤에 팩 파일이 바뀌어서 다시 묻습니다.", "確認した後でパックのファイルが変わったため、もう一度確認します。"],
 }
 for _source, _values in _MV_TIMELINE_REFUSAL_STRINGS.items():
     for _lang, _text in zip(("ko", "ja"), _values):

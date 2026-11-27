@@ -370,7 +370,7 @@ func mergeJPGlobalPair(pair jpGlobalPair, fingerprint string) (int64, int64, err
 		return 0, 0, err
 	}
 	// JP's MV Studio stock overrides stay in JP (jp_global_mv_studio.go).
-	overrides, err := readJPGlobalOverrides(jpGlobalMasterPath(pair))
+	overrides, err := readJPGlobalPairOverrides(pair)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -394,6 +394,11 @@ func mergeJPGlobalPair(pair jpGlobalPair, fingerprint string) (int64, int64, err
 		if err != nil {
 			return 0, 0, err
 		}
+	}
+	// The stage-only JP overrides of MVs GL already has (before JP's rows are inserted).
+	glAssets, err := overrides.glAssets(tx, plan)
+	if err != nil {
+		return 0, 0, err
 	}
 	var inserted int64
 	for _, table := range plan {
@@ -419,7 +424,7 @@ func mergeJPGlobalPair(pair jpGlobalPair, fingerprint string) (int64, int64, err
 		if err != nil {
 			return 0, 0, err
 		}
-	} else if err = overrides.restoreStockTimelines(tx, plan); err != nil {
+	} else if err = overrides.restoreStockTimelines(tx, plan, glAssets); err != nil {
 		return 0, 0, err
 	}
 	if _, err = tx.Exec("CREATE TABLE IF NOT EXISTS " + quoteJPGlobalIdentifier(jpGlobalMarker) + " (id INTEGER PRIMARY KEY CHECK(id = 1), source_sha TEXT NOT NULL, algorithm_version TEXT NOT NULL)"); err != nil {

@@ -41,6 +41,16 @@ def entries_of(data):
         return [(info.filename, archive.read(info)) for info in archive.infolist()]
 
 
+def needs_zip_version(data, version):
+    """``data`` with every central directory entry's "version needed to extract" set to ``version``."""
+    raw = bytearray(data)
+    start = raw.find(b"PK\x01\x02")
+    while start >= 0:
+        raw[start + 6:start + 8] = version.to_bytes(2, "little")
+        start = raw.find(b"PK\x01\x02", start + 4)
+    return bytes(raw)
+
+
 class FormatTests(unittest.TestCase):
     def test_round_trip_and_legacy_layout(self):
         data = make_pack()
@@ -70,9 +80,92 @@ class FormatTests(unittest.TestCase):
         self.assertNotIn("livetimeline.txt", [name for name, _ in entries_of(only_ios)])
         self.assertNotIn("livetimeline.txt", [name for name, _ in entries_of(make_pack(stage=None))])
 
+    def test_a_partial_stage_is_written_as_read_and_completed_from_the_target_for_the_legacy_layout(self):
+        """write_pack takes what read_pack accepts: a stage naming only some fields stays partial in the manifest
+        (the install fills the rest from the target slot's original stage), and the legacy txt gets that same
+        stage: dict(target_stage, **stage)."""
+        self.assertTrue(packs.PARTIAL_STAGE)
+        target_stage = {"live_stage_master_id": 102, "stage_effect_asset_path": "E2102",
+                        "live_prop_skeleton_asset_path": "P2102", "quality_setitng_set_id": 2,
+                        "shader_variant_asset_path": None}
+        data = make_pack(stage={"quality_setitng_set_id": 3}, target_stage=target_stage)
+        self.assertEqual(packs.read_pack(data)["manifest"]["stage"], {"quality_setitng_set_id": 3})
+        legacy = packs.read_legacy_livetimeline_zip(rezip([(name, body) for name, body in entries_of(data)
+                                                           if name in ("livetimeline.txt", "2102android.unity")]))
+        self.assertEqual(legacy["manifest"]["stage"], {"live_stage_master_id": 102, "stage_effect_asset_path": "E2102",
+                                                       "live_prop_skeleton_asset_path": "P2102",
+                                                       "quality_setitng_set_id": 3})
+        # A complete stage is the legacy stage as it is; a partial one without the target's: no legacy layout.
+        complete = make_pack(target_stage=target_stage)
+        self.assertIn("live_stage_master_id = 101", dict(entries_of(complete))["livetimeline.txt"].decode())
+        self.assertNotIn("livetimeline.txt", dict(entries_of(make_pack(stage={"quality_setitng_set_id": 3}))))
+        # No stage: the target's original stage, as an install without a stage puts it back.
+        self.assertIn("live_stage_master_id = 102",
+                      dict(entries_of(make_pack(stage=None, target_stage=target_stage)))["livetimeline.txt"].decode())
+
+    def test_the_exporting_mv_studio_is_recorded_outside_the_manifest(self):
+        """mvstudio.json records the exporting MV Studio's timeline export format (and version). It is not a
+        manifest key: the manifest reader refuses keys it does not know, while every reader reads only the
+        manifest and the files it names, so a reader that does not know the entry still reads the pack."""
+        data = make_pack(editor={"timelineFormat": 3, "modtools": "0.1.0"})
+        self.assertEqual(json.loads(dict(entries_of(data))["mvstudio.json"]), {"timelineFormat": 3, "modtools": "0.1.0"})
+        pack = packs.read_pack(data)
+        self.assertEqual(pack["editor"], {"timelineFormat": 3, "modtools": "0.1.0"})
+        self.assertNotIn("editor", pack["manifest"])
+        self.assertEqual(packs.read_any(data)["editor"], {"timelineFormat": 3, "modtools": "0.1.0"})
+        self.assertIsNone(packs.read_pack(make_pack())["editor"])
+        # The manifest itself takes no new key (what an additive manifest field would have cost every reader).
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+            packs.read_pack(MaliciousPackTests().manifest(lambda value: value.update(editor={"timelineFormat": 3})))
+        # The record is advisory: keys this reader does not know are ignored, an unreadable or oversized one is
+        # absent, and an entry the reader does not know at all is ignored like mvstudio.json by older readers.
+        for body, expected in ((b'{"timelineFormat": 4, "modtools": "9.9", "future": [1]}', {"timelineFormat": 4, "modtools": "9.9"}),
+                               (b'{"timelineFormat": 4, "modtools": 5}', {"timelineFormat": 4}),
+                               (b'{"timelineFormat": "4"}', None), (b"not json", None), (b"[" * 30000, None),
+                               (b'{"timelineFormat": 4, "pad": "' + b"x" * 5000 + b'"}', None)):
+            changed = rezip([(name, body if name == "mvstudio.json" else value) for name, value in entries_of(data)])
+            with self.subTest(body=body[:40]):
+                self.assertEqual(packs.read_pack(changed)["editor"], expected)
+        future = rezip(entries_of(make_pack()) + [("future-entry.json", b"{}")])
+        self.assertEqual(packs.read_pack(future)["timelines"], packs.read_pack(make_pack())["timelines"])
+        for editor in ({"timelineFormat": 0}, {"timelineFormat": "1"}, {"timelineFormat": 1, "x": 1},
+                       {"timelineFormat": 1, "modtools": "a\nb"}, ["x"]):
+            with self.subTest(editor=editor), self.assertRaisesRegex(ValueError, "not a valid"):
+                make_pack(editor=editor)
+
+    def test_a_damaged_exporter_record_is_absent_not_a_bad_pack(self):
+        """Only mvstudio.json damaged (two compressed bytes flipped: a bad CRC or a corrupt deflate stream): the
+        pack reads with editor None, as the reader without the record reads it; a damaged manifest is still
+        refused."""
+        import struct
+
+        def flip(data, name):
+            raw = bytearray(data)
+            info = zipfile.ZipFile(io.BytesIO(data)).getinfo(name)
+            name_length, extra_length = struct.unpack("<HH", raw[info.header_offset + 26:info.header_offset + 30])
+            start = info.header_offset + 30 + name_length + extra_length
+            for index in (start + 1, start + info.compress_size - 2):
+                raw[index] ^= 0xFF
+            return bytes(raw)
+
+        data = make_pack(editor={"timelineFormat": 2, "modtools": "0.2.0"})
+        self.assertEqual(zipfile.ZipFile(io.BytesIO(data)).getinfo("mvstudio.json").compress_type, zipfile.ZIP_DEFLATED)
+        damaged = flip(data, "mvstudio.json")
+        with self.assertRaises((zipfile.BadZipFile, __import__("zlib").error)):
+            zipfile.ZipFile(io.BytesIO(damaged)).read("mvstudio.json")
+        for read in (packs.read_pack, packs.read_any):
+            with self.subTest(read=read.__name__):
+                pack = read(damaged)
+                self.assertIsNone(pack["editor"])
+                self.assertEqual(pack["timelines"], packs.read_pack(data)["timelines"])
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+            packs.read_pack(flip(data, "manifest.json"))
+
     def test_writer_refuses_bad_input(self):
         for changes in ({"timelines": {}}, {"timelines": {"android": b"not unity"}}, {"timelines": {"pc": timeline("x")}},
-                        {"name": ""}, {"name": "two\nlines"}, {"stage": {"live_stage_master_id": 1}},
+                        {"name": ""}, {"name": "two\nlines"}, {"stage": {}}, {"stage": {"live_stage_master_id": "1"}},
+                        {"stage": {"live_stage_master_id": 1, "other": 2}},
+                        {"stage": None, "target_stage": {"live_stage_master_id": 1}},
                         {"source": {"region": "kr", "assetId": 1}}, {"target_asset_id": 0},
                         {"song": {"liveId": "21", "title": "x"}}):
             with self.subTest(changes=sorted(changes)), self.assertRaises(ValueError):
@@ -143,6 +236,58 @@ class MaliciousPackTests(unittest.TestCase):
             packs.read_pack(self.tampered(drop=("manifest.json",)))
         with self.assertRaisesRegex(ValueError, "not a valid"):
             packs.read_pack(self.tampered(lambda name, data: b"[" * 30000 if name == "manifest.json" else data))
+
+    def test_a_damaged_compressed_entry_is_refused_as_invalid(self):
+        """A corrupt deflate stream (zlib.error) or LZMA entry (LZMAError) is a ValueError like any damage:
+        the Server content job translates it and modtools' pack-open route answers 400."""
+        import struct
+
+        def damaged(method, mutate):
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w") as archive:
+                for name, data in entries_of(make_pack()):
+                    archive.writestr(name, data, compress_type=method if name == "manifest.json" else zipfile.ZIP_DEFLATED)
+            raw = bytearray(buffer.getvalue())
+            info = zipfile.ZipFile(io.BytesIO(bytes(raw))).getinfo("manifest.json")
+            name_length, extra_length = struct.unpack("<HH", raw[info.header_offset + 26:info.header_offset + 30])
+            mutate(raw, info.header_offset + 30 + name_length + extra_length, info.compress_size)
+            return bytes(raw)
+
+        def invalid_block(raw, start, size):
+            raw[start] = 0x07  # a final deflate block of the reserved type
+
+        def flipped(raw, start, size):
+            for index in range(start + size // 2, start + size // 2 + 8):
+                raw[index] ^= 0xFF
+
+        def lzma_header(raw, start, size):
+            raw[start + 4:start + 9] = b"\xff" * 5  # the LZMA properties: an invalid lc/lp/pb byte
+
+        cases = [(zipfile.ZIP_DEFLATED, invalid_block), (zipfile.ZIP_LZMA, flipped), (zipfile.ZIP_LZMA, lzma_header)]
+        for method, mutate in cases:
+            data = damaged(method, mutate)
+            for read in (packs.read_pack, packs.read_any):
+                with self.subTest(method=method, mutate=mutate.__name__, read=read.__name__), \
+                        self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+                    read(data)
+        # The same entries undamaged read back (the test damages only the compressed bytes).
+        self.assertFalse(packs.read_pack(damaged(zipfile.ZIP_LZMA, lambda raw, start, size: None))["legacy"])
+
+    def test_an_entry_that_needs_a_newer_zip_version_is_refused_as_invalid(self):
+        """zipfile.ZipFile() raises NotImplementedError when a central directory entry's "version needed to
+        extract" is above what it supports: one crafted file is "not a valid pack", never another error."""
+        legacy = rezip([("livetimeline.txt", b"live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\n"),
+                        ("2102android.unity", timeline("legacy-a"))])
+        for name, data in (("pack", make_pack()), ("legacy", legacy)):
+            crafted = needs_zip_version(data, 0xFF)
+            with self.assertRaises(NotImplementedError):  # what zipfile itself does with it
+                zipfile.ZipFile(io.BytesIO(crafted))
+            for read in (packs.read_pack, packs.read_any, packs.read_legacy_livetimeline_zip):
+                with self.subTest(name=name, read=read.__name__), \
+                        self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+                    read(crafted)
+            # Only the version byte differs: the same zip with a version zipfile supports reads back.
+            packs.read_any(needs_zip_version(data, 20))
 
     def test_legacy_txt_with_code_never_runs(self):
         marker = ROOT / "tests" / ".mv_pack_executed"
@@ -226,6 +371,31 @@ class InstallTests(stock_tests.StockCase):
             stock.restore_mv_timeline(self.root, region="gl", asset_id=2102, expected_key=described["timelineKey"],
                                       log=None)
         self.assertEqual(self.databases(skip={stock.TABLE}), before)
+
+    def test_a_partial_stage_installs_the_same_stage_after_the_pack_is_written_again(self):
+        """A pack's partial stage gets the target slot's original stage for the fields it leaves out; writing the read
+        pack again (as the platform conversion does, with only a platform added) installs the same stage."""
+        partial = {"live_stage_master_id": 101}
+        original = packs.read_pack(make_pack(stage=partial, timelines={"android": timeline("part-a")}))
+
+        def install(pack):
+            packs.install_pack(self.root, pack, regions=["gl"], log=None)
+            described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+            with self.guard():
+                stock.restore_mv_timeline(self.root, region="gl", asset_id=2102,
+                                          expected_key=described["timelineKey"], log=None)
+            return described["stage"]["current"]
+
+        installed = install(original)
+        self.assertEqual(installed, dict(stock_tests.STAGE_2102, live_stage_master_id=101))
+        manifest = original["manifest"]
+        again = packs.read_pack(packs.write_pack(
+            name=manifest["name"], note=manifest["note"], song=manifest["song"], source=manifest["source"],
+            target_asset_id=manifest["target"]["assetId"], created=manifest["created"], stage=manifest["stage"],
+            timelines={"android": timeline("part-a"), "ios": timeline("part-i")},
+            target_stage=stock_tests.STAGE_2102))
+        self.assertEqual(again["manifest"]["stage"], partial)
+        self.assertEqual(install(again), installed)
 
     def test_stage_off_missing_platform_and_conversion(self):
         pack = packs.read_pack(make_pack(timelines={"android": timeline("only-a")}))
@@ -330,6 +500,161 @@ class InstallTests(stock_tests.StockCase):
         packs.install_pack(self.root, pack, regions=("gl",), originals=fetch, log=None)
         self.assertEqual(asked, [])
 
+    def test_a_timeline_the_editor_check_cannot_confirm_needs_consent(self):
+        """The structural validation is the gate; the editor check runs after every region validated, on every
+        timeline of the pack in the first region with the source asset and the pack's exporter record. A
+        timeline it cannot confirm stops the install (UncheckedValues, code UNCHECKED_VALUES: nothing written,
+        the server never stopped) until the caller consents with accept_unchecked=True."""
+        before = self.databases()
+        stops, calls = [], []
+        newer = "The pack was made by a newer MV Studio."
+
+        def check(raw, platform, region, asset_id, editor):
+            calls.append((raw, platform, region, asset_id, editor, len(self.validated)))
+            return newer if platform == "ios" else None
+
+        data = make_pack(editor={"timelineFormat": 9, "modtools": "9.0"})
+        with self.assertRaises(packs.UncheckedValues) as caught:
+            packs.install_pack(self.root, data, regions=("jp", "gl"), log=None, check=check,
+                               around_writes=lambda: stops.append(1))
+        self.assertEqual((caught.exception.code, str(caught.exception), caught.exception.items),
+                         ("UNCHECKED_VALUES", packs.CONSENT_NEEDED, [{"platform": "ios", "text": newer}]))
+        editor = {"timelineFormat": 9, "modtools": "9.0"}
+        self.assertEqual([call[:5] for call in calls], [(timeline("pack-a"), "android", "jp", 2101, editor),
+                                                        (timeline("pack-i"), "ios", "jp", 2101, editor)])
+        self.assertTrue(all(call[5] for call in calls), "the structural validation ran first")
+        self.assertEqual((stops, self.databases(), self.static_files()), ([], before, []))
+        # With consent it installs, and says which timeline was not checked and why.
+        from contextlib import nullcontext
+        result = packs.install_pack(self.root, data, regions=["gl"], log=None, check=check, accept_unchecked=True,
+                                    around_writes=lambda: stops.append(1) or nullcontext())
+        self.assertEqual(stops, [1])
+        self.assertIn({"region": "gl", "code": "unchecked-values", "platform": "ios", "reason": newer,
+                       "text": packs.WARN_UNCHECKED}, result["warnings"])
+        described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        self.assertEqual(described["platforms"], {"android": "custom", "ios": "custom"})
+        with self.guard():
+            stock.restore_mv_timeline(self.root, region="gl", asset_id=2102, expected_key=described["timelineKey"],
+                                      log=None)
+        # A check that fails itself is "could not be checked": the same question, never an error.
+        def broken(*args):
+            raise MemoryError("no memory for the check")
+
+        with self.assertRaises(packs.UncheckedValues) as caught:
+            packs.install_pack(self.root, data, regions=["gl"], log=None, check=broken)
+        self.assertEqual(caught.exception.items, [{"platform": "android", "text": packs.CHECK_FAILED},
+                                                  {"platform": "ios", "text": packs.CHECK_FAILED}])
+        with self.assertRaisesRegex(ValueError, "Choose the 3D MV slot"):
+            packs.install_pack(self.root, data, regions=["gl"], log=None, check=check, accept_unchecked="yes")
+        self.assertEqual(self.databases(skip={stock.TABLE}), before)
+
+    def test_a_timeline_the_check_confirms_installs_without_a_question(self):
+        """A pack whose timelines are byte for byte what this MV Studio writes (same format) installs with no
+        consent and no warning; a converted platform is MV Studio's own output and is not checked."""
+        calls = []
+        result = packs.install_pack(self.root, make_pack(timelines={"android": timeline("ok-a")},
+                                                         editor={"timelineFormat": 1}),
+                                    regions=["gl"], log=None, check=lambda *args: calls.append(args),
+                                    convert=lambda raw, src, dst, region, asset_id: timeline("ok-i"))
+        self.assertEqual(calls, [(timeline("ok-a"), "android", "gl", 2101, {"timelineFormat": 1})])
+        self.assertEqual(result["regions"][0]["converted"], ["ios"])
+        self.assertNotIn("unchecked-values", [warning["code"] for warning in result["warnings"]])
+
+    def test_a_structural_refusal_comes_before_the_question(self):
+        """A payload the validation refuses is refused as before: the check never runs, nobody is asked."""
+        from unittest.mock import patch
+        import mv_studio_native_assets as native
+        calls = []
+
+        def refuse(raw, original, platform, deadline):
+            raise ValueError("The native timeline and its dependencies must match the selected stage template.")
+
+        with patch.object(native, "_validate_timeline", side_effect=refuse), \
+                self.assertRaisesRegex(ValueError, "must match"):
+            packs.install_pack(self.root, make_pack(), regions=["gl"], log=None,
+                               check=lambda *args: calls.append(args) or "unchecked", accept_unchecked=False)
+        self.assertEqual(calls, [])
+
+    def test_an_old_livetimeline_zip_gets_the_same_check_with_its_source_asset(self):
+        """A legacy zip's source asset is the one its txt's timeline key names (here 2101, not the target 2102):
+        the check runs against it (no exporter record), with the same question and consent as a pack."""
+        calls = []
+        unknown = "The timeline holds data this server's MV Studio tools do not write."
+
+        def check(raw, platform, region, asset_id, editor):
+            calls.append((raw, platform, region, asset_id, editor))
+            return unknown
+
+        text = "live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'A2101'\n"
+        legacy = rezip([("livetimeline.txt", text.encode()), ("2102android.unity", timeline("legacy-a"))])
+        before = self.databases()
+        with self.assertRaises(packs.UncheckedValues) as caught:
+            packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=check)
+        self.assertEqual(caught.exception.items, [{"platform": "android", "text": unknown}])
+        self.assertEqual(calls, [(timeline("legacy-a"), "android", "gl", 2101, None)])
+        self.assertEqual(self.databases(), before)
+        result = packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=check, accept_unchecked=True)
+        self.assertEqual((result["regions"][0]["sourceAssetId"], [w["code"] for w in result["warnings"]
+                                                                  if w["code"] == "unchecked-values"]),
+                         (2101, ["unchecked-values"]))
+        described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        with self.guard():
+            stock.restore_mv_timeline(self.root, region="gl", asset_id=2102, expected_key=described["timelineKey"],
+                                      log=None)
+        # A key that names no asset: the target is the source (as its validation has it), and it is checked.
+        calls.clear()
+        text = "live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'nowhere'\n"
+        legacy = rezip([("livetimeline.txt", text.encode()), ("2102android.unity", timeline("legacy-b"))])
+        packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=lambda *args: calls.append(args))
+        self.assertEqual(calls, [(timeline("legacy-b"), "android", "gl", 2102, None)])
+
+    def test_a_platform_the_conversion_cannot_make_is_asked_about_not_refused(self):
+        """``convert`` raising CannotConvert (modtools' ConversionError: content its export cannot write, as in a
+        newer MV Studio's pack) does not refuse the pack: the install asks (UncheckedValues, nothing written, the
+        server never stopped), next to the editor check's own question. With consent the pack's own timeline is
+        installed and that platform plays the source MV's original, as with the conversion off. Any other
+        conversion error is still a refusal."""
+        lossy = "The converted timeline would differ from the source, so nothing was converted:"
+
+        def convert(raw, src, dst, region, asset_id):
+            raise packs.CannotConvert(lossy, ["MemberEffect/Expert/MemberRimlight/Member1 (1)"])
+
+        pack = make_pack(timelines={"android": timeline("lossy-a")})
+        before, stops, log = self.databases(), [], []
+        with self.assertRaises(packs.UncheckedValues) as caught:
+            packs.install_pack(self.root, pack, regions=("gl", "jp"), convert=convert, log=log.append,
+                               around_writes=lambda: stops.append(1))
+        self.assertEqual((caught.exception.code, caught.exception.items),
+                         ("UNCHECKED_VALUES", [{"platform": "ios", "text": packs.CANNOT_CONVERT}]))
+        self.assertIn("[gl] " + lossy + " MemberEffect/Expert/MemberRimlight/Member1 (1)", log)
+        newer = "The pack was made by a newer MV Studio."
+        with self.assertRaises(packs.UncheckedValues) as caught:
+            packs.install_pack(self.root, pack, regions=["gl"], convert=convert, log=None, check=lambda *args: newer)
+        self.assertEqual(caught.exception.items, [{"platform": "android", "text": newer},
+                                                  {"platform": "ios", "text": packs.CANNOT_CONVERT}])
+        self.assertEqual((stops, self.databases(), self.static_files()), ([], before, []))
+        from contextlib import nullcontext
+        result = packs.install_pack(self.root, pack, regions=("gl", "jp"), convert=convert, log=None,
+                                    accept_unchecked=True, around_writes=lambda: stops.append(1) or nullcontext())
+        self.assertEqual(stops, [1])
+        self.assertEqual([(entry["converted"], entry["missing"]) for entry in result["regions"]],
+                         [([], ["ios"]), ([], ["ios"])])
+        self.assertEqual([warning for warning in result["warnings"] if warning["code"] == "not-converted"],
+                         [{"region": region, "code": "not-converted", "platform": "ios",
+                           "text": packs.WARN_NOT_CONVERTED} for region in ("gl", "jp")])
+        for region in ("gl", "jp"):
+            described = stock.describe_mv_timeline(self.root, region=region, asset_id=2102)
+            self.assertEqual(described["platforms"], {"android": "custom", "ios": "stock"})
+            with self.guard():
+                stock.restore_mv_timeline(self.root, region=region, asset_id=2102,
+                                          expected_key=described["timelineKey"], log=None)
+
+        def no_template(raw, src, dst, region, asset_id):
+            raise ValueError("The game catalog has no original timeline of this 3D MV for the output platform.")
+
+        with self.assertRaisesRegex(ValueError, "no original timeline"):
+            packs.install_pack(self.root, pack, regions=["gl"], convert=no_template, log=None, accept_unchecked=True)
+
     def test_a_legacy_zip_installs_through_the_same_path(self):
         text = ("live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'A2101'\n"
                 "live_stage_master_id = 101\nstage_effect_asset_path = 'E2101'\nquality_setitng_set_id = 3\n"
@@ -352,13 +677,14 @@ class AdminTests(stock_tests.StockCase):
         from unittest.mock import patch
         from adminui.tools import installers, mv_timeline
         self.tool = mv_timeline
+        self.real_modtools = mv_timeline._modtools
         self.drop = self.root / "drop"
         self.drop.mkdir()
         for target, name, value in ((installers, "_candidate_dirs", lambda key: [str(self.drop)]),
                                     (mv_timeline, "_candidate_dirs", lambda key: [str(self.drop)]),
                                     (mv_timeline, "repo_root", lambda: self.root),
                                     (mv_timeline, "installation_server", lambda *a, **k: nullcontext()),
-                                    (mv_timeline, "_modtools", lambda: (None, None, None, None))):
+                                    (mv_timeline, "_modtools", lambda: (None, None, None, None, None))):
             patcher = patch.object(target, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -397,6 +723,21 @@ class AdminTests(stock_tests.StockCase):
         with self.assertRaisesRegex(ValueError, "^選択したMVはこの地域に3Dタイムラインがありません。$"):
             self.tool.run_install(self.Job(), {"addon": "edit.sifasmv", "target_custom": "4242", "lang": "ja"})
 
+    def test_a_crafted_zip_in_the_drop_folder_does_not_break_the_pack_list(self):
+        """A zip zipfile cannot open (an entry needing zip version 25.5 raises NotImplementedError) is just not
+        a pack: the list shows the real packs, and a crafted .sifasmv is refused as invalid when chosen."""
+        legacy = rezip([("livetimeline.txt", b"live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\n"),
+                        ("2102android.unity", timeline("legacy-a"))])
+        (self.drop / "crafted.zip").write_bytes(needs_zip_version(legacy, 0xFF))
+        (self.drop / "crafted.sifasmv").write_bytes(needs_zip_version(make_pack(), 0xFF))
+        (self.drop / "edit.sifasmv").write_bytes(make_pack(timelines={"android": timeline("adm-a")}))
+        (self.drop / "old.zip").write_bytes(legacy)
+        self.assertFalse(self.tool._is_pack(str(self.drop / "crafted.zip")))
+        self.assertEqual([item["value"] for item in self.tool.pack_options({})],
+                         ["crafted.sifasmv", "edit.sifasmv", "old.zip"])
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+            self.tool.pack_options({"addon": "crafted.sifasmv"})
+
     def test_install_fetches_a_source_original_that_is_not_local(self):
         """Server content binds modtools' original provider; the stage-bound count is logged before the write."""
         from contextlib import contextmanager
@@ -422,7 +763,7 @@ class AdminTests(stock_tests.StockCase):
 
         job = self.Job()
         job.log = lambda line: events.append(line)
-        with patch.object(self.tool, "_modtools", lambda: (None, lambda raw: 7, None, fetch)), \
+        with patch.object(self.tool, "_modtools", lambda: (None, lambda raw: 7, None, fetch, None)), \
                 patch.object(self.tool, "installation_server", server):
             self.tool.run_install(job, dict(params, lang="en"))
         self.assertEqual(asked, [("gl", 2101, "android")])
@@ -433,6 +774,208 @@ class AdminTests(stock_tests.StockCase):
                              isinstance(line, str)), 1)
         self.assertEqual(stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)["platforms"],
                          {"android": "custom", "ios": "stock"})
+
+    def test_the_install_says_what_it_checks_beyond_structure(self):
+        """Without modtools' editor check the job says the values are checked for structure only. With it, a
+        timeline it cannot confirm ends the job with a question in the job's language (the consent the panel
+        asks for, nothing installed); the job run again with accept_unchecked true installs and says so."""
+        from unittest.mock import patch
+        (self.drop / "edit.sifasmv").write_bytes(make_pack(timelines={"android": timeline("adm-check")}))
+        params = {"addon": "edit.sifasmv", "region": "gl", "apply_stage": False, "convert": False, "lang": "en"}
+        job = self.Job()
+        self.tool.run_install(job, params)
+        self.assertIn("The pack's timeline values are checked for structure only: install the asset editing tools "
+                      "(modtools) to check that MV Studio made them.", job.lines)
+        described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        with self.guard():
+            stock.restore_mv_timeline(self.root, region="gl", asset_id=2102, expected_key=described["timelineKey"],
+                                      log=None)
+        reason = ("The timeline holds data this server's MV Studio tools do not write: the pack was made by a newer MV "
+                  "Studio or changed elsewhere. Updating Elichika and its asset editing tools (modtools) lets this "
+                  "server check it.")
+        checked = []
+
+        def check(raw, platform, region, asset_id, editor):
+            checked.append((platform, region, asset_id, editor))
+            return reason
+
+        for consent in (None, "true", 1):  # only an explicit true consents
+            job = self.Job()
+            arguments = dict(params, lang="ko") if consent is None else dict(params, lang="ko", accept_unchecked=consent)
+            with patch.object(self.tool, "_modtools", lambda: (None, None, None, None, check)), \
+                    self.assertRaises(ValueError) as caught:
+                self.tool.run_install(job, arguments)
+            consent_request = caught.exception.consent
+            self.assertEqual(str(caught.exception), "아직 아무것도 설치하지 않았습니다. 이 서버에서 팩의 타임라인 값을 확인하지 "
+                             "못했습니다. 그대로 설치하려면 ‘그래도 설치’를, 그만두려면 ‘취소’를 고르세요.")
+            self.assertEqual(consent_request, {
+                "code": "UNCHECKED_VALUES", "param": "accept_unchecked", "message": str(caught.exception),
+                "pack": hashlib.sha256((self.drop / "edit.sifasmv").read_bytes()).hexdigest(),
+                "title": "타임라인 값을 확인하지 않고 설치할까요?", "accept": "그래도 설치(값 확인 안 함)",
+                "items": ["android: 타임라인에 이 서버의 MV Studio 도구가 쓰지 않는 데이터가 있습니다. 더 새로운 MV Studio로 "
+                          "만들었거나 다른 곳에서 바뀐 팩입니다. Elichika와 에셋 편집툴(modtools)을 업데이트하면 이 서버에서 "
+                          "확인할 수 있습니다."]})
+            self.assertIn("⚠ " + consent_request["items"][0], job.lines)
+            self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [])
+        self.assertEqual(checked[0], ("android", "gl", 2101, None))
+        self.assertFalse(any("구조만 확인합니다" in line for line in job.lines), job.lines)
+        job = self.Job()
+        with patch.object(self.tool, "_modtools", lambda: (None, None, None, None, check)):
+            self.assertIn("MV 타임라인 팩을 설치했습니다", self.tool.run_install(
+                job, dict(params, lang="ko", **self.consent_of(caught.exception))))
+        self.assertTrue(any(line.startswith("⚠ [gl] 타임라인 값을 확인하지 않고 설치했습니다(‘그래도 설치’를 골랐습니다). "
+                                            "(android): 타임라인에 이 서버의") for line in job.lines), job.lines)
+        self.assertEqual([item["assetId"] for item in stock.list_mv_timelines(self.root, region="gl")], [2102])
+
+    def test_a_pack_from_a_newer_mv_studio_gets_the_consent_question_with_modtools_own_check(self):
+        """adminui's wrapper of modtools' check_editor_bytes: the pack's mvstudio.json format above the
+        checker's says "made by a newer MV Studio"; without a record, "holds data ... changed elsewhere"; an
+        original that cannot be had, "could not be checked". All three ask; none refuses."""
+        from unittest.mock import patch
+        try:
+            from webtools.core import mv_timeline_platform as platform
+        except ImportError:
+            self.skipTest("modtools is not importable")
+        if not hasattr(platform, "UncheckedValues"):
+            self.skipTest("This modtools has no consent-path check")
+        with patch.object(platform, "template", return_value=timeline("stock")):
+            check = self.real_modtools()[4]
+            raw = timeline("pack-a")  # a stand-in this MV Studio cannot read: not what it writes
+            self.assertEqual(check(raw, "android", "gl", 2101, {"timelineFormat": platform.EXPORT_FORMAT + 1}),
+                             platform.VALUES_NEWER)
+            self.assertEqual(check(raw, "android", "gl", 2101, None), platform.VALUES_UNKNOWN)
+            self.assertEqual(check(raw, "android", "gl", 2101, {"timelineFormat": platform.EXPORT_FORMAT}),
+                             platform.VALUES_UNKNOWN)
+            (self.drop / "newer.sifasmv").write_bytes(make_pack(
+                timelines={"android": raw}, editor={"timelineFormat": platform.EXPORT_FORMAT + 1}))
+            params = {"addon": "newer.sifasmv", "region": "gl", "apply_stage": False, "convert": False, "lang": "ja"}
+            with patch.object(self.tool, "_modtools", self.real_modtools), self.assertRaises(ValueError) as caught:
+                self.tool.run_install(self.Job(), params)
+            self.assertEqual(caught.exception.consent["items"], [
+                "android: より新しいMV Studioで作られたパックです。タイムラインに、このサーバーのMV Studioツールが書き込まない"
+                "データがあります。Elichikaとアセット編集ツール（modtools）を更新すると、このサーバーで確認できます。"])
+            self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [])
+        with patch.object(platform, "template", side_effect=ValueError(platform.TEMPLATE_DOWNLOAD)):
+            check = self.real_modtools()[4]
+            self.assertEqual(check(timeline("pack-a"), "android", "gl", 2101, None), platform.VALUES_UNCHECKED)
+
+    def test_the_consent_holds_only_for_the_file_it_was_asked_about(self):
+        """The question carries the sha256 of the file it is about (consent.pack). Install anyway with that
+        digest installs that file; another file dropped under the same name while the question was open is
+        asked about again (its own digest), and a consent without a digest is no consent."""
+        from unittest.mock import patch
+        reason = "The pack was made by a newer MV Studio."
+        first = make_pack(timelines={"android": timeline("asked-a")})
+        other = make_pack(timelines={"android": timeline("other-a")})
+        (self.drop / "edit.sifasmv").write_bytes(first)
+        params = {"addon": "edit.sifasmv", "region": "gl", "apply_stage": False, "convert": False, "lang": "ko"}
+        with patch.object(self.tool, "_modtools", lambda: (None, None, None, None, lambda *args: reason)):
+            with self.assertRaises(ValueError) as asked:
+                self.tool.run_install(self.Job(), params)
+            self.assertEqual(asked.exception.consent["pack"], hashlib.sha256(first).hexdigest())
+            (self.drop / "edit.sifasmv").write_bytes(other)  # replaced while the question was open
+            job = self.Job()
+            with self.assertRaises(ValueError) as again:
+                self.tool.run_install(job, dict(params, **self.consent_of(asked.exception)))
+            self.assertEqual(again.exception.consent["pack"], hashlib.sha256(other).hexdigest())
+            self.assertIn("질문한 뒤에 팩 파일이 바뀌어서 다시 묻습니다.", job.lines)
+            with self.assertRaises(ValueError) as unbound:
+                self.tool.run_install(self.Job(), dict(params, accept_unchecked=True))
+            self.assertEqual(unbound.exception.consent["pack"], hashlib.sha256(other).hexdigest())
+            self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [])
+            self.assertIn("MV 타임라인 팩을 설치했습니다",
+                          self.tool.run_install(self.Job(), dict(params, **self.consent_of(again.exception))))
+        installed = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        self.assertEqual(installed["platforms"], {"android": "custom", "ios": "stock"})
+        self.assertEqual(self.validated[-1][0], timeline("other-a"))  # the file the last question was about
+
+    def test_a_missing_platform_the_conversion_cannot_make_is_asked_about_in_the_job_language(self):
+        """adminui's convert wrapper turns modtools' ConversionError (content its export cannot write) into
+        CannotConvert; any other conversion error passes unchanged. With "Convert a missing platform's
+        timeline" on, such a pack ends the job with the question, and Install anyway installs it without the
+        conversion."""
+        from unittest.mock import patch
+        try:
+            from webtools.core import mv_timeline_platform as platform
+        except ImportError:
+            self.skipTest("modtools is not importable")
+        refused = platform.ConversionError(platform.LOSSY, ["StageEffect/Bloom"])
+        with patch.object(platform, "template", return_value=timeline("stock")), \
+                patch.object(platform, "convert_timeline", side_effect=refused):
+            convert = self.real_modtools()[0]
+            with self.assertRaises(packs.CannotConvert) as caught:
+                convert(timeline("pack-a"), "android", "ios", "gl", 2101)
+        self.assertEqual((str(caught.exception), caught.exception.labels), (platform.LOSSY, ["StageEffect/Bloom"]))
+        with patch.object(platform, "template", return_value=timeline("stock")), \
+                patch.object(platform, "convert_timeline", side_effect=ValueError(platform.NO_TEMPLATE)):
+            convert = self.real_modtools()[0]
+            with self.assertRaisesRegex(ValueError, "no original timeline") as caught:
+                convert(timeline("pack-a"), "android", "ios", "gl", 2101)
+        self.assertNotIsInstance(caught.exception, packs.CannotConvert)
+
+        def cannot(raw, src, dst, region, asset_id):
+            raise packs.CannotConvert(platform.LOSSY, ["StageEffect/Bloom"])
+
+        (self.drop / "one.sifasmv").write_bytes(make_pack(timelines={"android": timeline("adm-one")}))
+        params = {"addon": "one.sifasmv", "region": "gl", "apply_stage": False, "convert": True, "lang": "ko"}
+        with patch.object(self.tool, "_modtools", lambda: (cannot, None, None, None, None)):
+            job = self.Job()
+            with self.assertRaises(ValueError) as caught:
+                self.tool.run_install(job, params)
+            not_converted = ("ios: 변환하지 않았습니다. 팩의 타임라인에 이 서버의 MV Studio 도구가 변환할 수 없는 데이터가 있습니다. 더 "
+                             "새로운 MV Studio로 만든 팩일 수 있습니다. ‘그래도 설치’를 고르면 ‘없는 플랫폼의 타임라인 변환’을 끈 것처럼 이 "
+                             "플랫폼은 원본 MV의 원래 타임라인을 재생합니다.")
+            self.assertEqual((caught.exception.consent["code"], caught.exception.consent["items"]),
+                             ("UNCHECKED_VALUES", [not_converted]))
+            self.assertIn("⚠ " + not_converted, job.lines)
+            self.assertIn("[gl] " + platform.LOSSY + " StageEffect/Bloom", job.lines)
+            self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [])
+            job = self.Job()
+            self.assertIn("MV 타임라인 팩을 설치했습니다",
+                          self.tool.run_install(job, dict(params, **self.consent_of(caught.exception))))
+        self.assertIn("⚠ [gl] 변환하지 않았습니다(‘그래도 설치’를 골랐습니다). 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다. (ios)",
+                      job.lines)
+        self.assertEqual(stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)["platforms"],
+                         {"android": "custom", "ios": "stock"})
+
+    @staticmethod
+    def consent_of(error):
+        """The parameters the panel's Install anyway adds to the form (app.js askJobConsent)."""
+        return {error.consent["param"]: True, "consent_pack": error.consent["pack"]}
+
+    def test_a_consent_question_ends_the_job_without_an_error_trace(self):
+        """adminui.jobs puts the question on the done event (code, consent) for the panel, with no traceback."""
+        from adminui.jobs import JobManager
+        from adminui import jobs as jobs_module
+        from contextlib import contextmanager
+        from unittest.mock import patch
+
+        class Lifecycle:
+            restart_pending = False
+            successful = False
+
+        @contextmanager
+        def lifecycle(log):
+            yield Lifecycle()
+
+        message = "Nothing was installed yet."
+        consent = {"code": "UNCHECKED_VALUES", "param": "accept_unchecked", "message": message, "title": "t",
+                   "accept": "a", "items": ["android: r"]}
+
+        def run(job):
+            raise self.tool._ConsentNeeded(message, consent)
+
+        manager = JobManager(self.root)
+        with patch.object(jobs_module, "whole_job_server", lifecycle):
+            job = manager.create("install_mv_timeline_pack")
+            thread = manager.run_async(job, run)
+            thread.join(30)
+        events = [job.event_at(index, 1) for index in range(job.event_count)]
+        self.assertEqual(events[-1], {"type": "done", "status": "error", "summary": message,
+                                      "code": "UNCHECKED_VALUES", "consent": consent, "output_paths": []})
+        self.assertFalse(any("Traceback" in str(event.get("line")) for event in events), events)
+        # The message once: as the summary the panel prints at the end of the console, not also as a log line.
+        self.assertEqual([event for event in events if message in str(event.get("line"))], [])
 
     def test_every_refusal_of_the_mv_timeline_tools_translates(self):
         from adminui import i18n
@@ -447,7 +990,12 @@ class AdminTests(stock_tests.StockCase):
                      "A game catalog is missing its main package.", "Provide the original timelines per platform.",
                      "Choose add-on filenames from the installer list, without filesystem paths.",
                      "Choose an installed MV timeline to restore.",
-                     "Select a file first (drop it into Download/sukusta/mvtimeline or …/addons)."}
+                     "Select a file first (drop it into Download/sukusta/mvtimeline or …/addons).",
+                     packs.CONSENT_NEEDED, packs.CHECK_FAILED, packs.WARN_UNCHECKED,
+                     "Install without checking the timeline values?", "Install anyway (values not checked)",
+                     "Not installed — waiting for your choice",
+                     "The pack's timeline values are checked for structure only: install the asset editing tools "
+                     "(modtools) to check that MV Studio made them."}
         try:  # modtools' platform conversion, when it is installed next to Elichika
             from webtools.core import mv_timeline_platform
             messages |= set(mv_timeline_platform.MESSAGES)
