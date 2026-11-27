@@ -641,7 +641,7 @@ class InstallTests(stock_tests.StockCase):
                          [([], ["ios"]), ([], ["ios"])])
         self.assertEqual([warning for warning in result["warnings"] if warning["code"] == "not-converted"],
                          [{"region": region, "code": "not-converted", "platform": "ios",
-                           "reason": packs.CANNOT_CONVERT, "text": packs.WARN_NOT_CONVERTED} for region in ("gl", "jp")])
+                           "text": packs.WARN_NOT_CONVERTED} for region in ("gl", "jp")])
         for region in ("gl", "jp"):
             described = stock.describe_mv_timeline(self.root, region=region, asset_id=2102)
             self.assertEqual(described["platforms"], {"android": "custom", "ios": "stock"})
@@ -933,8 +933,8 @@ class AdminTests(stock_tests.StockCase):
             job = self.Job()
             self.assertIn("MV 타임라인 팩을 설치했습니다",
                           self.tool.run_install(job, dict(params, **self.consent_of(caught.exception))))
-        self.assertIn("⚠ [gl] 변환하지 않았습니다(‘그래도 설치’를 골랐습니다). 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다. (ios): "
-                      + not_converted[len("ios: "):], job.lines)
+        self.assertIn("⚠ [gl] 변환하지 않았습니다(‘그래도 설치’를 골랐습니다). 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다. (ios)",
+                      job.lines)
         self.assertEqual(stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)["platforms"],
                          {"android": "custom", "ios": "stock"})
 

@@ -641,7 +641,7 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     Returns {regions: [{region, assetId, sourceAssetId, converted, missing, stageApplied, result}],
     warnings: [{region, code, text, ...}], stageBoundTracks: int | None}; codes: missing-platform
     (+platform), stage-not-applied (+stageBoundTracks), shared-asset (+usage), unchecked-values
-    (+platform, reason), not-converted (+platform, reason), store (the store's own clean-up warnings)."""
+    (+platform, reason), not-converted (+platform), store (the store's own clean-up warnings)."""
     import database_maintenance
 
     if not isinstance(pack, dict):
@@ -697,8 +697,7 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
         raise UncheckedValues(asked)
     warnings.extend({"region": first["region"], "code": "unchecked-values", "platform": item["platform"],
                      "reason": item["text"], "text": WARN_UNCHECKED} for item in unchecked)
-    warnings.extend({"region": region, "code": "not-converted", "platform": platform, "reason": CANNOT_CONVERT,
-                     "text": WARN_NOT_CONVERTED}
+    warnings.extend({"region": region, "code": "not-converted", "platform": platform, "text": WARN_NOT_CONVERTED}
                     for platform, regions_left_out in sorted(not_converted.items()) for region in regions_left_out)
     results = []
     with (around_writes() if around_writes is not None else nullcontext()):
