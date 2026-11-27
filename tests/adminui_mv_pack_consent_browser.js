@@ -83,8 +83,8 @@ async function start(page) {
   return job;
 }
 function ask(job) {
+  // What adminui.jobs sends for a question: the tool's own log lines, then the message as the summary only.
   emit(job, { type: 'log', line: '[+  0.4s] ⚠ ' + consent.items[0] });
-  emit(job, { type: 'log', line: '[+  0.4s] ' + consent.message });
   emit(job, { type: 'done', status: 'error', summary: consent.message, code: consent.code, consent, output_paths: [] });
 }
 async function newPage(browser, viewport) {
@@ -118,6 +118,8 @@ async function test(name, callback) { await callback(); report.cases.push({ name
       assert.equal(await dialog.locator('.job-consent-accept').textContent(), '그래도 설치(값 확인 안 함)');
       assert.ok((await page.locator('#console-title').textContent()).endsWith(T('Not installed — waiting for your choice')));
       assert.equal(await page.evaluate(() => document.activeElement.textContent), T('Cancel'), 'Cancel has the focus');
+      const shown = await page.locator('#log').textContent();
+      assert.equal(shown.split(consent.message).length - 1, 1, 'the message is printed once: ' + shown);
       await page.screenshot({ path: path.join(EVIDENCE, 'consent-ko-wide.png'), fullPage: true });
       await dialog.locator('.job-consent-accept').click();
       await until(() => requests.length === 2, 'Install anyway sends one more job');

@@ -166,8 +166,8 @@ class JobManager:
                 if isinstance(consent, dict):
                     # Nothing was done: the tool needs the user's explicit choice (e.g. installing an MV
                     # timeline pack whose values could not be checked). The panel asks with ``consent``
-                    # and runs the job again with consent["param"] set to true.
-                    job.emit({"type": "log", "line": str(exc)})
+                    # and runs the job again with consent["param"] set to true. The message is the
+                    # summary only: the panel prints the summary at the end of the console.
                     job.emit({"type": "done", "status": "error", "summary": str(exc), "code": consent.get("code"),
                               "consent": consent, "output_paths": job.output_paths()})
                     return

@@ -927,11 +927,12 @@ class AdminTests(stock_tests.StockCase):
         def lifecycle(log):
             yield Lifecycle()
 
-        consent = {"code": "UNCHECKED_VALUES", "param": "accept_unchecked", "message": "m", "title": "t",
+        message = "Nothing was installed yet."
+        consent = {"code": "UNCHECKED_VALUES", "param": "accept_unchecked", "message": message, "title": "t",
                    "accept": "a", "items": ["android: r"]}
 
         def run(job):
-            raise self.tool._ConsentNeeded("m", consent)
+            raise self.tool._ConsentNeeded(message, consent)
 
         manager = JobManager(self.root)
         with patch.object(jobs_module, "whole_job_server", lifecycle):
@@ -939,9 +940,11 @@ class AdminTests(stock_tests.StockCase):
             thread = manager.run_async(job, run)
             thread.join(30)
         events = [job.event_at(index, 1) for index in range(job.event_count)]
-        self.assertEqual(events[-1], {"type": "done", "status": "error", "summary": "m", "code": "UNCHECKED_VALUES",
-                                      "consent": consent, "output_paths": []})
+        self.assertEqual(events[-1], {"type": "done", "status": "error", "summary": message,
+                                      "code": "UNCHECKED_VALUES", "consent": consent, "output_paths": []})
         self.assertFalse(any("Traceback" in str(event.get("line")) for event in events), events)
+        # The message once: as the summary the panel prints at the end of the console, not also as a log line.
+        self.assertEqual([event for event in events if message in str(event.get("line"))], [])
 
     def test_every_refusal_of_the_mv_timeline_tools_translates(self):
         from adminui import i18n
