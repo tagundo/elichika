@@ -54,6 +54,23 @@ events still need their existing server-side availability and acquisition rules;
 copying their client metadata does not reactivate them. Resource packs continue
 to use the configured CDN/cache and are not all downloaded by this upgrade.
 
+## MV Studio overrides stay in JP
+
+A JP MV timeline that MV Studio or an installed MV timeline pack replaced stays in
+JP: the import leaves out its timeline keys and packs, a JP-only MV it copies plays
+its original timeline and stage in GL, and the source MV's packs that a JP
+"another MV slot" override added to `live:<asset>` stay in JP's package. GL's own
+`live:<asset>` keeps its rows and version, so GL clients download nothing new.
+
+Development builds from 2026-11-25 to 2026-11-27 (not in any release) copied those
+source packs into GL's `live:<asset>` package, and the import only adds rows, so
+they stay there. They are not removed automatically: the GL catalog does not record
+which packs its own `live:<asset>` had before, and removing a pack GL's MV needs
+would stop it from loading. They are harmless (GL clients download those source
+MV packs once with that MV). To remove them, restore the GL databases and rebuild
+as in [updating assets](updating_assets.md) ("If you only need the databases
+restored"); that also discards other changes made to the GL databases.
+
 ## Verification
 
 ```sh
