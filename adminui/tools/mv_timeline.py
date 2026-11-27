@@ -66,10 +66,18 @@ def _modtools():
     except (TypeError, ValueError):
         shares = False
 
+    pack_module, _ = _modules()
+    # A timeline the conversion cannot write (a value or a track layout its export does not write, e.g.
+    # from a newer MV Studio) is install_pack's question, not a refusal.
+    refused = getattr(platform, "ConversionError", ())
+
     def convert(raw, src_platform, dst_platform, region, asset_id):
         extra = {"template_bytes": original(region, asset_id, dst_platform)} if shares else {}
-        return platform.convert_timeline(raw, src_platform, dst_platform, region, asset_id, root=root, download=True,
-                                         **extra)
+        try:
+            return platform.convert_timeline(raw, src_platform, dst_platform, region, asset_id, root=root,
+                                             download=True, **extra)
+        except refused as error:
+            raise pack_module.CannotConvert(str(error), getattr(error, "labels", ())) from error
 
     counted = {}
 

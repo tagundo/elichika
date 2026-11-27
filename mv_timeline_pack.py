@@ -106,9 +106,14 @@ CONSENT_NEEDED = ("Nothing was installed yet: this server could not check the pa
                   "anyway to install it as it is, or Cancel.")
 CHECK_FAILED = "The pack's timeline values could not be checked."
 WARN_UNCHECKED = "Installed without checking the timeline values (you chose Install anyway)."
+# A missing platform the conversion cannot make (``convert`` raised CannotConvert) is a question too.
+CANNOT_CONVERT = ("Not converted: the pack's timeline holds data this server's MV Studio tools cannot convert, "
+                  "possibly from a newer MV Studio. With Install anyway this platform plays the source MV's original "
+                  "timeline, as with \"Convert a missing platform's timeline\" turned off.")
+WARN_NOT_CONVERTED = "Not converted (you chose Install anyway): this platform plays the source MV's original timeline."
 MESSAGES = (INVALID, TOO_LARGE, BAD_ENTRY, BAD_TIMELINE, NO_TIMELINE, NEWER, LEGACY_INVALID, CHOOSE_REGION,
             CHOOSE_TARGET, SOURCE_MISSING, ORIGINAL_UNAVAILABLE, ORIGINAL_DOWNLOAD, CONSENT_NEEDED, CHECK_FAILED,
-            WARN_UNCHECKED)
+            WARN_UNCHECKED, CANNOT_CONVERT, WARN_NOT_CONVERTED)
 
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 # What zipfile raises for a damaged or crafted zip besides BadZipFile: an entry whose "version needed to
@@ -122,15 +127,27 @@ _LEGACY_UNITY = re.compile(r"[0-9]{1,10}(android|ios)?\.unity\Z", re.IGNORECASE)
 
 
 class UncheckedValues(ValueError):
-    """install_pack's answer when the editor check could not confirm a timeline and the caller did not
-    consent (``accept_unchecked``): nothing was written. ``items`` [{"platform", "text"}] say why, one
-    per timeline; ``code`` is UNCHECKED_VALUES. Installing it then needs ``accept_unchecked=True``."""
+    """install_pack's answer when the editor check could not confirm a timeline, or a missing platform
+    could not be converted, and the caller did not consent (``accept_unchecked``): nothing was written.
+    ``items`` [{"platform", "text"}] say why, one per such timeline or platform; ``code`` is
+    UNCHECKED_VALUES. Installing it then needs ``accept_unchecked=True``."""
 
     code = UNCHECKED_VALUES
 
     def __init__(self, items):
         super().__init__(CONSENT_NEEDED)
         self.items = [dict(item) for item in items]
+
+
+class CannotConvert(ValueError):
+    """What ``convert`` raises when the pack's timeline holds content the conversion cannot write
+    (modtools' ConversionError: a value or a track layout its export does not write, as in a pack from
+    a newer MV Studio). install_pack does not refuse the pack for it: once the caller consents, that
+    platform is left out and plays the source MV's original timeline. ``labels`` names the tracks."""
+
+    def __init__(self, message, labels=()):
+        super().__init__(message)
+        self.labels = [str(label) for label in labels]
 
 
 # ---------------------------------------------------------------- small checks
@@ -589,7 +606,9 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     returns the plaintext UnityFS timeline for ``dst_platform`` made from ``src_bytes`` (the
     ``src_platform`` timeline), using the stock timeline of 3D MV ``asset_id`` (the SOURCE asset) on
     ``dst_platform`` as its template, or raises ValueError with a user-facing message. Its result is
-    validated like any payload.
+    validated like any payload. CannotConvert (content the conversion cannot write) is not a refusal:
+    that platform is left out (listed in ``missing``) and asked about like an unchecked timeline
+    (CANNOT_CONVERT); with ``accept_unchecked=True`` it plays the source MV's original timeline.
 
     Payloads are validated against the source MV's TRUE stock timeline of each region (GL and JP
     keep the same timeline in different packs). When that stock pack is not on this server,
@@ -619,7 +638,7 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     Returns {regions: [{region, assetId, sourceAssetId, converted, missing, stageApplied, result}],
     warnings: [{region, code, text, ...}], stageBoundTracks: int | None}; codes: missing-platform
     (+platform), stage-not-applied (+stageBoundTracks), shared-asset (+usage), unchecked-values
-    (+platform, reason), store (the store's own clean-up warnings)."""
+    (+platform, reason), not-converted (+platform, reason), store (the store's own clean-up warnings)."""
     import database_maintenance
 
     if not isinstance(pack, dict):
@@ -630,7 +649,7 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     plan = plan_install(repo_root, pack, regions=regions, target_asset_id=target_asset_id, apply_stage=apply_stage,
                         convert=convert)
     provided = pack["timelines"]
-    jobs, warnings = [], []
+    jobs, warnings, not_converted = [], [], {}
     tracks = None
     if stage_tracks is not None:
         try:
@@ -646,7 +665,14 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
             if convert is not None:
                 origin = next(iter(sorted(provided)))
                 log(f"[{region}] Converting the {origin} timeline for {platform}")
-                timelines[platform] = native.timeline_bytes(convert(provided[origin], origin, platform, region, source))
+                try:
+                    timelines[platform] = native.timeline_bytes(convert(provided[origin], origin, platform, region,
+                                                                        source))
+                except CannotConvert as error:  # a question, not a refusal: the platform is left out
+                    log(f"[{region}] {error}" + (" " + ", ".join(error.labels) if error.labels else ""))
+                    missing.append(platform)
+                    not_converted.setdefault(platform, []).append(region)
+                    continue
                 converted.append(platform)
             else:
                 missing.append(platform)
@@ -661,13 +687,16 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
         log(f"[{region}] Checking the timelines against the original MV {source}")
         fetched = _validate_region(repo_root, region, target, source, source_id, timelines, stage, originals, log)
         jobs.append((item, timelines, converted, missing, source_id, stage, fetched))
-    if check is not None:
-        first = plan["regions"][0]
-        unchecked = _check_values(check, pack, first["region"], first["sourceAssetId"], log)
-        if unchecked and not accept_unchecked:
-            raise UncheckedValues(unchecked)
-        warnings.extend({"region": first["region"], "code": "unchecked-values", "platform": item["platform"],
-                         "reason": item["text"], "text": WARN_UNCHECKED} for item in unchecked)
+    first = plan["regions"][0]
+    unchecked = _check_values(check, pack, first["region"], first["sourceAssetId"], log) if check is not None else []
+    asked = unchecked + [{"platform": platform, "text": CANNOT_CONVERT} for platform in sorted(not_converted)]
+    if asked and not accept_unchecked:
+        raise UncheckedValues(asked)
+    warnings.extend({"region": first["region"], "code": "unchecked-values", "platform": item["platform"],
+                     "reason": item["text"], "text": WARN_UNCHECKED} for item in unchecked)
+    warnings.extend({"region": region, "code": "not-converted", "platform": platform, "reason": CANNOT_CONVERT,
+                     "text": WARN_NOT_CONVERTED}
+                    for platform, regions_left_out in sorted(not_converted.items()) for region in regions_left_out)
     results = []
     with (around_writes() if around_writes is not None else nullcontext()):
         with database_maintenance.guard(repo_root):

@@ -580,6 +580,53 @@ class InstallTests(stock_tests.StockCase):
         packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=lambda *args: calls.append(args))
         self.assertEqual(calls, [(timeline("legacy-b"), "android", "gl", 2102, None)])
 
+    def test_a_platform_the_conversion_cannot_make_is_asked_about_not_refused(self):
+        """``convert`` raising CannotConvert (modtools' ConversionError: content its export cannot write, as in a
+        newer MV Studio's pack) does not refuse the pack: the install asks (UncheckedValues, nothing written, the
+        server never stopped), next to the editor check's own question. With consent the pack's own timeline is
+        installed and that platform plays the source MV's original, as with the conversion off. Any other
+        conversion error is still a refusal."""
+        lossy = "The converted timeline would differ from the source, so nothing was converted:"
+
+        def convert(raw, src, dst, region, asset_id):
+            raise packs.CannotConvert(lossy, ["MemberEffect/Expert/MemberRimlight/Member1 (1)"])
+
+        pack = make_pack(timelines={"android": timeline("lossy-a")})
+        before, stops, log = self.databases(), [], []
+        with self.assertRaises(packs.UncheckedValues) as caught:
+            packs.install_pack(self.root, pack, regions=("gl", "jp"), convert=convert, log=log.append,
+                               around_writes=lambda: stops.append(1))
+        self.assertEqual((caught.exception.code, caught.exception.items),
+                         ("UNCHECKED_VALUES", [{"platform": "ios", "text": packs.CANNOT_CONVERT}]))
+        self.assertIn("[gl] " + lossy + " MemberEffect/Expert/MemberRimlight/Member1 (1)", log)
+        newer = "The pack was made by a newer MV Studio."
+        with self.assertRaises(packs.UncheckedValues) as caught:
+            packs.install_pack(self.root, pack, regions=["gl"], convert=convert, log=None, check=lambda *args: newer)
+        self.assertEqual(caught.exception.items, [{"platform": "android", "text": newer},
+                                                  {"platform": "ios", "text": packs.CANNOT_CONVERT}])
+        self.assertEqual((stops, self.databases(), self.static_files()), ([], before, []))
+        from contextlib import nullcontext
+        result = packs.install_pack(self.root, pack, regions=("gl", "jp"), convert=convert, log=None,
+                                    accept_unchecked=True, around_writes=lambda: stops.append(1) or nullcontext())
+        self.assertEqual(stops, [1])
+        self.assertEqual([(entry["converted"], entry["missing"]) for entry in result["regions"]],
+                         [([], ["ios"]), ([], ["ios"])])
+        self.assertEqual([warning for warning in result["warnings"] if warning["code"] == "not-converted"],
+                         [{"region": region, "code": "not-converted", "platform": "ios",
+                           "reason": packs.CANNOT_CONVERT, "text": packs.WARN_NOT_CONVERTED} for region in ("gl", "jp")])
+        for region in ("gl", "jp"):
+            described = stock.describe_mv_timeline(self.root, region=region, asset_id=2102)
+            self.assertEqual(described["platforms"], {"android": "custom", "ios": "stock"})
+            with self.guard():
+                stock.restore_mv_timeline(self.root, region=region, asset_id=2102,
+                                          expected_key=described["timelineKey"], log=None)
+
+        def no_template(raw, src, dst, region, asset_id):
+            raise ValueError("The game catalog has no original timeline of this 3D MV for the output platform.")
+
+        with self.assertRaisesRegex(ValueError, "no original timeline"):
+            packs.install_pack(self.root, pack, regions=["gl"], convert=no_template, log=None, accept_unchecked=True)
+
     def test_a_legacy_zip_installs_through_the_same_path(self):
         text = ("live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'A2101'\n"
                 "live_stage_master_id = 101\nstage_effect_asset_path = 'E2101'\nquality_setitng_set_id = 3\n"
@@ -782,6 +829,60 @@ class AdminTests(stock_tests.StockCase):
         with patch.object(platform, "template", side_effect=ValueError(platform.TEMPLATE_DOWNLOAD)):
             check = self.real_modtools()[4]
             self.assertEqual(check(timeline("pack-a"), "android", "gl", 2101, None), platform.VALUES_UNCHECKED)
+
+    def test_a_missing_platform_the_conversion_cannot_make_is_asked_about_in_the_job_language(self):
+        """adminui's convert wrapper turns modtools' ConversionError (content its export cannot write) into
+        CannotConvert; any other conversion error passes unchanged. With "Convert a missing platform's
+        timeline" on, such a pack ends the job with the question, and Install anyway installs it without the
+        conversion."""
+        from unittest.mock import patch
+        try:
+            from webtools.core import mv_timeline_platform as platform
+        except ImportError:
+            self.skipTest("modtools is not importable")
+        refused = platform.ConversionError(platform.LOSSY, ["StageEffect/Bloom"])
+        with patch.object(platform, "template", return_value=timeline("stock")), \
+                patch.object(platform, "convert_timeline", side_effect=refused):
+            convert = self.real_modtools()[0]
+            with self.assertRaises(packs.CannotConvert) as caught:
+                convert(timeline("pack-a"), "android", "ios", "gl", 2101)
+        self.assertEqual((str(caught.exception), caught.exception.labels), (platform.LOSSY, ["StageEffect/Bloom"]))
+        with patch.object(platform, "template", return_value=timeline("stock")), \
+                patch.object(platform, "convert_timeline", side_effect=ValueError(platform.NO_TEMPLATE)):
+            convert = self.real_modtools()[0]
+            with self.assertRaisesRegex(ValueError, "no original timeline") as caught:
+                convert(timeline("pack-a"), "android", "ios", "gl", 2101)
+        self.assertNotIsInstance(caught.exception, packs.CannotConvert)
+
+        def cannot(raw, src, dst, region, asset_id):
+            raise packs.CannotConvert(platform.LOSSY, ["StageEffect/Bloom"])
+
+        (self.drop / "one.sifasmv").write_bytes(make_pack(timelines={"android": timeline("adm-one")}))
+        params = {"addon": "one.sifasmv", "region": "gl", "apply_stage": False, "convert": True, "lang": "ko"}
+        with patch.object(self.tool, "_modtools", lambda: (cannot, None, None, None, None)):
+            job = self.Job()
+            with self.assertRaises(ValueError) as caught:
+                self.tool.run_install(job, params)
+            not_converted = ("ios: 변환하지 않았습니다. 팩의 타임라인에 이 서버의 MV Studio 도구가 변환할 수 없는 데이터가 있습니다. 더 "
+                             "새로운 MV Studio로 만든 팩일 수 있습니다. ‘그래도 설치’를 고르면 ‘없는 플랫폼의 타임라인 변환’을 끈 것처럼 이 "
+                             "플랫폼은 원본 MV의 원래 타임라인을 재생합니다.")
+            self.assertEqual((caught.exception.consent["code"], caught.exception.consent["items"]),
+                             ("UNCHECKED_VALUES", [not_converted]))
+            self.assertIn("⚠ " + not_converted, job.lines)
+            self.assertIn("[gl] " + platform.LOSSY + " StageEffect/Bloom", job.lines)
+            self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [])
+            job = self.Job()
+            self.assertIn("MV 타임라인 팩을 설치했습니다",
+                          self.tool.run_install(job, dict(params, **self.consent_of(caught.exception))))
+        self.assertIn("⚠ [gl] 변환하지 않았습니다(‘그래도 설치’를 골랐습니다). 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다. (ios): "
+                      + not_converted[len("ios: "):], job.lines)
+        self.assertEqual(stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)["platforms"],
+                         {"android": "custom", "ios": "stock"})
+
+    @staticmethod
+    def consent_of(error):
+        """The parameters the panel's Install anyway adds to the form (app.js askJobConsent)."""
+        return {error.consent["param"]: True}
 
     def test_a_consent_question_ends_the_job_without_an_error_trace(self):
         """adminui.jobs puts the question on the done event (code, consent) for the panel, with no traceback."""

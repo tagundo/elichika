@@ -701,6 +701,13 @@ _MV_TIMELINE_REFUSAL_STRINGS = {
     "The pack's timeline values are checked for structure only: install the asset editing tools (modtools) to check that MV Studio made them.": [
         "팩 타임라인의 값은 구조만 확인합니다. MV Studio가 만든 값인지 확인하려면 에셋 편집툴(modtools)을 설치하세요.",
         "パックのタイムラインの値は構造だけを確認します。MV Studioが作った値か確認するには、アセット編集ツール（modtools）をインストールしてください。"],
+    # a missing platform the conversion cannot make: asked about like an unchecked timeline
+    "Not converted: the pack's timeline holds data this server's MV Studio tools cannot convert, possibly from a newer MV Studio. With Install anyway this platform plays the source MV's original timeline, as with \"Convert a missing platform's timeline\" turned off.": [
+        "변환하지 않았습니다. 팩의 타임라인에 이 서버의 MV Studio 도구가 변환할 수 없는 데이터가 있습니다. 더 새로운 MV Studio로 만든 팩일 수 있습니다. ‘그래도 설치’를 고르면 ‘없는 플랫폼의 타임라인 변환’을 끈 것처럼 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
+        "変換していません。パックのタイムラインに、このサーバーのMV Studioツールが変換できないデータがあります。より新しいMV Studioで作られたパックかもしれません。「それでもインストール」を選ぶと、「ないプラットフォームのタイムラインを変換」をオフにしたときと同じく、このプラットフォームは元MVの元のタイムラインを再生します。"],
+    "Not converted (you chose Install anyway): this platform plays the source MV's original timeline.": [
+        "변환하지 않았습니다(‘그래도 설치’를 골랐습니다). 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
+        "変換していません（「それでもインストール」を選びました）。このプラットフォームは元MVの元のタイムラインを再生します。"],
 }
 for _source, _values in _MV_TIMELINE_REFUSAL_STRINGS.items():
     for _lang, _text in zip(("ko", "ja"), _values):
