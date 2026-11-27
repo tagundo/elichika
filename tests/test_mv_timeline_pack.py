@@ -810,6 +810,7 @@ class AdminTests(stock_tests.StockCase):
                              "못했습니다. 그대로 설치하려면 ‘그래도 설치’를, 그만두려면 ‘취소’를 고르세요.")
             self.assertEqual(consent_request, {
                 "code": "UNCHECKED_VALUES", "param": "accept_unchecked", "message": str(caught.exception),
+                "pack": hashlib.sha256((self.drop / "edit.sifasmv").read_bytes()).hexdigest(),
                 "title": "타임라인 값을 확인하지 않고 설치할까요?", "accept": "그래도 설치(값 확인 안 함)",
                 "items": ["android: 타임라인에 이 서버의 MV Studio 도구가 쓰지 않는 데이터가 있습니다. 더 새로운 MV Studio로 "
                           "만들었거나 다른 곳에서 바뀐 팩입니다. Elichika와 에셋 편집툴(modtools)을 업데이트하면 이 서버에서 "
@@ -820,8 +821,8 @@ class AdminTests(stock_tests.StockCase):
         self.assertFalse(any("구조만 확인합니다" in line for line in job.lines), job.lines)
         job = self.Job()
         with patch.object(self.tool, "_modtools", lambda: (None, None, None, None, check)):
-            self.assertIn("MV 타임라인 팩을 설치했습니다", self.tool.run_install(job, dict(params, lang="ko",
-                                                                                     accept_unchecked=True)))
+            self.assertIn("MV 타임라인 팩을 설치했습니다", self.tool.run_install(
+                job, dict(params, lang="ko", **self.consent_of(caught.exception))))
         self.assertTrue(any(line.startswith("⚠ [gl] 타임라인 값을 확인하지 않고 설치했습니다(‘그래도 설치’를 골랐습니다). "
                                             "(android): 타임라인에 이 서버의") for line in job.lines), job.lines)
         self.assertEqual([item["assetId"] for item in stock.list_mv_timelines(self.root, region="gl")], [2102])
@@ -857,6 +858,36 @@ class AdminTests(stock_tests.StockCase):
         with patch.object(platform, "template", side_effect=ValueError(platform.TEMPLATE_DOWNLOAD)):
             check = self.real_modtools()[4]
             self.assertEqual(check(timeline("pack-a"), "android", "gl", 2101, None), platform.VALUES_UNCHECKED)
+
+    def test_the_consent_holds_only_for_the_file_it_was_asked_about(self):
+        """The question carries the sha256 of the file it is about (consent.pack). Install anyway with that
+        digest installs that file; another file dropped under the same name while the question was open is
+        asked about again (its own digest), and a consent without a digest is no consent."""
+        from unittest.mock import patch
+        reason = "The pack was made by a newer MV Studio."
+        first = make_pack(timelines={"android": timeline("asked-a")})
+        other = make_pack(timelines={"android": timeline("other-a")})
+        (self.drop / "edit.sifasmv").write_bytes(first)
+        params = {"addon": "edit.sifasmv", "region": "gl", "apply_stage": False, "convert": False, "lang": "ko"}
+        with patch.object(self.tool, "_modtools", lambda: (None, None, None, None, lambda *args: reason)):
+            with self.assertRaises(ValueError) as asked:
+                self.tool.run_install(self.Job(), params)
+            self.assertEqual(asked.exception.consent["pack"], hashlib.sha256(first).hexdigest())
+            (self.drop / "edit.sifasmv").write_bytes(other)  # replaced while the question was open
+            job = self.Job()
+            with self.assertRaises(ValueError) as again:
+                self.tool.run_install(job, dict(params, **self.consent_of(asked.exception)))
+            self.assertEqual(again.exception.consent["pack"], hashlib.sha256(other).hexdigest())
+            self.assertIn("질문한 뒤에 팩 파일이 바뀌어서 다시 묻습니다.", job.lines)
+            with self.assertRaises(ValueError) as unbound:
+                self.tool.run_install(self.Job(), dict(params, accept_unchecked=True))
+            self.assertEqual(unbound.exception.consent["pack"], hashlib.sha256(other).hexdigest())
+            self.assertEqual(stock.list_mv_timelines(self.root, region="gl"), [])
+            self.assertIn("MV 타임라인 팩을 설치했습니다",
+                          self.tool.run_install(self.Job(), dict(params, **self.consent_of(again.exception))))
+        installed = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        self.assertEqual(installed["platforms"], {"android": "custom", "ios": "stock"})
+        self.assertEqual(self.validated[-1][0], timeline("other-a"))  # the file the last question was about
 
     def test_a_missing_platform_the_conversion_cannot_make_is_asked_about_in_the_job_language(self):
         """adminui's convert wrapper turns modtools' ConversionError (content its export cannot write) into
@@ -910,7 +941,7 @@ class AdminTests(stock_tests.StockCase):
     @staticmethod
     def consent_of(error):
         """The parameters the panel's Install anyway adds to the form (app.js askJobConsent)."""
-        return {error.consent["param"]: True}
+        return {error.consent["param"]: True, "consent_pack": error.consent["pack"]}
 
     def test_a_consent_question_ends_the_job_without_an_error_trace(self):
         """adminui.jobs puts the question on the done event (code, consent) for the panel, with no traceback."""

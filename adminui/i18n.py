@@ -708,6 +708,8 @@ _MV_TIMELINE_REFUSAL_STRINGS = {
     "Not converted (you chose Install anyway): this platform plays the source MV's original timeline.": [
         "변환하지 않았습니다(‘그래도 설치’를 골랐습니다). 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
         "変換していません（「それでもインストール」を選びました）。このプラットフォームは元MVの元のタイムラインを再生します。"],
+    "The pack file changed after you were asked, so it is asked about again.": [
+        "질문한 뒤에 팩 파일이 바뀌어서 다시 묻습니다.", "確認した後でパックのファイルが変わったため、もう一度確認します。"],
 }
 for _source, _values in _MV_TIMELINE_REFUSAL_STRINGS.items():
     for _lang, _text in zip(("ko", "ja"), _values):

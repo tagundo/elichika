@@ -133,12 +133,19 @@ def _list_packs():
     return out
 
 
-def _read(name):
+def _pack_file(name):
+    """(bytes, sha256 hex) of a drop-folder pack file, read once (within the reader's size limit)."""
     pack_module, _ = _modules()
     path = _locate(KEY, _checked_addon_name(name))
     if not path:
         raise FileNotFoundError(f"{name}: not found in the drop folders")
-    return pack_module.read_any(path)
+    data = pack_module._bytes(path)
+    return data, hashlib.sha256(data).hexdigest()
+
+
+def _read(name):
+    pack_module, _ = _modules()
+    return pack_module.read_any(_pack_file(name)[0])
 
 
 def _summary(pack, lang):
@@ -230,12 +237,14 @@ class _ConsentNeeded(ValueError):
         self.consent = consent
 
 
-def _consent_unchecked(error, lang):
-    """The question for an UncheckedValues answer of install_pack (code UNCHECKED_VALUES)."""
+def _consent_unchecked(error, lang, digest):
+    """The question for an UncheckedValues answer of install_pack (code UNCHECKED_VALUES). ``pack`` is the
+    sha256 of the file asked about: the panel sends it back as ``consent_pack`` with accept_unchecked, and
+    the consent holds only for that same file."""
     items = [f"{item['platform']}: " + i18n.tr(item["text"], lang) for item in error.items]
     message = i18n.tr(str(error), lang)
     return _ConsentNeeded(message, {
-        "code": error.code, "param": "accept_unchecked", "message": message, "items": items,
+        "code": error.code, "param": "accept_unchecked", "message": message, "items": items, "pack": digest,
         "title": i18n.tr("Install without checking the timeline values?", lang),
         "accept": i18n.tr("Install anyway (values not checked)", lang)})
 
@@ -273,9 +282,14 @@ def run_install(job, params):
     if regions is None:
         raise ValueError("Choose GL, JP or both.")
     convert, tracks, detect, original, check = _modtools()
-    # The user's "Install anyway (values not checked)": only an explicit true, from the consent question.
-    accept_unchecked = params.get("accept_unchecked") is True
-    pack = _relabel_legacy(_read(name), detect)
+    # The file is read once: what is checked, asked about and installed are these bytes.
+    data, digest = _pack_file(name)
+    # The user's "Install anyway (values not checked)": only an explicit true, from the consent question about
+    # this same file (its sha256). Another file dropped under the name meanwhile is asked about again.
+    accept_unchecked = params.get("accept_unchecked") is True and params.get("consent_pack") == digest
+    if params.get("accept_unchecked") is True and isinstance(params.get("consent_pack"), str) and not accept_unchecked:
+        job.log(i18n.tr("The pack file changed after you were asked, so it is asked about again.", lang))
+    pack = _relabel_legacy(pack_module.read_any(data), detect)
     target = _target(params, pack)
     apply_stage = bool(params.get("apply_stage", True))
     use_convert = bool(params.get("convert", True))
@@ -317,7 +331,7 @@ def run_install(job, params):
     except pack_module.UncheckedValues as error:
         for item in error.items:
             job.log(f"⚠ {item['platform']}: " + i18n.tr(item["text"], lang))
-        raise _consent_unchecked(error, lang) from None
+        raise _consent_unchecked(error, lang, digest) from None
     for warning in result["warnings"]:
         if warning["code"] == "stage-not-applied" and count is not None:
             continue  # logged with its count before the write

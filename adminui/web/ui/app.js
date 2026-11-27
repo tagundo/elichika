@@ -741,13 +741,20 @@ function streamJob(jobId, context) {
   es.onerror = () => {};
 }
 
+function consentPack(consent) {
+  // The sha256 of the file a question is about (consent.pack), sent back as consent_pack: the server
+  // takes the consent only for that same file.
+  return typeof consent.pack === "string" && /^[0-9a-f]{64}$/.test(consent.pack) ? consent.pack : undefined;
+}
+
 function consentRequest(msg, context) {
   // A job that stopped before doing anything because it needs the user's explicit choice
   // (adminui.jobs: done.consent, e.g. an MV timeline pack whose values could not be checked).
-  // Asked once: a run that already carried the consent is not asked again.
+  // Asked once: a run that already carried the consent for the same file is not asked again.
   const consent = msg && msg.status === "error" ? msg.consent : null;
   if (!consent || typeof consent !== "object" || typeof consent.param !== "string" ||
-      !/^[a-z_]{1,64}$/.test(consent.param) || context.params[consent.param] === true) return null;
+      !/^[a-z_]{1,64}$/.test(consent.param) ||
+      (context.params[consent.param] === true && context.params.consent_pack === consentPack(consent))) return null;
   return consent;
 }
 
@@ -755,13 +762,17 @@ async function askJobConsent(consent, context) {
   const accepted = await confirmJobConsent(consent);
   const tool = state.currentTool;
   // Run again only for the same, unchanged form: the consent covers what was asked about.
+  const asked = Object.assign({}, context.params);
+  delete asked[consent.param];
+  delete asked.consent_pack;
   if (!accepted || state.running || !tool || tool.id !== context.toolId ||
       state.formGeneration !== context.generation ||
-      JSON.stringify(collectParams()) !== JSON.stringify(context.params)) {
+      JSON.stringify(collectParams()) !== JSON.stringify(asked)) {
     if (!state.running && tool && tool.id === context.toolId) finishConsole("cancelled", context);
     return;
   }
-  runTool({ [consent.param]: true });
+  const pack = consentPack(consent);
+  runTool(Object.assign({ [consent.param]: true }, pack ? { consent_pack: pack } : {}));
 }
 
 function confirmJobConsent(consent) {

@@ -30,7 +30,7 @@ const report = { status: 'RUNNING', cases: [], errors: [] };
 const jobs = new Map(), requests = [];
 let nextJob = 0;
 const consent = {
-  code: 'UNCHECKED_VALUES', param: 'accept_unchecked',
+  code: 'UNCHECKED_VALUES', param: 'accept_unchecked', pack: 'a'.repeat(64),
   title: T('Install without checking the timeline values?'),
   message: T("Nothing was installed yet: this server could not check the pack's timeline values. Choose Install anyway to install it as it is, or Cancel."),
   accept: T('Install anyway (values not checked)'),
@@ -82,10 +82,11 @@ async function start(page) {
   const job = requests.at(-1); await until(() => !!job.stream, 'SSE connects');
   return job;
 }
-function ask(job) {
+function ask(job, question = consent) {
   // What adminui.jobs sends for a question: the tool's own log lines, then the message as the summary only.
-  emit(job, { type: 'log', line: '[+  0.4s] ⚠ ' + consent.items[0] });
-  emit(job, { type: 'done', status: 'error', summary: consent.message, code: consent.code, consent, output_paths: [] });
+  emit(job, { type: 'log', line: '[+  0.4s] ⚠ ' + question.items[0] });
+  emit(job, { type: 'done', status: 'error', summary: question.message, code: question.code, consent: question,
+    output_paths: [] });
 }
 async function newPage(browser, viewport) {
   const context = await browser.newContext({ viewport });
@@ -124,14 +125,33 @@ async function test(name, callback) { await callback(); report.cases.push({ name
       await dialog.locator('.job-consent-accept').click();
       await until(() => requests.length === 2, 'Install anyway sends one more job');
       const second = requests.at(-1);
-      assert.deepEqual(second.params, { ...first.params, accept_unchecked: true });
+      // The consent goes back with the digest of the file it was asked about.
+      assert.deepEqual(second.params, { ...first.params, accept_unchecked: true, consent_pack: consent.pack });
       await until(() => !!second.stream, 'SSE connects');
-      // The run that carried the consent is never asked again, even if it answered with a question.
+      // The run that carried the consent for this file is never asked again, even if it answered with a question.
       ask(second);
       await page.waitForFunction(() => document.querySelector('#console-title').textContent.includes('✗'));
       await pause(100);
       assert.equal(await page.locator('dialog.job-consent').count(), 0);
       assert.equal(requests.length, 2);
+      await context.close();
+    });
+    await test('a-file-replaced-while-asked-is-asked-about-again', async () => {
+      const { context, page } = await newPage(browser, { width: 1280, height: 800 });
+      const before = requests.length;
+      const first = await start(page);
+      ask(first);
+      await page.locator('dialog.job-consent .job-consent-accept').click();
+      await until(() => requests.length === before + 2, 'Install anyway sends one more job');
+      const second = requests.at(-1);
+      await until(() => !!second.stream, 'SSE connects');
+      // The server found another file under the name: its question carries that file's digest.
+      const replaced = { ...consent, pack: 'b'.repeat(64) };
+      ask(second, replaced);
+      await page.locator('dialog.job-consent').waitFor();
+      await page.locator('dialog.job-consent .job-consent-accept').click();
+      await until(() => requests.length === before + 3, 'the replaced file is installed only after its own question');
+      assert.deepEqual(requests.at(-1).params, { ...first.params, accept_unchecked: true, consent_pack: replaced.pack });
       await context.close();
     });
     await test('cancel-installs-nothing-and-a-changed-form-is-not-run', async () => {
