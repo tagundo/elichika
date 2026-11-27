@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "repository": "tagundo/elichika",
+  "run_id": 43736669176,
+  "run_attempt": 1,
+  "workflow_id": 419049415,
+  "job_id": 132880685764,
+  "producer_source": {
+    "source_sha": "1120c0b01f2c331d809df6812ce45132eeaeca33",
+    "source_tree": "c9380a142597393cdc5c6864755748cd85115498",
+    "assets_sha": "1b0154db2976ba345fb30f3516018bb04d408ce1",
+    "assets_tree": "0ca03aed0c0deee7d8915ad15b8a9e2c93c9554a",
+    "modtools_sha": "b92bb0fdf3fed5b5d20c69fd2b7efbda15c84408",
+    "modtools_tree": "6d2975f9561daa48dd8f8b249e73f860bc1bc59e"
+  },
+  "artifact": {
+    "id": 14171094339,
+    "name": "elichika-ios-verified-shared-payload-NOT-IPA-1120c0b01f2c331d809df6812ce45132eeaeca33",
+    "bytes": 871386336,
+    "sha256": "d2f56ff4297110bae8653dd9cbf02e45a0e96626d01e382ec816db36bd262eed"
+  },
+  "original_proof": {
+    "bytes": 1042277,
+    "sha256": "21bc6edef6e9b25be3efdad7c16672dea88a5b82c02b813f15bad4b90ab988a0"
+  },
+  "payload_revision": {
+    "bytes": 987782,
+    "sha256": "152bb611132aee27d5c038eb04ed1e40b83fc911dd93868d4b3f3c695ed2819f"
+  },
+  "file_count": 6451,
+  "expanded_payload_bytes": 868004482,
+  "scope": "Exact completed official data from Source 9; current source may change only platform consumers. No IPA, runtime success or Archive publication claim."
+}

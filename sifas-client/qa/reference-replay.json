@@ -1,0 +1,40 @@
+{
+  "apk": {
+    "file": "verified-resign.apk",
+    "archive_sha256": "73e4a804bfe2f70448a6b6c8d1844429198fd3cfb9494b29a9e6a0350ee65411",
+    "matches_original_archive": true,
+    "matches_original_unsigned_archive": false,
+    "members": {
+      "classes.dex": {
+        "expected": "d4a8a9da16fefef5cf2394f0d4aa758b71b06d47846b0fcfb796ce69dcf16855",
+        "observed": "d4a8a9da16fefef5cf2394f0d4aa758b71b06d47846b0fcfb796ce69dcf16855",
+        "match": true
+      },
+      "lib/arm64-v8a/libfovmod.so": {
+        "expected": "0f48b8b0c92b9c0e57ae67cb19e41740ac7a00675a452680f5ef56aa23b11a3b",
+        "observed": "0f48b8b0c92b9c0e57ae67cb19e41740ac7a00675a452680f5ef56aa23b11a3b",
+        "match": true
+      }
+    },
+    "matching_members": true
+  },
+  "ipa": {
+    "file": "Relocated_2026.11.21.2-test.ipa",
+    "archive_sha256": "e1f60f4dfa76de4c605374bfc0e03e24a133da93a51991ff5f93a1fae314a43a",
+    "matches_original_archive": false,
+    "matches_original_unsigned_archive": false,
+    "members": {
+      "Payload/global.app/global": {
+        "expected": "a835e8237187375415b745e36f28bf3aded6576f149057c6e11616690f794d96",
+        "observed": "a835e8237187375415b745e36f28bf3aded6576f149057c6e11616690f794d96",
+        "match": true
+      },
+      "Payload/global.app/Frameworks/SIFASMVExport.dylib": {
+        "expected": "727be49d92ca6978e73e6cb94c43ecbb0eb8587429848198781a65285cf60995",
+        "observed": "727be49d92ca6978e73e6cb94c43ecbb0eb8587429848198781a65285cf60995",
+        "match": true
+      }
+    },
+    "matching_members": true
+  }
+}

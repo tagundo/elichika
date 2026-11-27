@@ -1,0 +1,64 @@
+{
+  "status": "STATIC_SOURCE_AND_GENERATED_PLAN_VALIDATED_NO_LARGE_ELF_OUTPUTS_CREATED",
+  "tests": {
+    "command": "python -B -m unittest -v test_mv_export_elf_patch",
+    "unit_tests": 5,
+    "pass": true,
+    "authored_ARM64_leaf_cases": 288,
+    "coverage": "Both actual profile instructions;9typedslots includingnative-dispatchedCamera.FireOnPostRender;4ASLRbiases including4Knon64K;ready0/null/bound/directtrampoline;SP/LR/general/SIMD/NZCV and precise originalstackwrite ownership."
+  },
+  "actual_inputs": "All four exact b25 library members streamed, whole SHA256+size, all64Bhookpreimages andUnity488BFDEspan hashes matched; independent reviewer repeated fourplan generation without output writes.",
+  "header_compile": "AArch64 AndroidAPI21 clang C11 -Wall -Wextra -Werror -fsyntax-only PASS",
+  "not_claimed": [
+    "RealAndroidloader/runtimeunwind",
+    "Unitycallbackordering",
+    "ActualMVmanualclock/render/GPUcapture",
+    "Audioarrangement/mix/synchronization",
+    "DeviceMediaCodecencoding",
+    "Anyworkinginstalledexportfeature"
+  ],
+  "images": [
+    {
+      "region": "GL",
+      "kind": 1,
+      "source_sha256": "39e7af6865c71debdfd696e22a8aa4332ee994e936ecef100d7e4d51364f8f0a",
+      "planned_sha256": "0f4ffe30e99bd191a6e637d1e8ffed8852569d96597be88dc9c4d0c0d31d20b9",
+      "planned_bytes": 122880320,
+      "sidecar_rva": "0x7840000"
+    },
+    {
+      "region": "GL",
+      "kind": 2,
+      "source_sha256": "1db08266ee63c5c4f0036b62d47a93f8586b233ad4acb2100ad3dd08577e492d",
+      "planned_sha256": "ed307e29ccb15b857749334da2b23e04021c6299849050d9f81d0cc7af6602e4",
+      "planned_bytes": 15073600,
+      "sidecar_rva": "0xfb0000"
+    },
+    {
+      "region": "JP",
+      "kind": 1,
+      "source_sha256": "6be5676373f48057bafa7cf431cbdbe07d682d5065ebb1a01e7b7ffa5956ba2d",
+      "planned_sha256": "96b20c047d5048040a30909da8fd73e6ab16133c0ad91879556b3f452b1632bb",
+      "planned_bytes": 122814784,
+      "sidecar_rva": "0x7830000"
+    },
+    {
+      "region": "JP",
+      "kind": 2,
+      "source_sha256": "68dc419c023d35797cf7b4e6596c07227a0be4d2ac5d94e7e4dc183a09efab9e",
+      "planned_sha256": "ae5ba3134b2c9d436e4f38b7f12fc044c0ccd6df6f7d2e004c445028fbe442dd",
+      "planned_bytes": 15139136,
+      "sidecar_rva": "0xfb0000"
+    }
+  ],
+  "source_sha256": {
+    "mv_export_elf_patch.py": "d2f7cd5d227894a01c3bd7eb3a16c751b35b227d5be6617d9e4f1b513537101c",
+    "test_mv_export_elf_patch.py": "99504912993aa290bdc8a6a3db0545edda3d2c98e7169c1c8254689c9a4371d9",
+    "android_mv_patch_profiles.h": "b78a52c48b3683c5e12308dd3897c7e097c40c9b9a61c24bbf7944ec2f57df57",
+    "android_mv_patch_plan.json": "e47b0268202026a94974c277e2c1a6364eedd0e2a985d3b731a0158f4924c2a9",
+    "android_mv_profile_GL.json": "07385486c86564abe53e0e4fa114e43283aa2a9b407fe2c85dbb767ae73fb4b7",
+    "android_mv_profile_JP.json": "ca2247b72dcaff77db89eb32341389161103344c4ab78b14f8ffe2604ee40d0a"
+  },
+  "sidecar_version": 2,
+  "sidecar_bytes": 320
+}

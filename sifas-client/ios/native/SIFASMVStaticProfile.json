@@ -1,0 +1,2266 @@
+{
+  "schema": 1,
+  "image_sha256": "071607a0b7e4d4e080af68ce9ce7c84cf279bf8e73e70ec9dc8cf1f3be1cd4dd",
+  "metadata_sha256": "73b3043e7a238f6671fc5964b522735c6cc89fd6cf0120d57a4edcc03c7a2869",
+  "registration_va": "0x104d952b0",
+  "method_pointer_table_va": "0x104e508a0",
+  "registrations": {
+    "types": {
+      "count": 166905,
+      "pointer": "0x1050f41e0"
+    },
+    "field_offsets": {
+      "count": 18773,
+      "pointer": "0x10532c6a0"
+    },
+    "type_sizes": {
+      "count": 18773,
+      "pointer": "0x105351148"
+    }
+  },
+  "native": {
+    "initialize_metadata": {
+      "va": "0x101037c34",
+      "first32hex": "f44fbea9fd7b01a9fd430091ff8300d1a83d02d0087947f9a93d02d0297d47f9"
+    },
+    "object_new": {
+      "va": "0x101014950",
+      "first32hex": "bf000014f657bda9f44f01a9fd7b02a9fd830091f30300aa760240f9c88a4439"
+    },
+    "type_from_handle": {
+      "va": "0x103b9bad0",
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091e00700f973dd00b068c25939e8000037"
+    },
+    "is_instance": {
+      "va": "0x103af6d4c",
+      "first32hex": "c7e15317c6e15317f657bda9f44f01a9fd7b02a9fd830091f40301aaf30300aa"
+    },
+    "particle_wake": {
+      "va": "0x100611ce4",
+      "first32hex": "eb2bbb6de923016df65702a9f44f03a9fd7b04a9fd030191f30300aa682640f9"
+    },
+    "reference_list_add": {
+      "va": "0x102316c0c",
+      "first32hex": "f85fbca9f65701a9f44f02a9fd7b03a9fdc30091f50302aaf40301aaf30300aa",
+      "command_buffer_call_va": "0x10148082c",
+      "command_buffer_call_word": "0x943a58f8",
+      "size_load_va": "0x102316c2c",
+      "size_load_word": "0xb9401816",
+      "items_load_va": "0x102316c30",
+      "items_load_word": "0xf9400817"
+    }
+  },
+  "methods": {
+    "hook[LIVE]": {
+      "va": "0x101522cf4",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.LiveDirectorBase",
+      "method_name": "Update",
+      "metadata_index": 90675,
+      "first32hex": "e923bd6df44f01a9fd7b02a9fd83009108804039c8040034f30300aa143440f9"
+    },
+    "hook[MUSIC]": {
+      "va": "0x10149e3fc",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "method_name": "Update",
+      "metadata_index": 94378,
+      "first32hex": "9bffff17fd7bbfa9fd0300916cfdff97fd7bc1a801000014f44fbea9fd7b01a9"
+    },
+    "hook[MEMBER]": {
+      "va": "0x101489978",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "method_name": "Update",
+      "metadata_index": 94057,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa0100805209000094a0000034e00313aa"
+    },
+    "hook[LATE]": {
+      "va": "0x101489c10",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "method_name": "LateUpdate",
+      "metadata_index": 94058,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa0100805263ffff976002003468424239"
+    },
+    "alive": {
+      "va": "0x103952e5c",
+      "return_type": "System.Boolean",
+      "parameter_types": [
+        "UnityEngine.Object"
+      ],
+      "parameter_type_indices": [
+        6361
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.Object",
+      "method_name": "op_Implicit",
+      "metadata_index": 22858,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa94ef00d088aa7e39e8000037287300d0"
+    },
+    "hook[POST]": {
+      "va": "0x103937ccc",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.Camera"
+      ],
+      "parameter_type_indices": [
+        6334
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "FireOnPostRender",
+      "metadata_index": 21071,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa74f000b088ea4b39e8000037e87200b0"
+    },
+    "overlay_camera": {
+      "va": "0x10148166c",
+      "return_type": "UnityEngine.Camera",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreOverlayCamera",
+      "method_name": "get_Camera",
+      "metadata_index": 93953,
+      "first32hex": "002440f9c0035fd6f85fbca9f65701a9f44f02a9fd7b03a9fdc30091f30301aa"
+    },
+    "behaviour_enabled": {
+      "va": "0x103930014",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Behaviour",
+      "method_name": "get_enabled",
+      "metadata_index": 20835,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa94f000f081a247f9e10100b5"
+    },
+    "behaviour_set_enabled": {
+      "va": "0x103930080",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Boolean"
+      ],
+      "parameter_type_indices": [
+        478
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Behaviour",
+      "method_name": "set_enabled",
+      "metadata_index": 20836,
+      "first32hex": "ff0301d1f65701a9f44f02a9fd7b03a9fdc30091f30301aaf40300aa95f000f0"
+    },
+    "overlay_paused": {
+      "va": "0x10148dff4",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreOverlayCamera",
+      "method_name": "IsPause",
+      "metadata_index": 93959,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa341502f088924439e8000037089901f0"
+    },
+    "camera_target": {
+      "va": "0x1039343a4",
+      "return_type": "UnityEngine.RenderTexture",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "get_targetTexture",
+      "metadata_index": 20973,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa94f0009081ca40f9e10100b5"
+    },
+    "camera_set_target": {
+      "va": "0x103934410",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.RenderTexture"
+      ],
+      "parameter_type_indices": [
+        11786
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "set_targetTexture",
+      "metadata_index": 20974,
+      "first32hex": "ff0301d1f65701a9f44f02a9fd7b03a9fdc30091f30301aaf40300aa95f00090"
+    },
+    "camera_width": {
+      "va": "0x1039341f4",
+      "return_type": "System.Int32",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "get_pixelWidth",
+      "metadata_index": 20969,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa94f0009081ba40f9e10100b5"
+    },
+    "camera_height": {
+      "va": "0x103934260",
+      "return_type": "System.Int32",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "get_pixelHeight",
+      "metadata_index": 20970,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa94f0009081be40f9e10100b5"
+    },
+    "texture_width": {
+      "va": "0x10396da2c",
+      "return_type": "System.Int32",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Texture",
+      "method_name": "get_width",
+      "metadata_index": 22617,
+      "first32hex": "caffff17f44fbea9fd7b01a9fd430091d3ee009068e27239e8000037a87200f0"
+    },
+    "texture_height": {
+      "va": "0x10396da98",
+      "return_type": "System.Int32",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Texture",
+      "method_name": "get_height",
+      "metadata_index": 22619,
+      "first32hex": "caffff17f44fbea9fd7b01a9fd430091d3ee009068e67239e8000037a87200f0"
+    },
+    "camera_update": {
+      "va": "0x101482320",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "method_name": "Update",
+      "metadata_index": 93908,
+      "first32hex": "fa67bba9f85f01a9f65702a9f44f03a9fd7b04a9fd030191f30300aa941502f0"
+    },
+    "camera_resume": {
+      "va": "0x101482150",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "method_name": "Resume",
+      "metadata_index": 93904,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa1f7400b9142c40f9740000b5000080d2"
+    },
+    "core_camera": {
+      "va": "0x10148017c",
+      "return_type": "UnityEngine.Camera",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCamera",
+      "method_name": "get_Camera",
+      "metadata_index": 93871,
+      "first32hex": "f44fbea9fd7b01a9fd430091130c40f9730000b5000080d28680ee97600e40f9"
+    },
+    "cutin_camera": {
+      "va": "0x10185383c",
+      "return_type": "UnityEngine.Camera",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Components.SkillCutin.SkillCutinCamera",
+      "method_name": "get_Camera",
+      "metadata_index": 95053,
+      "first32hex": "000c40f9c0035fd6f44fbea9fd7b01a9fd430091f30300aa140c40f9740000b5"
+    },
+    "quality_get": {
+      "va": "0x101fef9a0",
+      "return_type": "System.Int32",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.DM.ValueObject.LiveQualitySettingVO",
+      "method_name": "get_RenderingResolution",
+      "metadata_index": 56561,
+      "first32hex": "001840b9c0035fd6011800b9c0035fd600704039c0035fd601700039c0035fd6"
+    },
+    "quality_set": {
+      "va": "0x101fef9a8",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Int32"
+      ],
+      "parameter_type_indices": [
+        177
+      ],
+      "is_static": false,
+      "ownerFullName": "LLAS.DM.ValueObject.LiveQualitySettingVO",
+      "method_name": "set_RenderingResolution",
+      "metadata_index": 56562,
+      "first32hex": "011800b9c0035fd600704039c0035fd601700039c0035fd600744039c0035fd6"
+    },
+    "quality_post_effect": {
+      "va": "0x101fefa70",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.DM.ValueObject.LiveQualitySettingVO",
+      "method_name": "get_PostEffect",
+      "metadata_index": 56587,
+      "first32hex": "00a04039c0035fd601a00039c0035fd600a44039c0035fd601a40039c0035fd6"
+    },
+    "command_clear": {
+      "va": "0x1039611d8",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Rendering.CommandBuffer",
+      "method_name": "Clear",
+      "metadata_index": 22478,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa34ef0090812243f9e10100b5"
+    },
+    "command_blit": {
+      "va": "0x103961928",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.Texture",
+        "UnityEngine.Rendering.RenderTargetIdentifier"
+      ],
+      "parameter_type_indices": [
+        6732,
+        6578
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Rendering.CommandBuffer",
+      "method_name": "Blit",
+      "metadata_index": 22496,
+      "first32hex": "ff4301d1f65702a9f44f03a9fd7b04a9fd030191f30302aaf40301aaf50300aa"
+    },
+    "command_target": {
+      "va": "0x10396172c",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.Rendering.RenderTargetIdentifier"
+      ],
+      "parameter_type_indices": [
+        6578
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Rendering.CommandBuffer",
+      "method_name": "SetRenderTarget",
+      "metadata_index": 22491,
+      "first32hex": "ff0301d1fd7b03a9fdc30091200440ade00700ad281040f9e81300f9e1030091"
+    },
+    "builtin_identifier": {
+      "va": "0x103961c14",
+      "return_type": "UnityEngine.Rendering.RenderTargetIdentifier",
+      "parameter_types": [
+        "UnityEngine.Rendering.BuiltinRenderTextureType"
+      ],
+      "parameter_type_indices": [
+        120031
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.Rendering.RenderTargetIdentifier",
+      "method_name": "op_Implicit",
+      "metadata_index": 21825,
+      "first32hex": "f657bda9f44f01a9fd7b02a9fd830091f40300aaf30308aa35ef0090a8e25939"
+    },
+    "target_identifier": {
+      "va": "0x103961ce4",
+      "return_type": "UnityEngine.Rendering.RenderTargetIdentifier",
+      "parameter_types": [
+        "UnityEngine.Texture"
+      ],
+      "parameter_type_indices": [
+        6732
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.Rendering.RenderTargetIdentifier",
+      "method_name": "op_Implicit",
+      "metadata_index": 21827,
+      "first32hex": "ff4301d1f44f03a9fd7b04a9fd030191e10300aaf30308aaff1300f900e4004f"
+    },
+    "camera_commands": {
+      "va": "0x103937698",
+      "return_type": "UnityEngine.Rendering.CommandBuffer[]",
+      "parameter_types": [
+        "UnityEngine.Rendering.CameraEvent"
+      ],
+      "parameter_type_indices": [
+        13164
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "GetCommandBuffers",
+      "metadata_index": 21068,
+      "first32hex": "ff0301d1f65701a9f44f02a9fd7b03a9fdc30091f30301aaf40300aa75f000b0"
+    },
+    "camera_clear_get": {
+      "va": "0x10393355c",
+      "return_type": "UnityEngine.CameraClearFlags",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "get_clearFlags",
+      "metadata_index": 20945,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa94f000b0817e40f9e10100b5"
+    },
+    "camera_clear_set": {
+      "va": "0x1039335c8",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.CameraClearFlags"
+      ],
+      "parameter_type_indices": [
+        119713
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "set_clearFlags",
+      "metadata_index": 20946,
+      "first32hex": "ff0301d1f65701a9f44f02a9fd7b03a9fdc30091f30301aaf40300aa95f000b0"
+    },
+    "camera_render": {
+      "va": "0x103936dc4",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Camera",
+      "method_name": "Render",
+      "metadata_index": 21054,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa74f000d0814a41f9e10100b5"
+    },
+    "resume_broadcast": {
+      "va": "0x1036af744",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "KLab.MessageBuses.DeferredMessageBus",
+      "method_name": "Broadcast",
+      "metadata_index": 28583,
+      "first32hex": "f44fbea9fd7b01a9fd430091130840f9730000b5000080d214c3659728008052"
+    },
+    "resume_dispatch": {
+      "va": "0x1036af774",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "KLab.MessageBuses.DeferredMessageBus",
+      "method_name": "Dispatch",
+      "metadata_index": 28584,
+      "first32hex": "f44fbea9fd7b01a9fd430091130840f9730000b5000080d208c36597e00313aa"
+    },
+    "pause_se_voices": {
+      "va": "0x10149e414",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "method_name": "PauseSEAndVoices",
+      "metadata_index": 94383,
+      "first32hex": "f44fbea9fd7b01a9fd430091b31402f068a24639e8000037a89801901f2003d5"
+    },
+    "dm_pause_get": {
+      "va": "0x101ebb560",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": true,
+      "ownerFullName": "LLAS.DM.LiveGamePauseDM",
+      "method_name": "get_IsPause",
+      "metadata_index": 48209,
+      "first32hex": "f44fbea9fd7b01a9fd430091000080d2c4a6f097f30300aa400000b58c93c597"
+    },
+    "dm_pause_set": {
+      "va": "0x101ebb5f4",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Boolean"
+      ],
+      "parameter_type_indices": [
+        478
+      ],
+      "is_static": true,
+      "ownerFullName": "LLAS.DM.LiveGamePauseDM",
+      "method_name": "SetPause",
+      "metadata_index": 48211,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa000080d29ea6f097600300b4000080d2"
+    },
+    "dm_wait_get": {
+      "va": "0x101ebb5ac",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": true,
+      "ownerFullName": "LLAS.DM.LiveGamePauseDM",
+      "method_name": "get_IsWaitingTutorialAction",
+      "metadata_index": 48210,
+      "first32hex": "f44fbea9fd7b01a9fd430091000080d2b1a6f097f30300aa400000b57993c597"
+    },
+    "dm_wait_set": {
+      "va": "0x101ebb684",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Boolean"
+      ],
+      "parameter_type_indices": [
+        478
+      ],
+      "is_static": true,
+      "ownerFullName": "LLAS.DM.LiveGamePauseDM",
+      "method_name": "SetWaitingTutorialAction",
+      "metadata_index": 48212,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa000080d27aa6f097f40300aa400000b5"
+    },
+    "state_instance": {
+      "va": "0x101ae5080",
+      "return_type": "DotUnder.StateObject",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": true,
+      "ownerFullName": "DotUnder.State",
+      "method_name": "get_Inst",
+      "metadata_index": 111701,
+      "first32hex": "f44fbea9fd7b01a9fd430091b3e2019068ee4639e8000037e86601901f2003d5"
+    },
+    "live_state": {
+      "va": "0x101ae5f9c",
+      "return_type": "DotUnder.LiveState.LiveState",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "DotUnder.StateObject",
+      "method_name": "get_LiveState",
+      "metadata_index": 114421,
+      "first32hex": "005c40f9c0035fd6015c00f9c0035fd6006040f9c0035fd6016000f9c0035fd6"
+    },
+    "cri_sheet": {
+      "va": "0x1012c25a0",
+      "return_type": "CriAtomCueSheet",
+      "parameter_types": [
+        "System.String"
+      ],
+      "parameter_type_indices": [
+        87
+      ],
+      "is_static": true,
+      "ownerFullName": "CriAtom",
+      "method_name": "GetCueSheet",
+      "metadata_index": 31457,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa942302b088526939e8000037a8a601b0"
+    },
+    "component_gameobject": {
+      "va": "0x103938ec4",
+      "return_type": "UnityEngine.GameObject",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Component",
+      "method_name": "get_gameObject",
+      "metadata_index": 21169,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa74f00090815242f9e10100b5"
+    },
+    "gameobject_scene": {
+      "va": "0x103941874",
+      "return_type": "UnityEngine.SceneManagement.Scene",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.GameObject",
+      "method_name": "get_scene",
+      "metadata_index": 21347,
+      "first32hex": "ff8300d1fd7b01a9fd430091ff0b00b9e123009105000094e00b40b9fd7b41a9"
+    },
+    "active_scene": {
+      "va": "0x1039636f8",
+      "return_type": "UnityEngine.SceneManagement.Scene",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.SceneManagement.SceneManager",
+      "method_name": "GetActiveScene",
+      "metadata_index": 23548,
+      "first32hex": "ff8300d1fd7b01a9fd430091ff0b00b9e023009105000094e00b40b9fd7b41a9"
+    },
+    "stage_manager": {
+      "va": "0x1015224f0",
+      "return_type": "LLAS.Scene.Live.Components.LiveCoreStageManager",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.LiveDirectorBase",
+      "method_name": "get_StageManager",
+      "metadata_index": 90662,
+      "first32hex": "002c40f9c0035fd6000c40f9c0035fd6f44fbea9fd7b01a9fd430091931002f0"
+    },
+    "stage_roots": {
+      "va": "0x10147f764",
+      "return_type": "LLAS.Scene.Live.Components.LiveCoreStage[]",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreStageManager",
+      "method_name": "get_Stages",
+      "metadata_index": 94608,
+      "first32hex": "000c40f9c0035fd6000c40f9c0035fd6001040f9c0035fd6ffc301d1eb2b016d"
+    },
+    "find_all_particles": {
+      "va": "0x103962b40",
+      "return_type": "UnityEngine.Object[]",
+      "parameter_types": [
+        "System.Type"
+      ],
+      "parameter_type_indices": [
+        6
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.Resources",
+      "method_name": "FindObjectsOfTypeAll",
+      "metadata_index": 22506,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa14ef00f0814643f9e10100b5"
+    },
+    "particle_time": {
+      "va": "0x1039a14c0",
+      "return_type": "System.Single",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.ParticleSystem",
+      "method_name": "get_time",
+      "metadata_index": 25493,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa34ed00b081be44f9e10100b5"
+    },
+    "find_objects": {
+      "va": "0x1039535dc",
+      "return_type": "UnityEngine.Object[]",
+      "parameter_types": [
+        "System.Type"
+      ],
+      "parameter_type_indices": [
+        6
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.Object",
+      "method_name": "FindObjectsOfType",
+      "metadata_index": 22873,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa94ef00b081ee47f9e10100b5"
+    },
+    "timeline": {
+      "va": "0x101520c50",
+      "return_type": "UnityEngine.Playables.PlayableDirector",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.LiveDirectorBase",
+      "method_name": "get_TimelineDirector",
+      "metadata_index": 90659,
+      "first32hex": "002040f9c0035fd6fa67bba9f85f01a9f65702a9f44f03a9fd7b04a9fd030191"
+    },
+    "camera_manager": {
+      "va": "0x10151c8b4",
+      "return_type": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.LiveDirectorBase",
+      "method_name": "get_CameraManager",
+      "metadata_index": 90660,
+      "first32hex": "002440f9c0035fd6f44fbea9fd7b01a9fd430091131440f9730000b5000080d2"
+    },
+    "member_manager": {
+      "va": "0x101520e18",
+      "return_type": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.LiveDirectorBase",
+      "method_name": "get_MemberManager",
+      "metadata_index": 90661,
+      "first32hex": "002840f9c0035fd6f85fbca9f65701a9f44f02a9fd7b03a9fdc30091f30303aa"
+    },
+    "music_machine": {
+      "va": "0x101522ba0",
+      "return_type": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.LiveDirectorBase",
+      "method_name": "get_MusicMachine",
+      "metadata_index": 90664,
+      "first32hex": "003440f9c0035fd6013400f9c0035fd6003840f9c0035fd6013800f9c0035fd6"
+    },
+    "final_overlay": {
+      "va": "0x101480c1c",
+      "return_type": "LLAS.Scene.Live.Components.LiveCoreOverlayCamera",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "method_name": "get_OverlayCamera",
+      "metadata_index": 93886,
+      "first32hex": "002440f9c0035fd6003440f9c0035fd6013400f9c0035fd6f44fbea9fd7b01a9"
+    },
+    "reset_components": {
+      "va": "0x101522e24",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Boolean"
+      ],
+      "parameter_type_indices": [
+        478
+      ],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.LiveDirectorBase",
+      "method_name": "ResetComponents",
+      "metadata_index": 90677,
+      "first32hex": "f657bda9f44f01a9fd7b02a9fd830091f30301aaf40300aa152440f9750000b5"
+    },
+    "resize_cameras": {
+      "va": "0x101481128",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "method_name": "Update3DCameraRenderTextures",
+      "metadata_index": 93895,
+      "first32hex": "ff0302d1eb2b016de923026dfa6703a9f85f04a9f65705a9f44f06a9fd7b07a9"
+    },
+    "time_get": {
+      "va": "0x10397c744",
+      "return_type": "System.Double",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Playables.PlayableDirector",
+      "method_name": "get_time",
+      "metadata_index": 24708,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa54ee00d081ca41f9e10100b5"
+    },
+    "time_set": {
+      "va": "0x10397c6c8",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Double"
+      ],
+      "parameter_type_indices": [
+        793
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Playables.PlayableDirector",
+      "method_name": "set_time",
+      "metadata_index": 24707,
+      "first32hex": "ff0301d1e923016df44f02a9fd7b03a9fdc300910840601ef30300aa54ee00d0"
+    },
+    "mode_set": {
+      "va": "0x10397c64c",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.Playables.DirectorUpdateMode"
+      ],
+      "parameter_type_indices": [
+        120841
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Playables.PlayableDirector",
+      "method_name": "set_timeUpdateMode",
+      "metadata_index": 24706,
+      "first32hex": "ff0301d1f65701a9f44f02a9fd7b03a9fdc30091f30301aaf40300aa55ee00d0"
+    },
+    "state_get": {
+      "va": "0x10397c230",
+      "return_type": "UnityEngine.Playables.PlayState",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Playables.PlayableDirector",
+      "method_name": "get_state",
+      "metadata_index": 24698,
+      "first32hex": "01000014ffc300d1f44f01a9fd7b02a9fd830091f30300aa54ee00d081ea41f9"
+    },
+    "play": {
+      "va": "0x10397c888",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Playables.PlayableDirector",
+      "method_name": "Play",
+      "metadata_index": 24711,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa54ee00d081d641f9e10100b5"
+    },
+    "stop": {
+      "va": "0x10397c8f4",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Playables.PlayableDirector",
+      "method_name": "Stop",
+      "metadata_index": 24712,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa54ee00d081da41f9e10100b5"
+    },
+    "pause": {
+      "va": "0x10397c960",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Playables.PlayableDirector",
+      "method_name": "Pause",
+      "metadata_index": 24713,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa54ee00d081de41f9e10100b5"
+    },
+    "evaluate": {
+      "va": "0x10397c81c",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Playables.PlayableDirector",
+      "method_name": "Evaluate",
+      "metadata_index": 24710,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa54ee00d081d241f9e10100b5"
+    },
+    "rt_constructor": {
+      "va": "0x10395f3f8",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Int32",
+        "System.Int32",
+        "System.Int32",
+        "UnityEngine.RenderTextureFormat",
+        "UnityEngine.RenderTextureReadWrite"
+      ],
+      "parameter_type_indices": [
+        177,
+        177,
+        177,
+        119970,
+        119979
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.RenderTexture",
+      "method_name": ".ctor",
+      "metadata_index": 22770,
+      "first32hex": "f85fbca9f65701a9f44f02a9fd7b03a9fdc30091f30305aaf50304aaf60303aa"
+    },
+    "rt_create": {
+      "va": "0x10395fc64",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.RenderTexture",
+      "method_name": "Create",
+      "metadata_index": 22791,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa34ef00d0817242f9e10100b5"
+    },
+    "rt_created": {
+      "va": "0x10395fd3c",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.RenderTexture",
+      "method_name": "IsCreated",
+      "metadata_index": 22793,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa34ef00d0817a42f9e10100b5"
+    },
+    "rt_release": {
+      "va": "0x10395fcd0",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.RenderTexture",
+      "method_name": "Release",
+      "metadata_index": 22792,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aa34ef00d0817642f9e10100b5"
+    },
+    "rt_active_get": {
+      "va": "0x10395fac4",
+      "return_type": "UnityEngine.RenderTexture",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.RenderTexture",
+      "method_name": "get_active",
+      "metadata_index": 22785,
+      "first32hex": "cdffff17e4ffff17ff8300d1fd7b01a9fd430091ff7f00a9e103009105000094"
+    },
+    "rt_active_set": {
+      "va": "0x10395fac8",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.RenderTexture"
+      ],
+      "parameter_type_indices": [
+        11786
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.RenderTexture",
+      "method_name": "set_active",
+      "metadata_index": 22786,
+      "first32hex": "e4ffff17ff8300d1fd7b01a9fd430091ff7f00a9e103009105000094e00740a9"
+    },
+    "texture_constructor": {
+      "va": "0x10396e388",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Int32",
+        "System.Int32",
+        "UnityEngine.TextureFormat",
+        "System.Boolean"
+      ],
+      "parameter_type_indices": [
+        177,
+        177,
+        119964,
+        478
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Texture2D",
+      "method_name": ".ctor",
+      "metadata_index": 22637,
+      "first32hex": "f85fbca9f65701a9f44f02a9fd7b03a9fdc30091f30304aaf40303aaf50302aa"
+    },
+    "read_pixels": {
+      "va": "0x103970088",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.Rect",
+        "System.Int32",
+        "System.Int32",
+        "System.Boolean"
+      ],
+      "parameter_type_indices": [
+        6703,
+        177,
+        177,
+        478
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Texture2D",
+      "method_name": "ReadPixels",
+      "metadata_index": 22697,
+      "first32hex": "ffc301d1eb2b016de923026df85f03a9f65704a9f44f05a9fd7b06a9fd830191"
+    },
+    "image_pointer": {
+      "va": "0x10396ee28",
+      "return_type": "System.IntPtr",
+      "parameter_types": [
+        "System.Int32"
+      ],
+      "parameter_type_indices": [
+        177
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Texture2D",
+      "method_name": "GetWritableImageData",
+      "metadata_index": 22657,
+      "first32hex": "ff0301d1f65701a9f44f02a9fd7b03a9fdc30091f30301aaf40300aab5ee00f0"
+    },
+    "image_size": {
+      "va": "0x10396eea4",
+      "return_type": "System.Int64",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Texture2D",
+      "method_name": "GetRawImageDataSize",
+      "metadata_index": 22658,
+      "first32hex": "ffc300d1f44f01a9fd7b02a9fd830091f30300aab4ee00f081c246f9e10100b5"
+    },
+    "blit": {
+      "va": "0x10394258c",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.Texture",
+        "UnityEngine.RenderTexture"
+      ],
+      "parameter_type_indices": [
+        6732,
+        11786
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.Graphics",
+      "method_name": "Blit",
+      "metadata_index": 21391,
+      "first32hex": "f657bda9f44f01a9fd7b02a9fd830091f30301aaf40300aa15f000d0a8a26139"
+    },
+    "destroy": {
+      "va": "0x103953490",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.Object"
+      ],
+      "parameter_type_indices": [
+        6361
+      ],
+      "is_static": true,
+      "ownerFullName": "UnityEngine.Object",
+      "method_name": "Destroy",
+      "metadata_index": 22870,
+      "first32hex": "f44fbea9fd7b01a9fd430091f30300aa94ef00b088027f39e8000037287300b0"
+    },
+    "job_complete": {
+      "va": "0x1001908d0",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "Unity.Jobs.JobHandle",
+      "method_name": "Complete",
+      "metadata_index": 23632,
+      "first32hex": "00400091f26ade1400400091256bde14f657bda9f44f01a9fd7b02a9fd830091",
+      "unboxed_call_va": "0x10392b49c",
+      "unboxed_first32hex": "f44fbea9fd7b01a9fd430091f30300aad4f0009088227739e8000037087400b0",
+      "boxed_adjustor_this_bytes": 16,
+      "original_member_unboxed_calls": [
+        {
+          "va": "0x101489b24",
+          "instruction": "0x9492865e"
+        },
+        {
+          "va": "0x101489b64",
+          "instruction": "0x9492864e"
+        }
+      ]
+    },
+    "apply_transform": {
+      "va": "0x10148a204",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "method_name": "ApplyTransform",
+      "metadata_index": 94065,
+      "first32hex": "ff4303d1eb2b056de923066dfc6f07a9fa6708a9f85f09a9f6570aa9f44f0ba9"
+    },
+    "request_safe": {
+      "va": "0x10148a000",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "method_name": "RequestAllSafeCorrect",
+      "metadata_index": 94061,
+      "first32hex": "4800805208a000b9c0035fd6ff4302d1eb2b016de923026dfc6f03a9fa6704a9"
+    },
+    "manager_bones": {
+      "va": "0x10183e110",
+      "return_type": "LLAS.Components.Members.SwingBone[]",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Components.Members.SwingBoneManager",
+      "method_name": "GetSwingBones",
+      "metadata_index": 96142,
+      "first32hex": "002840f9c0035fd6002040f9c0035fd6f85fbca9f65701a9f44f02a9fd7b03a9"
+    },
+    "manager_pause_get": {
+      "va": "0x10183b548",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.Components.Members.SwingBoneManager",
+      "method_name": "get_Paused",
+      "metadata_index": 96104,
+      "first32hex": "008c4139c0035fd6018c0139c0035fd600e04039c0035fd601e00039c0035fd6"
+    },
+    "manager_pause_set": {
+      "va": "0x10183b550",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Boolean"
+      ],
+      "parameter_type_indices": [
+        478
+      ],
+      "is_static": false,
+      "ownerFullName": "LLAS.Components.Members.SwingBoneManager",
+      "method_name": "set_Paused",
+      "metadata_index": 96105,
+      "first32hex": "018c0139c0035fd600e04039c0035fd601e00039c0035fd600e44039c0035fd6"
+    },
+    "position": {
+      "va": "0x103973314",
+      "return_type": "UnityEngine.Vector3",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Transform",
+      "method_name": "get_position",
+      "metadata_index": 23708,
+      "first32hex": "ff8300d1fd7b01a9fd430091ff0b00b9ff0300f9e103009106000094e007402d"
+    },
+    "rotation_get": {
+      "va": "0x10397392c",
+      "return_type": "UnityEngine.Quaternion",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Transform",
+      "method_name": "get_localRotation",
+      "metadata_index": 23727,
+      "first32hex": "ff8300d1fd7b01a9fd430091ff7f00a9e103009124020094e007402de20f412d"
+    },
+    "rotation_set": {
+      "va": "0x103973a04",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.Quaternion"
+      ],
+      "parameter_type_indices": [
+        6598
+      ],
+      "is_static": false,
+      "ownerFullName": "UnityEngine.Transform",
+      "method_name": "set_localRotation",
+      "metadata_index": 23728,
+      "first32hex": "ff8300d1fd7b01a9fd430091e007002de20f012de10300910c020094fd7b41a9"
+    },
+    "sound_pause": {
+      "va": "0x1016615bc",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "System.Boolean"
+      ],
+      "parameter_type_indices": [
+        478
+      ],
+      "is_static": false,
+      "ownerFullName": "LLAS.SoundPlayer",
+      "method_name": "Pause",
+      "metadata_index": 41158,
+      "first32hex": "f44fbea9fd7b01a9fd430091130840f921010034730000b5000080d275fbe697"
+    },
+    "sound_paused": {
+      "va": "0x101661bcc",
+      "return_type": "System.Boolean",
+      "parameter_types": [],
+      "parameter_type_indices": [],
+      "is_static": false,
+      "ownerFullName": "LLAS.SoundPlayer",
+      "method_name": "IsPaused",
+      "metadata_index": 41180,
+      "first32hex": "f44fbea9fd7b01a9fd430091130840f9730000b5000080d2f2f9e697e00313aa"
+    },
+    "hook[OVERLAY]": {
+      "va": "0x10148deb4",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "UnityEngine.RenderTexture",
+        "UnityEngine.RenderTexture"
+      ],
+      "parameter_type_indices": [
+        11786,
+        11786
+      ],
+      "is_static": false,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreOverlayCamera",
+      "method_name": "OnRenderImage",
+      "metadata_index": 93958,
+      "first32hex": "f657bda9f44f01a9fd7b02a9fd830091f30302aaf40301aaf50300aa56150290"
+    },
+    "cri_waveform": {
+      "va": "0x1012c8eac",
+      "return_type": "System.Boolean",
+      "parameter_types": [
+        "System.String",
+        "WaveformInfo&"
+      ],
+      "parameter_type_indices": [
+        87,
+        124603
+      ],
+      "is_static": false,
+      "ownerFullName": "CriAtomExAcb",
+      "method_name": "GetWaveFormInfo",
+      "metadata_index": 31841,
+      "first32hex": "ffc301d1f85f03a9f65704a9f44f05a9fd7b06a9fd830191f40302aaf50301aa"
+    },
+    "pause_broadcast": {
+      "va": "0x1032ba900",
+      "return_type": "System.Void",
+      "parameter_types": [
+        "LLAS.MBus.Live.PauseMessage"
+      ],
+      "is_static": false,
+      "ownerFullName": "KLab.MessageBuses.DeferredMessageBus`1",
+      "method_name": "Broadcast",
+      "metadata_index": 28635,
+      "method_spec_index": 24971,
+      "method_info_cell_va": "0x1058bc428",
+      "method_info_usage_lists": [
+        42488,
+        42489
+      ],
+      "first32hex": "f657bda9f44f01a9fd7b02a9fd830091f50302aaf30301aa140840f9740000b5",
+      "generic_argument": "LLAS.MBus.Live.PauseMessage",
+      "invoker_index": 3875
+    },
+    "pause_dispatch": {
+      "va": "0x1032ba950",
+      "return_type": "System.Void",
+      "parameter_types": [],
+      "is_static": false,
+      "ownerFullName": "KLab.MessageBuses.DeferredMessageBus`1",
+      "method_name": "Dispatch",
+      "metadata_index": 28636,
+      "method_spec_index": 24260,
+      "method_info_cell_va": "0x1058bc440",
+      "method_info_usage_lists": [
+        42322,
+        44168,
+        44169
+      ],
+      "first32hex": "f44fbea9fd7b01a9fd430091f40301aa130840f9730000b5000080d290967597",
+      "generic_argument": "LLAS.MBus.Live.PauseMessage",
+      "invoker_index": 23
+    }
+  },
+  "fields": {
+    "loading": {
+      "offset": 24,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "System.Boolean",
+      "metadata_index": 67022,
+      "type_index": 109361,
+      "field_name": "isLoading"
+    },
+    "music_time": {
+      "offset": 28,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "System.Int32",
+      "metadata_index": 67023,
+      "type_index": 109333,
+      "field_name": "musicPlayingTime"
+    },
+    "length": {
+      "offset": 64,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "System.Int32",
+      "metadata_index": 67029,
+      "type_index": 109333,
+      "field_name": "<MusicLength>k__BackingField"
+    },
+    "gain": {
+      "offset": 36,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "System.Single",
+      "metadata_index": 67025,
+      "type_index": 113818,
+      "field_name": "defaultMusicVolume"
+    },
+    "sound": {
+      "offset": 40,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "LLAS.ISoundPlayer",
+      "metadata_index": 67026,
+      "type_index": 154400,
+      "field_name": "soundPlayer"
+    },
+    "cue": {
+      "offset": 120,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "LLAS.DM.ValueObject.SoundCueVO",
+      "metadata_index": 67040,
+      "type_index": 129904,
+      "field_name": "musicCue"
+    },
+    "playing": {
+      "offset": 80,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "System.Boolean",
+      "metadata_index": 67031,
+      "type_index": 109361,
+      "field_name": "<IsPlayingMusic>k__BackingField"
+    },
+    "pausing": {
+      "offset": 81,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "System.Boolean",
+      "metadata_index": 67032,
+      "type_index": 109361,
+      "field_name": "<IsPausingMusic>k__BackingField"
+    },
+    "paused": {
+      "offset": 82,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "System.Boolean",
+      "metadata_index": 67033,
+      "type_index": 109361,
+      "field_name": "<IsPausedMusic>k__BackingField"
+    },
+    "finished": {
+      "offset": 83,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveMusicMachine",
+      "type": "System.Boolean",
+      "metadata_index": 67034,
+      "type_index": 109361,
+      "field_name": "<IsFinishedMusic>k__BackingField"
+    },
+    "managers": {
+      "offset": 32,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "LLAS.Components.Members.SwingBoneManager[]",
+      "metadata_index": 66732,
+      "type_index": 154295,
+      "field_name": "swingBoneManagers"
+    },
+    "bone_array": {
+      "offset": 48,
+      "size": 16,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "Unity.Collections.NativeArray`1<LLAS.Components.Members.SwingBoneTransformBuffer>",
+      "metadata_index": 66734,
+      "type_index": 154296,
+      "field_name": "boneTransforms"
+    },
+    "collider_array": {
+      "offset": 80,
+      "size": 16,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "Unity.Collections.NativeArray`1<LLAS.Components.Members.SwingColliderTransformBuffer>",
+      "metadata_index": 66736,
+      "type_index": 154298,
+      "field_name": "colliderTransforms"
+    },
+    "job_index": {
+      "offset": 164,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "System.Int32",
+      "metadata_index": 66744,
+      "type_index": 109333,
+      "field_name": "keyJobBuffer"
+    },
+    "safety": {
+      "offset": 160,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "System.Int32",
+      "metadata_index": 66743,
+      "type_index": 109333,
+      "field_name": "requestSkirtSafeCount"
+    },
+    "knee_l": {
+      "offset": 120,
+      "size": 12,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "UnityEngine.Vector3",
+      "metadata_index": 66739,
+      "type_index": 119702,
+      "field_name": "workKneeL"
+    },
+    "knee_r": {
+      "offset": 132,
+      "size": 12,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "UnityEngine.Vector3",
+      "metadata_index": 66740,
+      "type_index": 119702,
+      "field_name": "workKneeR"
+    },
+    "jobs_a": {
+      "offset": 168,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "Unity.Jobs.JobHandle[]",
+      "metadata_index": 66745,
+      "type_index": 154301,
+      "field_name": "swingBoneJobHandle"
+    },
+    "jobs_b": {
+      "offset": 176,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreMemberManager",
+      "type": "Unity.Jobs.JobHandle[]",
+      "metadata_index": 66746,
+      "type_index": 154301,
+      "field_name": "transformJobHandle"
+    },
+    "child": {
+      "offset": 32,
+      "size": 8,
+      "ownerFullName": "LLAS.Components.Members.SwingBone",
+      "type": "UnityEngine.Transform",
+      "metadata_index": 68164,
+      "type_index": 121140,
+      "field_name": "child"
+    },
+    "transform": {
+      "offset": 152,
+      "size": 8,
+      "ownerFullName": "LLAS.Components.Members.SwingBone",
+      "type": "UnityEngine.Transform",
+      "metadata_index": 68183,
+      "type_index": 121140,
+      "field_name": "transformCache"
+    },
+    "scalar_first": {
+      "offset": 176,
+      "size": 16,
+      "ownerFullName": "LLAS.Components.Members.SwingBone",
+      "type": "UnityEngine.Quaternion",
+      "metadata_index": 68187,
+      "type_index": 121146,
+      "field_name": "localRotation"
+    },
+    "scalar_end": {
+      "offset": 272,
+      "size": 8,
+      "ownerFullName": "LLAS.Components.Members.SwingBone",
+      "type": "System.Collections.Generic.List`1<UnityEngine.Quaternion>",
+      "metadata_index": 68202,
+      "type_index": 155131,
+      "field_name": "childOtherRot"
+    },
+    "current_tip": {
+      "offset": 200,
+      "size": 12,
+      "ownerFullName": "LLAS.Components.Members.SwingBone",
+      "type": "UnityEngine.Vector3",
+      "metadata_index": 68190,
+      "type_index": 119702,
+      "field_name": "currentTipPosition"
+    },
+    "previous_tip": {
+      "offset": 212,
+      "size": 12,
+      "ownerFullName": "LLAS.Components.Members.SwingBone",
+      "type": "UnityEngine.Vector3",
+      "metadata_index": 68191,
+      "type_index": 119702,
+      "field_name": "previousTipPosition"
+    },
+    "correct_adjust": {
+      "offset": 264,
+      "size": 1,
+      "ownerFullName": "LLAS.Components.Members.SwingBone",
+      "type": "System.Boolean",
+      "metadata_index": 68200,
+      "type_index": 109361,
+      "field_name": "<SafeCorrectAdjust>k__BackingField"
+    },
+    "ratio": {
+      "offset": 268,
+      "size": 4,
+      "ownerFullName": "LLAS.Components.Members.SwingBone",
+      "type": "System.Single",
+      "metadata_index": 68201,
+      "type_index": 113818,
+      "field_name": "skirtRotRatio"
+    },
+    "scene_pre_final": {
+      "offset": 121,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.EntryPoint.LiveMvScene",
+      "type": "System.Boolean",
+      "metadata_index": 62314,
+      "type_index": 109361,
+      "field_name": "isPreFinalized"
+    },
+    "scene_post_final": {
+      "offset": 122,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.EntryPoint.LiveMvScene",
+      "type": "System.Boolean",
+      "metadata_index": 62315,
+      "type_index": 109361,
+      "field_name": "isPostFinalized"
+    },
+    "scene_paused": {
+      "offset": 120,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.EntryPoint.LiveMvScene",
+      "type": "System.Boolean",
+      "metadata_index": 62313,
+      "type_index": 109361,
+      "field_name": "isPause"
+    },
+    "overlay_blur": {
+      "offset": 24,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreOverlayCamera",
+      "type": "System.Boolean",
+      "metadata_index": 66684,
+      "type_index": 109361,
+      "field_name": "isBlur"
+    },
+    "camera_quality": {
+      "offset": 40,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "LLAS.DM.ValueObject.LiveQualitySettingVO",
+      "metadata_index": 66637,
+      "type_index": 151560,
+      "field_name": "liveQualitySetting"
+    },
+    "particle_native": {
+      "offset": 16,
+      "size": 8,
+      "ownerFullName": "UnityEngine.Object",
+      "type": "System.IntPtr",
+      "metadata_index": 13729,
+      "type_index": 109304,
+      "field_name": "m_CachedPtr"
+    },
+    "camera_split": {
+      "offset": 104,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "LLAS.Scene.Live.Components.LiveSplitScreenEffect",
+      "metadata_index": 66645,
+      "type_index": 154243,
+      "field_name": "<SplitScreenEffect>k__BackingField"
+    },
+    "split_cameras": {
+      "offset": 40,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveSplitScreenEffect",
+      "type": "UnityEngine.Camera[]",
+      "metadata_index": 67080,
+      "type_index": 147699,
+      "field_name": "cameras"
+    },
+    "camera_buffers[0]": {
+      "offset": 120,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "UnityEngine.RenderTexture",
+      "metadata_index": 66650,
+      "type_index": 125840,
+      "field_name": "beforePostprocessingBuffer"
+    },
+    "camera_buffers[1]": {
+      "offset": 128,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "UnityEngine.RenderTexture",
+      "metadata_index": 66651,
+      "type_index": 125840,
+      "field_name": "afterPostprocessingBuffer"
+    },
+    "camera_buffers[2]": {
+      "offset": 136,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "UnityEngine.RenderTexture",
+      "metadata_index": 66652,
+      "type_index": 125840,
+      "field_name": "depthBuffer"
+    },
+    "camera_buffers[3]": {
+      "offset": 144,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "UnityEngine.RenderTexture",
+      "metadata_index": 66653,
+      "type_index": 125840,
+      "field_name": "captureRenderTexture"
+    },
+    "camera_list": {
+      "offset": 56,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "LLAS.Scene.Live.Components.LiveCoreCamera[]",
+      "metadata_index": 66639,
+      "type_index": 154240,
+      "field_name": "cameras"
+    },
+    "camera_cutin": {
+      "offset": 64,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "LLAS.Components.SkillCutin.SkillCutinCamera",
+      "metadata_index": 66640,
+      "type_index": 154241,
+      "field_name": "cutinCamera"
+    },
+    "camera_overlay": {
+      "offset": 72,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "LLAS.Scene.Live.Components.LiveCoreOverlayCamera",
+      "metadata_index": 66641,
+      "type_index": 154242,
+      "field_name": "overlayCamera"
+    },
+    "camera_cutin_overlay": {
+      "offset": 80,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "LLAS.Scene.Live.Components.LiveCoreOverlayCamera",
+      "metadata_index": 66642,
+      "type_index": 154242,
+      "field_name": "cutinOverlayCamera"
+    },
+    "core_command_buffers": {
+      "offset": 64,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCamera",
+      "type": "System.Collections.Generic.List`1<UnityEngine.Rendering.CommandBuffer>",
+      "metadata_index": 66630,
+      "type_index": 154236,
+      "field_name": "commandBuffers"
+    },
+    "core_quality": {
+      "offset": 56,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCamera",
+      "type": "LLAS.DM.ValueObject.LiveQualitySettingVO",
+      "metadata_index": 66629,
+      "type_index": 151560,
+      "field_name": "liveQualitySetting"
+    },
+    "camera_current_width": {
+      "offset": 152,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "System.Int32",
+      "metadata_index": 66654,
+      "type_index": 109333,
+      "field_name": "currentWidth"
+    },
+    "camera_current_height": {
+      "offset": 156,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "System.Int32",
+      "metadata_index": 66655,
+      "type_index": 109333,
+      "field_name": "currentHeight"
+    },
+    "camera_pause_step": {
+      "offset": 116,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "CameraPauseStep",
+      "metadata_index": 66649,
+      "type_index": 154244,
+      "field_name": "cameraPauseStep"
+    },
+    "camera_live_blur": {
+      "offset": 96,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "System.Boolean",
+      "metadata_index": 66644,
+      "type_index": 109361,
+      "field_name": "isLiveEndBlur"
+    },
+    "camera_skill_pause": {
+      "offset": 113,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "System.Boolean",
+      "metadata_index": 66647,
+      "type_index": 109361,
+      "field_name": "isSkillCutinPause"
+    },
+    "camera_msaa_changed": {
+      "offset": 37,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "System.Boolean",
+      "metadata_index": 66636,
+      "type_index": 109361,
+      "field_name": "isMSAALevelChanged"
+    },
+    "camera_buffer_write": {
+      "offset": 112,
+      "size": 1,
+      "ownerFullName": "LLAS.Scene.Live.Components.LiveCoreCameraManager",
+      "type": "System.Boolean",
+      "metadata_index": 66646,
+      "type_index": 109361,
+      "field_name": "<BufferWrite>k__BackingField"
+    },
+    "scene_mediator": {
+      "offset": 96,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.EntryPoint.LiveMvScene",
+      "type": "LLAS.Scene.Live.LivePauseMediator",
+      "metadata_index": 62310,
+      "type_index": 145129,
+      "field_name": "pauseMediator"
+    },
+    "mediator_state": {
+      "offset": 16,
+      "size": 4,
+      "ownerFullName": "LLAS.Scene.Live.LivePauseMediator",
+      "type": "State",
+      "metadata_index": 63941,
+      "type_index": 152856,
+      "field_name": "currentState"
+    },
+    "mediator_pause_bus": {
+      "offset": 24,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.LivePauseMediator",
+      "type": "LLAS.MBus.Live.PauseMBus",
+      "metadata_index": 63942,
+      "type_index": 145151,
+      "field_name": "pauseMBus"
+    },
+    "mediator_resume_bus": {
+      "offset": 40,
+      "size": 8,
+      "ownerFullName": "LLAS.Scene.Live.LivePauseMediator",
+      "type": "LLAS.MBus.Live.ResumeMBus",
+      "metadata_index": 63944,
+      "type_index": 145152,
+      "field_name": "resumeMBus"
+    },
+    "cri_acb": {
+      "offset": 40,
+      "size": 8,
+      "ownerFullName": "CriAtomCueSheet",
+      "type": "CriAtomExAcb",
+      "metadata_index": 18297,
+      "type_index": 124403,
+      "field_name": "acb"
+    },
+    "cri_acb_path": {
+      "offset": 24,
+      "size": 8,
+      "ownerFullName": "CriAtomCueSheet",
+      "type": "System.String",
+      "metadata_index": 18295,
+      "type_index": 109436,
+      "field_name": "acbFile"
+    },
+    "cri_awb_path": {
+      "offset": 32,
+      "size": 8,
+      "ownerFullName": "CriAtomCueSheet",
+      "type": "System.String",
+      "metadata_index": 18296,
+      "type_index": 109436,
+      "field_name": "awbFile"
+    },
+    "wave_id": {
+      "offset": 16,
+      "size": 4,
+      "ownerFullName": "WaveformInfo",
+      "type": "System.Int32",
+      "metadata_index": 18506,
+      "type_index": 109378,
+      "field_name": "waveId"
+    },
+    "wave_rate": {
+      "offset": 24,
+      "size": 4,
+      "ownerFullName": "WaveformInfo",
+      "type": "System.Int32",
+      "metadata_index": 18508,
+      "type_index": 109378,
+      "field_name": "samplingRate"
+    },
+    "wave_channels": {
+      "offset": 28,
+      "size": 4,
+      "ownerFullName": "WaveformInfo",
+      "type": "System.Int32",
+      "metadata_index": 18509,
+      "type_index": 109378,
+      "field_name": "numChannels"
+    },
+    "wave_samples": {
+      "offset": 32,
+      "size": 8,
+      "ownerFullName": "WaveformInfo",
+      "type": "System.Int64",
+      "metadata_index": 18510,
+      "type_index": 109604,
+      "field_name": "numSamples"
+    },
+    "wave_streaming": {
+      "offset": 40,
+      "size": 1,
+      "ownerFullName": "WaveformInfo",
+      "type": "System.Boolean",
+      "metadata_index": 18511,
+      "type_index": 109648,
+      "field_name": "streamingFlag"
+    },
+    "cue_sheet": {
+      "offset": 16,
+      "size": 8,
+      "ownerFullName": "LLAS.DM.ValueObject.SoundCueVO",
+      "type": "System.String",
+      "metadata_index": 34316,
+      "type_index": 109358,
+      "field_name": "<CueSheetName>k__BackingField"
+    },
+    "cue_name": {
+      "offset": 24,
+      "size": 8,
+      "ownerFullName": "LLAS.DM.ValueObject.SoundCueVO",
+      "type": "System.String",
+      "metadata_index": 34317,
+      "type_index": 109358,
+      "field_name": "<CueName>k__BackingField"
+    },
+    "list_items": {
+      "offset": 16,
+      "size": 8,
+      "ownerFullName": "System.Collections.Generic.List`1",
+      "type": "!13:335[]",
+      "metadata_index": 6484,
+      "type_index": 114238,
+      "field_name": "_items",
+      "metadata_open_generic_offset": 0,
+      "layout_proof": "Original LiveCoreCamera.SetRenderTextures -> shared reference List.Add -> ldr x23,[x0,#0x10]"
+    },
+    "list_size": {
+      "offset": 24,
+      "size": 4,
+      "ownerFullName": "System.Collections.Generic.List`1",
+      "type": "System.Int32",
+      "metadata_index": 6485,
+      "type_index": 109333,
+      "field_name": "_size",
+      "metadata_open_generic_offset": 0,
+      "layout_proof": "Original LiveCoreCamera.SetRenderTextures -> shared reference List.Add -> ldr w22,[x0,#0x18]"
+    }
+  },
+  "classes": {
+    "CriAtom": {
+      "type_index": 4482,
+      "il2cpp_type_index": 109159,
+      "raw_type_va": "0x104811dc0",
+      "value_size": null,
+      "instance_size": 64,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "CriAtomCueSheet": {
+      "type_index": 4481,
+      "il2cpp_type_index": 11546,
+      "raw_type_va": "0x1047e1cb0",
+      "value_size": null,
+      "instance_size": 56,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "CriAtomExAcb": {
+      "type_index": 4551,
+      "il2cpp_type_index": 124408,
+      "raw_type_va": "0x10483b0d0",
+      "value_size": null,
+      "instance_size": 56,
+      "native_size": 4294967295,
+      "parent": "CriDisposable"
+    },
+    "DotUnder.State": {
+      "type_index": 17579,
+      "il2cpp_type_index": 163834,
+      "raw_type_va": "0x10489cf30",
+      "value_size": null,
+      "instance_size": 16,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "DotUnder.StateObject": {
+      "type_index": 17748,
+      "il2cpp_type_index": 163836,
+      "raw_type_va": "0x10489cf50",
+      "value_size": null,
+      "instance_size": 848,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "KLab.MessageBuses.DeferredMessageBus": {
+      "type_index": 4120,
+      "il2cpp_type_index": 122953,
+      "raw_type_va": "0x104837d90",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "KLab.MessageBuses.DeferredMessageBus`1": {
+      "type_index": 4128,
+      "il2cpp_type_index": 123004,
+      "raw_type_va": "0x104837f30",
+      "value_size": null,
+      "instance_size": 0,
+      "native_size": 0,
+      "parent": "System.Object"
+    },
+    "LLAS.Components.Members.SwingBone": {
+      "type_index": 15105,
+      "il2cpp_type_index": 86416,
+      "raw_type_va": "0x104803b50",
+      "value_size": null,
+      "instance_size": 280,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Components.Members.SwingBoneManager": {
+      "type_index": 15110,
+      "il2cpp_type_index": 86443,
+      "raw_type_va": "0x104803be0",
+      "value_size": null,
+      "instance_size": 184,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Components.SkillCutin.SkillCutinCamera": {
+      "type_index": 14966,
+      "il2cpp_type_index": 108939,
+      "raw_type_va": "0x10480f540",
+      "value_size": null,
+      "instance_size": 48,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.DM.LiveGamePauseDM": {
+      "type_index": 7519,
+      "il2cpp_type_index": 133636,
+      "raw_type_va": "0x104853b60",
+      "value_size": null,
+      "instance_size": 16,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "LLAS.DM.ValueObject.LiveQualitySettingVO": {
+      "type_index": 8619,
+      "il2cpp_type_index": 133593,
+      "raw_type_va": "0x1048538d0",
+      "value_size": null,
+      "instance_size": 56,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "LLAS.DM.ValueObject.SoundCueVO": {
+      "type_index": 8773,
+      "il2cpp_type_index": 18431,
+      "raw_type_va": "0x1047e62c0",
+      "value_size": null,
+      "instance_size": 40,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "LLAS.MBus.Live.PauseMessage": {
+      "type_index": 6768,
+      "il2cpp_type_index": 24497,
+      "raw_type_va": "0x1047e7eb0",
+      "value_size": 1,
+      "instance_size": 17,
+      "native_size": 4,
+      "parent": "System.ValueType"
+    },
+    "LLAS.Scene.EntryPoint.LiveMvScene": {
+      "type_index": 13849,
+      "il2cpp_type_index": 151579,
+      "raw_type_va": "0x10487f400",
+      "value_size": null,
+      "instance_size": 136,
+      "native_size": 4294967295,
+      "parent": "LLAS.ProductSceneBase`1<TransitionData>"
+    },
+    "LLAS.Scene.Live.Components.LiveCoreCamera": {
+      "type_index": 14785,
+      "il2cpp_type_index": 85072,
+      "raw_type_va": "0x1048026b0",
+      "value_size": null,
+      "instance_size": 80,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Scene.Live.Components.LiveCoreCameraManager": {
+      "type_index": 14786,
+      "il2cpp_type_index": 152776,
+      "raw_type_va": "0x104882e50",
+      "value_size": null,
+      "instance_size": 160,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Scene.Live.Components.LiveCoreMemberManager": {
+      "type_index": 14802,
+      "il2cpp_type_index": 85172,
+      "raw_type_va": "0x104802ca0",
+      "value_size": null,
+      "instance_size": 184,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Scene.Live.Components.LiveCoreOverlayCamera": {
+      "type_index": 14793,
+      "il2cpp_type_index": 154239,
+      "raw_type_va": "0x104886340",
+      "value_size": null,
+      "instance_size": 80,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Scene.Live.Components.LiveCoreStageManager": {
+      "type_index": 14879,
+      "il2cpp_type_index": 152777,
+      "raw_type_va": "0x104882e90",
+      "value_size": null,
+      "instance_size": 32,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Scene.Live.Components.LiveMusicMachine": {
+      "type_index": 14846,
+      "il2cpp_type_index": 76679,
+      "raw_type_va": "0x1047fb030",
+      "value_size": null,
+      "instance_size": 136,
+      "native_size": 4294967295,
+      "parent": "LLAS.MonoSingleton`1<LLAS.Scene.Live.Components.LiveMusicMachine>"
+    },
+    "LLAS.Scene.Live.Components.LiveSplitScreenEffect": {
+      "type_index": 14854,
+      "il2cpp_type_index": 85258,
+      "raw_type_va": "0x104803100",
+      "value_size": null,
+      "instance_size": 104,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Scene.Live.LiveDirectorBase": {
+      "type_index": 14304,
+      "il2cpp_type_index": 152806,
+      "raw_type_va": "0x104883020",
+      "value_size": null,
+      "instance_size": 120,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.MonoBehaviour"
+    },
+    "LLAS.Scene.Live.LivePauseMediator": {
+      "type_index": 14311,
+      "il2cpp_type_index": 152854,
+      "raw_type_va": "0x10486c410",
+      "value_size": null,
+      "instance_size": 48,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "LLAS.SoundPlayer": {
+      "type_index": 6253,
+      "il2cpp_type_index": 129921,
+      "raw_type_va": "0x10484af80",
+      "value_size": null,
+      "instance_size": 32,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "System.Collections.Generic.List`1": {
+      "type_index": 1470,
+      "il2cpp_type_index": 109178,
+      "raw_type_va": "0x104812090",
+      "value_size": null,
+      "instance_size": 0,
+      "native_size": 0,
+      "parent": "System.Object"
+    },
+    "Unity.Jobs.JobHandle": {
+      "type_index": 3487,
+      "il2cpp_type_index": 86500,
+      "raw_type_va": "0x104803c90",
+      "value_size": 16,
+      "instance_size": 32,
+      "native_size": 16,
+      "parent": "System.ValueType"
+    },
+    "UnityEngine.Behaviour": {
+      "type_index": 2994,
+      "il2cpp_type_index": 6343,
+      "raw_type_va": "0x1047de270",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Component"
+    },
+    "UnityEngine.Camera": {
+      "type_index": 2999,
+      "il2cpp_type_index": 6334,
+      "raw_type_va": "0x1047de210",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Behaviour"
+    },
+    "UnityEngine.Component": {
+      "type_index": 3013,
+      "il2cpp_type_index": 6352,
+      "raw_type_va": "0x1047de2a0",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Object"
+    },
+    "UnityEngine.GameObject": {
+      "type_index": 3033,
+      "il2cpp_type_index": 6417,
+      "raw_type_va": "0x1047de530",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Object"
+    },
+    "UnityEngine.Graphics": {
+      "type_index": 3042,
+      "il2cpp_type_index": 119874,
+      "raw_type_va": "0x10482f7b0",
+      "value_size": null,
+      "instance_size": 16,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "UnityEngine.Object": {
+      "type_index": 3329,
+      "il2cpp_type_index": 6361,
+      "raw_type_va": "0x1047de2d0",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 8,
+      "parent": "System.Object"
+    },
+    "UnityEngine.ParticleSystem": {
+      "type_index": 3689,
+      "il2cpp_type_index": 9801,
+      "raw_type_va": "0x1047e1390",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Component"
+    },
+    "UnityEngine.Playables.PlayableDirector": {
+      "type_index": 3619,
+      "il2cpp_type_index": 7199,
+      "raw_type_va": "0x1047df5c0",
+      "value_size": null,
+      "instance_size": 48,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Behaviour"
+    },
+    "UnityEngine.RenderTexture": {
+      "type_index": 3321,
+      "il2cpp_type_index": 11786,
+      "raw_type_va": "0x1047e2010",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Texture"
+    },
+    "UnityEngine.Rendering.CommandBuffer": {
+      "type_index": 3289,
+      "il2cpp_type_index": 6388,
+      "raw_type_va": "0x1047de410",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "UnityEngine.Rendering.RenderTargetIdentifier": {
+      "type_index": 3102,
+      "il2cpp_type_index": 6578,
+      "raw_type_va": "0x1047de820",
+      "value_size": 40,
+      "instance_size": 56,
+      "native_size": 40,
+      "parent": "System.ValueType"
+    },
+    "UnityEngine.Resources": {
+      "type_index": 3291,
+      "il2cpp_type_index": 120466,
+      "raw_type_va": "0x1048317a0",
+      "value_size": null,
+      "instance_size": 16,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "UnityEngine.SceneManagement.SceneManager": {
+      "type_index": 3456,
+      "il2cpp_type_index": 120987,
+      "raw_type_va": "0x104833070",
+      "value_size": null,
+      "instance_size": 16,
+      "native_size": 4294967295,
+      "parent": "System.Object"
+    },
+    "UnityEngine.Texture": {
+      "type_index": 3315,
+      "il2cpp_type_index": 6732,
+      "raw_type_va": "0x1047ded90",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Object"
+    },
+    "UnityEngine.Texture2D": {
+      "type_index": 3316,
+      "il2cpp_type_index": 6723,
+      "raw_type_va": "0x1047decf0",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Texture"
+    },
+    "UnityEngine.Transform": {
+      "type_index": 3505,
+      "il2cpp_type_index": 6580,
+      "raw_type_va": "0x1047de840",
+      "value_size": null,
+      "instance_size": 24,
+      "native_size": 4294967295,
+      "parent": "UnityEngine.Component"
+    },
+    "WaveformInfo": {
+      "type_index": 4517,
+      "il2cpp_type_index": 11598,
+      "raw_type_va": "0x1047e1df0",
+      "value_size": 40,
+      "instance_size": 56,
+      "native_size": 32,
+      "parent": "System.ValueType"
+    }
+  },
+  "missing": []
+}

@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "repository": "tagundo/elichika",
+  "run_id": 43728266918,
+  "workflow_id": 419049415,
+  "source_sha": "a7718f190f8c85ab4eb7415f9a43d7ae351723f2",
+  "modtools_sha": "b92bb0fdf3fed5b5d20c69fd2b7efbda15c84408",
+  "artifact": {
+    "id": 14167252534,
+    "name": "elichika-ios-runtime-inputs-NOT-IPA-a7718f190f8c85ab4eb7415f9a43d7ae351723f2",
+    "bytes": 2738231,
+    "sha256": "f2df70b53977689d8dda6a56c7a6c0307e04daf62d586202e348e99e38515703"
+  },
+  "manifest": {
+    "bytes": 40268,
+    "sha256": "2c1f33671bc315ca1feea7d1310c65789862cf04737f62b414a20abe32c92b14"
+  },
+  "compiler_inputs": {
+    "ios/runtime/build-requirements.txt": "e17529deecff52fe884fde1b7d4af72fc7af5b3a5144175a3302e965dcba53de",
+    "ios/runtime/build_codecs.py": "b4e822dd4f8891a58e64fcf745f826899a81e57a5a5dd2dce94cdadfb24f8333",
+    "ios/runtime/build_wheels.py": "57f7fbb5126f15f8df6783459966ba1bb16b2c53e0afb9f171763b7164e0f160",
+    "ios/runtime/runtime-lock.json": "e49781dde9a36757a239dd559f28ebc2073532ad0fee300176c1369ed45f4751",
+    "ios/runtime/texture65_library.cpp": "5b1f3a277184eff021df3f36ef23feb64ff5df142e2a09111a04605415e4af3b"
+  },
+  "scope": "Reusable exact device/Simulator wheel and codec compiler outputs; no app, runtime execution or Archive publication proof"
+}

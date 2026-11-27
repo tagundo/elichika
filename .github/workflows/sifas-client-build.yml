@@ -1,16 +1,15 @@
 name: SIFAS client build (Android FOVMOD and PlayCover)
 
-# Builds the modified SIFAS clients from the private tagundo/SIFAS-Client
-# sources. This public repository only holds the request file and this
-# workflow; the client sources are checked out with a read-only token.
+# Builds the modified SIFAS clients from sifas-client/ in this repository.
+# Both build inputs come from the public v2026.11.14.1 release:
+#   Android:   LLAS_GL_FOVMOD_b25.apk
+#   PlayCover: SIFAS_GL_Local_3.12.0_PlayCover_v5.ipa, restored to the pinned
+#              input with sifas-client/ios/build/inputs/SIFASFeatures.dylib
 #
 # Edit .github/sifas-client-build.json and push to start a build.
-# Required repository secrets:
-#   SIFAS_CLIENT_READ_TOKEN  fine-grained token, SIFAS-Client Contents: read-only
-#   CLIENT_KEYSTORE_B64, CLIENT_KEYSTORE_PASSWORD, CLIENT_KEY_ALIAS,
-#   CLIENT_KEY_PASSWORD      only when the request asks for a signed APK
-# android.signing_cert_sha256 in the request pins the signing certificate;
-# the build fails if the secrets hold a different key.
+# The APK is signed with the Elichika release key (RELEASE_* secrets, the same
+# key as the Elichika app). android.signing_cert_sha256 pins its certificate;
+# the build fails if the secrets hold any other key.
 # Artifacts are kept for 3 days.
 
 on:
@@ -31,7 +30,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      client_ref: ${{ steps.read.outputs.client_ref }}
       android: ${{ steps.read.outputs.android }}
       android_version: ${{ steps.read.outputs.android_version }}
       android_sign: ${{ steps.read.outputs.android_sign }}
@@ -51,42 +49,36 @@ jobs:
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, re
           request = json.load(open('.github/sifas-client-build.json'))
-          ref = request['client_ref']
-          assert re.fullmatch(r'[0-9a-f]{40}', ref), 'client_ref must be a full commit SHA'
           version = re.compile(r'20\d\d\.(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])\.[1-9]\d?')
           android, playcover = request.get('android', {}), request.get('playcover', {})
           for name, part in (('android', android), ('playcover', playcover)):
               if part.get('build'):
                   assert version.fullmatch(part['version']), f'{name}.version must look like YYYY.MM.DD.N'
-          print(f'client_ref={ref}')
+          cert = android.get('signing_cert_sha256', '').replace(':', '').lower()
+          assert not android.get('sign') or re.fullmatch(r'[0-9a-f]{64}', cert), \
+              'A signed build needs android.signing_cert_sha256'
           print(f"android={'true' if android.get('build') else 'false'}")
           print(f"android_version={android.get('version', '')}")
           print(f"android_sign={'true' if android.get('sign') else 'false'}")
-          cert = android.get('signing_cert_sha256', '').replace(':', '').lower()
-          assert not cert or re.fullmatch(r'[0-9a-f]{64}', cert), 'signing_cert_sha256 must be a SHA-256 digest'
           print(f'android_cert={cert}')
           print(f"playcover={'true' if playcover.get('build') else 'false'}")
           print(f"playcover_version={playcover.get('version', '')}")
           PY
           cat "$GITHUB_OUTPUT"
-      - name: Check that the required secrets exist
+      - name: Check that the signing secrets exist
+        if: steps.read.outputs.android_sign == 'true'
         env:
-          READ_TOKEN: ${{ secrets.SIFAS_CLIENT_READ_TOKEN }}
-          KEYSTORE: ${{ secrets.CLIENT_KEYSTORE_B64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.CLIENT_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.CLIENT_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.CLIENT_KEY_PASSWORD }}
-          SIGN: ${{ steps.read.outputs.android_sign }}
+          KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           missing=()
-          [[ -n "$READ_TOKEN" ]] || missing+=(SIFAS_CLIENT_READ_TOKEN)
-          if [[ "$SIGN" == true ]]; then
-            [[ -n "$KEYSTORE" ]] || missing+=(CLIENT_KEYSTORE_B64)
-            [[ -n "$KEYSTORE_PASSWORD" ]] || missing+=(CLIENT_KEYSTORE_PASSWORD)
-            [[ -n "$KEY_ALIAS" ]] || missing+=(CLIENT_KEY_ALIAS)
-            [[ -n "$KEY_PASSWORD" ]] || missing+=(CLIENT_KEY_PASSWORD)
-          fi
+          [[ -n "$KEYSTORE" ]] || missing+=(RELEASE_KEYSTORE_BASE64)
+          [[ -n "$STORE_PASSWORD" ]] || missing+=(RELEASE_STORE_PASSWORD)
+          [[ -n "$KEY_ALIAS" ]] || missing+=(RELEASE_KEY_ALIAS)
+          [[ -n "$KEY_PASSWORD" ]] || missing+=(RELEASE_KEY_PASSWORD)
           if (( ${#missing[@]} )); then
             echo "::error::Missing repository secrets: ${missing[*]}"
             exit 1
@@ -100,15 +92,11 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: client
+        working-directory: sifas-client
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: tagundo/SIFAS-Client
-          ref: ${{ needs.request.outputs.client_ref }}
-          token: ${{ secrets.SIFAS_CLIENT_READ_TOKEN }}
           persist-credentials: false
-          path: client
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -148,15 +136,15 @@ jobs:
           python3 -B qa/verify_reference_payloads.py --report-only \
             --apk "$delivery/LLAS_GL_FOVMOD_$BUILD_VERSION-unsigned.apk" \
             | tee "$delivery/reference-hashes.json"
-      - name: Sign with the client key
+      - name: Sign with the Elichika release key
         if: needs.request.outputs.android_sign == 'true'
         env:
           BUILD_VERSION: ${{ needs.request.outputs.android_version }}
           EXPECTED_CERT: ${{ needs.request.outputs.android_cert }}
-          CLIENT_KEYSTORE_B64: ${{ secrets.CLIENT_KEYSTORE_B64 }}
-          CLIENT_KEYSTORE_PASSWORD: ${{ secrets.CLIENT_KEYSTORE_PASSWORD }}
-          CLIENT_KEY_ALIAS: ${{ secrets.CLIENT_KEY_ALIAS }}
-          CLIENT_KEY_PASSWORD: ${{ secrets.CLIENT_KEY_PASSWORD }}
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           umask 077
@@ -164,18 +152,18 @@ jobs:
           tools="$ANDROID_SDK_ROOT/build-tools/34.0.0"
           unsigned="$delivery/LLAS_GL_FOVMOD_$BUILD_VERSION-unsigned.apk"
           signed="$delivery/LLAS_GL_FOVMOD_$BUILD_VERSION.apk"
-          keystore=$(mktemp "$RUNNER_TEMP/client-signing.XXXXXXXX.p12")
+          keystore=$(mktemp "$RUNNER_TEMP/client-signing.XXXXXXXX")
           trap 'unlink "$keystore"' EXIT
-          printf '%s' "$CLIENT_KEYSTORE_B64" | base64 --decode --ignore-garbage > "$keystore"
-          unset CLIENT_KEYSTORE_B64
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode --ignore-garbage > "$keystore"
+          unset RELEASE_KEYSTORE_BASE64
           "$tools/zipalign" -c 4 "$unsigned"
-          "$tools/apksigner" sign --ks "$keystore" --ks-pass env:CLIENT_KEYSTORE_PASSWORD \
-            --ks-key-alias "$CLIENT_KEY_ALIAS" --key-pass env:CLIENT_KEY_PASSWORD \
+          "$tools/apksigner" sign --ks "$keystore" --ks-pass env:RELEASE_STORE_PASSWORD \
+            --ks-key-alias "$RELEASE_KEY_ALIAS" --key-pass env:RELEASE_KEY_PASSWORD \
             --v4-signing-enabled false --out "$signed" "$unsigned"
           observed=$("$tools/apksigner" verify --print-certs "$signed" |
             sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
           echo "Signing certificate SHA-256: $observed"
-          if [[ -n "$EXPECTED_CERT" && "$observed" != "$EXPECTED_CERT" ]]; then
+          if [[ "$observed" != "$EXPECTED_CERT" ]]; then
             echo "::error::The signing secrets hold a different key than the request pins."
             rm -f "$signed"; exit 1
           fi
@@ -197,15 +185,11 @@ jobs:
     defaults:
       run:
         shell: bash
-        working-directory: client
+        working-directory: sifas-client
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: tagundo/SIFAS-Client
-          ref: ${{ needs.request.outputs.client_ref }}
-          token: ${{ secrets.SIFAS_CLIENT_READ_TOKEN }}
           persist-credentials: false
-          path: client
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
@@ -213,15 +197,12 @@ jobs:
         with:
           cmdline-tools-version: '11076708'
           packages: 'ndk;28.2.13676358'
-      - name: Fetch the pinned private input and run unit tests
-        env:
-          # fetch-build-input.sh reads the pinned input IPA from the private repository.
-          GH_TOKEN: ${{ secrets.SIFAS_CLIENT_READ_TOKEN }}
+      - name: Restore the pinned input and run unit tests
         run: |
           set -euo pipefail
           scripts/fetch-build-input.sh playcover "$RUNNER_TEMP/playcover-input.ipa"
           export SIFAS_MV_SOURCE_IPA="$RUNNER_TEMP/playcover-input.ipa"
-          for test_file in test_mv_export_patch.py test_mv_job_handle_abi.py test_packaging.py; do
+          for test_file in test_mv_export_patch.py test_mv_job_handle_abi.py test_mv_queue_nullable.py test_packaging.py; do
             python3 -B -m unittest discover -s ios/ci -p "$test_file"
           done
       - name: Install the pinned iPhoneOS SDK and signer
@@ -248,9 +229,11 @@ jobs:
           ipa="$delivery/SIFAS_GL_Local_3.12.0_PlayCover_${BUILD_VERSION}.ipa"
           signer="$RUNNER_TEMP/apple-codesign-0.29.0-x86_64-unknown-linux-musl/rcodesign"
           mkdir -p "$delivery"
+          # sifas-client/ has no .git of its own, so the build records this commit.
           python3 -B ios/build/linux/compile_standalone.py \
             --repo . --out "$compile" --sdk "$RUNNER_TEMP/theos-sdks/iPhoneOS16.5.sdk" \
-            --toolchain "$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin"
+            --toolchain "$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin" \
+            --source-commit "$GITHUB_SHA"
           python3 -B ios/build/linux/package_standalone.py \
             --repo . --source "$RUNNER_TEMP/playcover-input.ipa" --compile-dir "$compile" \
             --work "$packaging" --output "$ipa" --version "$BUILD_VERSION" --signer "$signer"
