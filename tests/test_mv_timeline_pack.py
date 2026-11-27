@@ -41,6 +41,16 @@ def entries_of(data):
         return [(info.filename, archive.read(info)) for info in archive.infolist()]
 
 
+def needs_zip_version(data, version):
+    """``data`` with every central directory entry's "version needed to extract" set to ``version``."""
+    raw = bytearray(data)
+    start = raw.find(b"PK\x01\x02")
+    while start >= 0:
+        raw[start + 6:start + 8] = version.to_bytes(2, "little")
+        start = raw.find(b"PK\x01\x02", start + 4)
+    return bytes(raw)
+
+
 class FormatTests(unittest.TestCase):
     def test_round_trip_and_legacy_layout(self):
         data = make_pack()
@@ -179,6 +189,22 @@ class MaliciousPackTests(unittest.TestCase):
                     read(data)
         # The same entries undamaged read back (the test damages only the compressed bytes).
         self.assertFalse(packs.read_pack(damaged(zipfile.ZIP_LZMA, lambda raw, start, size: None))["legacy"])
+
+    def test_an_entry_that_needs_a_newer_zip_version_is_refused_as_invalid(self):
+        """zipfile.ZipFile() raises NotImplementedError when a central directory entry's "version needed to
+        extract" is above what it supports: one crafted file is "not a valid pack", never another error."""
+        legacy = rezip([("livetimeline.txt", b"live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\n"),
+                        ("2102android.unity", timeline("legacy-a"))])
+        for name, data in (("pack", make_pack()), ("legacy", legacy)):
+            crafted = needs_zip_version(data, 0xFF)
+            with self.assertRaises(NotImplementedError):  # what zipfile itself does with it
+                zipfile.ZipFile(io.BytesIO(crafted))
+            for read in (packs.read_pack, packs.read_any, packs.read_legacy_livetimeline_zip):
+                with self.subTest(name=name, read=read.__name__), \
+                        self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+                    read(crafted)
+            # Only the version byte differs: the same zip with a version zipfile supports reads back.
+            packs.read_any(needs_zip_version(data, 20))
 
     def test_legacy_txt_with_code_never_runs(self):
         marker = ROOT / "tests" / ".mv_pack_executed"
@@ -466,6 +492,21 @@ class AdminTests(stock_tests.StockCase):
         # A wrong typed asset id is refused in the job's language.
         with self.assertRaisesRegex(ValueError, "^選択したMVはこの地域に3Dタイムラインがありません。$"):
             self.tool.run_install(self.Job(), {"addon": "edit.sifasmv", "target_custom": "4242", "lang": "ja"})
+
+    def test_a_crafted_zip_in_the_drop_folder_does_not_break_the_pack_list(self):
+        """A zip zipfile cannot open (an entry needing zip version 25.5 raises NotImplementedError) is just not
+        a pack: the list shows the real packs, and a crafted .sifasmv is refused as invalid when chosen."""
+        legacy = rezip([("livetimeline.txt", b"live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\n"),
+                        ("2102android.unity", timeline("legacy-a"))])
+        (self.drop / "crafted.zip").write_bytes(needs_zip_version(legacy, 0xFF))
+        (self.drop / "crafted.sifasmv").write_bytes(needs_zip_version(make_pack(), 0xFF))
+        (self.drop / "edit.sifasmv").write_bytes(make_pack(timelines={"android": timeline("adm-a")}))
+        (self.drop / "old.zip").write_bytes(legacy)
+        self.assertFalse(self.tool._is_pack(str(self.drop / "crafted.zip")))
+        self.assertEqual([item["value"] for item in self.tool.pack_options({})],
+                         ["crafted.sifasmv", "edit.sifasmv", "old.zip"])
+        with self.assertRaisesRegex(ValueError, "^" + __import__("re").escape(packs.INVALID) + "$"):
+            self.tool.pack_options({"addon": "crafted.sifasmv"})
 
     def test_install_fetches_a_source_original_that_is_not_local(self):
         """Server content binds modtools' original provider; the stage-bound count is logged before the write."""

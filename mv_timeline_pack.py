@@ -43,6 +43,7 @@ import json
 import lzma
 from pathlib import Path
 import re
+import struct
 import unicodedata
 import zipfile
 import zlib
@@ -91,6 +92,13 @@ MESSAGES = (INVALID, TOO_LARGE, BAD_ENTRY, BAD_TIMELINE, NO_TIMELINE, NEWER, LEG
             CHOOSE_TARGET, SOURCE_MISSING, ORIGINAL_UNAVAILABLE, ORIGINAL_DOWNLOAD)
 
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
+# What zipfile raises for a damaged or crafted zip besides BadZipFile: an entry whose "version needed to
+# extract" or compression method it does not support (NotImplementedError), an encrypted entry
+# (RuntimeError), a corrupt deflate, LZMA or bz2 stream (zlib.error, LZMAError, OSError), a stream that
+# ends early (EOFError), a field it cannot unpack (struct.error) or decode (ValueError). Any of them
+# means "not a valid pack".
+ZIP_ERRORS = (zipfile.BadZipFile, ValueError, OSError, RuntimeError, EOFError, NotImplementedError, zlib.error,
+              lzma.LZMAError, struct.error, IndexError, KeyError, OverflowError)
 _LEGACY_UNITY = re.compile(r"[0-9]{1,10}(android|ios)?\.unity\Z", re.IGNORECASE)
 
 
@@ -224,7 +232,7 @@ def _entries(data):
     """{name: ZipInfo} of a zip whose every entry is a plain, unique, unencrypted file name."""
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
-    except (zipfile.BadZipFile, ValueError, OSError):
+    except ZIP_ERRORS:
         raise ValueError(INVALID) from None
     infos = archive.infolist()
     if len(infos) > MAX_ENTRIES:
@@ -248,7 +256,7 @@ def _read_entry(archive, info, limit):
     try:
         with archive.open(info) as handle:
             data = handle.read(limit + 1)
-    except (zipfile.BadZipFile, OSError, RuntimeError, EOFError, NotImplementedError, zlib.error, lzma.LZMAError):
+    except ZIP_ERRORS:
         # A corrupt deflate stream raises zlib.error and a corrupt LZMA entry LZMAError: a damaged
         # pack, refused like any other (bz2's errors are OSError).
         raise ValueError(INVALID) from None

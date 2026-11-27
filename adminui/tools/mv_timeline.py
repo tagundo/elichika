@@ -84,12 +84,15 @@ def _modtools():
 
 
 def _is_pack(path):
+    """A .sifasmv, or a zip that looks like an old livetimeline zip. A damaged or crafted zip (whatever
+    zipfile raises for it: mv_timeline_pack.ZIP_ERRORS) is not a pack; it never breaks the list."""
     if path.lower().endswith(".sifasmv"):
         return True
+    pack_module, _ = _modules()
     try:
         with zipfile.ZipFile(path) as archive:
             names = [name.lower() for name in archive.namelist()]
-    except (OSError, zipfile.BadZipFile, ValueError):
+    except pack_module.ZIP_ERRORS:
         return False
     return (any(name.endswith(".txt") for name in names) and any(name.endswith(".unity") for name in names)
             and len(names) <= 16)
