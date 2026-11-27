@@ -11,12 +11,14 @@ namespace {
 using Factory = UIAlertController *(*)(id,SEL,NSString *,NSString *,UIAlertControllerStyle);
 Factory originalFactory;
 UIAlertController *exportMenu(id type, SEL selector, NSString *title, NSString *message, UIAlertControllerStyle style) {
-    const BOOL settings=[title isEqualToString:@"Client settings"] && style==UIAlertControllerStyleAlert;
+    // SIFASFeatures' _message() status and error alerts share the menu's title
+    // and style. Only the real menu says how to reopen it with the corner hold,
+    // so only that one gets the MP4 export and corner-hold actions.
+    const BOOL settings=[title isEqualToString:@"Client settings"] && style==UIAlertControllerStyleAlert &&
+        [message containsString:@"hold the upper-right corner"];
     // Resolve the game controller before UIKit starts dismissing its alert.
     // An action handler can run after alert.presentingViewController is nil.
     __weak UIViewController *gamePresenter=settings ? SIFASMVStandalonePresenter() : nil;
-    // SIFASFeatures' _message() status and error alerts share this title and
-    // style; only the real menu, whose text describes the hold, gets the action.
     id<SIFASMVCornerHoldMenu> cornerHold=settings ? SIFASMVCornerHoldMenuProvider() : nil;
     if (![cornerHold isCornerHoldSettingsMenu:message]) cornerHold=nil;
     if (settings) {

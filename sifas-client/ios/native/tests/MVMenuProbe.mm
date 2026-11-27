@@ -285,7 +285,7 @@ static void CaptureRequestedClip(ELMVExportCoordinator *coordinator,SEL selector
         originalActionFactory=reinterpret_cast<ActionFactory>(method_setImplementation(factory,reinterpret_cast<IMP>(&CaptureAction)));
         @autoreleasepool {
             // Calls the actual production UIAlertController factory hook.
-            self.menu=[UIAlertController alertControllerWithTitle:@"Client settings" message:@"Simulator regression fixture" preferredStyle:UIAlertControllerStyleAlert];
+            self.menu=[UIAlertController alertControllerWithTitle:@"Client settings" message:@"Simulator regression fixture. While hidden, hold the upper-right corner in game for 2 seconds to open this menu." preferredStyle:UIAlertControllerStyleAlert];
             releasedAlert=self.menu;
             checks[@"production_action_captured"]=@(productionHandler!=nil);
             method_setImplementation(factory,reinterpret_cast<IMP>(originalActionFactory));
