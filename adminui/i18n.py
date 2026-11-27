@@ -698,9 +698,6 @@ _MV_TIMELINE_REFUSAL_STRINGS = {
         "타임라인 값을 확인하지 않고 설치할까요?", "タイムラインの値を確認せずにインストールしますか？"],
     "Install anyway (values not checked)": ["그래도 설치(값 확인 안 함)", "それでもインストール（値は未確認）"],
     "Not installed — waiting for your choice": ["설치하지 않음 — 선택을 기다리는 중", "未インストール — 選択待ち"],
-    "An old live timeline zip is checked for structure only, not that MV Studio made its values.": [
-        "예전 라이브 타임라인 zip은 구조만 확인하며, 값을 MV Studio가 만들었는지는 확인하지 않습니다.",
-        "古いライブタイムラインzipは構造だけを確認し、値をMV Studioが作ったかどうかは確認しません。"],
     "The pack's timeline values are checked for structure only: install the asset editing tools (modtools) to check that MV Studio made them.": [
         "팩 타임라인의 값은 구조만 확인합니다. MV Studio가 만든 값인지 확인하려면 에셋 편집툴(modtools)을 설치하세요.",
         "パックのタイムラインの値は構造だけを確認します。MV Studioが作った値か確認するには、アセット編集ツール（modtools）をインストールしてください。"],

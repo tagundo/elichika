@@ -547,15 +547,38 @@ class InstallTests(stock_tests.StockCase):
                                check=lambda *args: calls.append(args) or "unchecked", accept_unchecked=False)
         self.assertEqual(calls, [])
 
-    def test_an_old_livetimeline_zip_is_not_checked_yet(self):
+    def test_an_old_livetimeline_zip_gets_the_same_check_with_its_source_asset(self):
+        """A legacy zip's source asset is the one its txt's timeline key names (here 2101, not the target 2102):
+        the check runs against it (no exporter record), with the same question and consent as a pack."""
         calls = []
-        described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        unknown = "The timeline holds data this server's MV Studio tools do not write."
+
+        def check(raw, platform, region, asset_id, editor):
+            calls.append((raw, platform, region, asset_id, editor))
+            return unknown
+
         text = "live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'A2101'\n"
         legacy = rezip([("livetimeline.txt", text.encode()), ("2102android.unity", timeline("legacy-a"))])
-        packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=lambda *args: calls.append(args) or "x")
-        self.assertEqual(calls, [])
-        self.assertNotEqual(stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)["timelineKey"],
-                            described["timelineKey"])
+        before = self.databases()
+        with self.assertRaises(packs.UncheckedValues) as caught:
+            packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=check)
+        self.assertEqual(caught.exception.items, [{"platform": "android", "text": unknown}])
+        self.assertEqual(calls, [(timeline("legacy-a"), "android", "gl", 2101, None)])
+        self.assertEqual(self.databases(), before)
+        result = packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=check, accept_unchecked=True)
+        self.assertEqual((result["regions"][0]["sourceAssetId"], [w["code"] for w in result["warnings"]
+                                                                  if w["code"] == "unchecked-values"]),
+                         (2101, ["unchecked-values"]))
+        described = stock.describe_mv_timeline(self.root, region="gl", asset_id=2102)
+        with self.guard():
+            stock.restore_mv_timeline(self.root, region="gl", asset_id=2102, expected_key=described["timelineKey"],
+                                      log=None)
+        # A key that names no asset: the target is the source (as its validation has it), and it is checked.
+        calls.clear()
+        text = "live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'nowhere'\n"
+        legacy = rezip([("livetimeline.txt", text.encode()), ("2102android.unity", timeline("legacy-b"))])
+        packs.install_pack(self.root, legacy, regions=["gl"], log=None, check=lambda *args: calls.append(args))
+        self.assertEqual(calls, [(timeline("legacy-b"), "android", "gl", 2102, None)])
 
     def test_a_legacy_zip_installs_through_the_same_path(self):
         text = ("live_timeline_file = '2102android.unity'\nlive_timeline_num = 2102\ntimeline = 'A2101'\n"
@@ -808,7 +831,6 @@ class AdminTests(stock_tests.StockCase):
                      packs.CONSENT_NEEDED, packs.CHECK_FAILED, packs.WARN_UNCHECKED,
                      "Install without checking the timeline values?", "Install anyway (values not checked)",
                      "Not installed — waiting for your choice",
-                     "An old live timeline zip is checked for structure only, not that MV Studio made its values.",
                      "The pack's timeline values are checked for structure only: install the asset editing tools "
                      "(modtools) to check that MV Studio made them."}
         try:  # modtools' platform conversion, when it is installed next to Elichika

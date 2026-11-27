@@ -605,8 +605,9 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
     pack's exporter record or None) also looks at content: it returns None when a timeline is
     exactly what this server's MV Studio writes for its own parsed content, else the reason (a pack
     made by a newer MV Studio, data changed elsewhere, or a check that could not run). It runs on
-    every timeline the pack (or old livetimeline zip) carries, in the first region, after every
-    region validated. A timeline it could not confirm is never refused: without
+    every timeline the pack carries, in the first region, after every region validated; an old
+    livetimeline zip is checked the same way against the source asset its timeline key names
+    (``_source_asset``; the target itself when the key names none, as its validation does). A timeline it could not confirm is never refused: without
     ``accept_unchecked=True`` the install raises UncheckedValues (code UNCHECKED_VALUES, nothing
     written) so the caller can ask the user; with it, the install goes on and lists each one as an
     unchecked-values warning.
@@ -660,7 +661,7 @@ def install_pack(repo_root, pack, *, regions, target_asset_id=None, apply_stage=
         log(f"[{region}] Checking the timelines against the original MV {source}")
         fetched = _validate_region(repo_root, region, target, source, source_id, timelines, stage, originals, log)
         jobs.append((item, timelines, converted, missing, source_id, stage, fetched))
-    if check is not None and not pack.get("legacy"):
+    if check is not None:
         first = plan["regions"][0]
         unchecked = _check_values(check, pack, first["region"], first["sourceAssetId"], log)
         if unchecked and not accept_unchecked:

@@ -296,10 +296,7 @@ def run_install(job, params):
         job.log(i18n.tr("The asset editing tools (modtools) are not installed: a source MV original that is not on "
                         "this server cannot be downloaded.", lang))
     # What the install checks beyond structure (a shared pack's values could be anything).
-    if pack.get("legacy"):
-        job.log(i18n.tr("An old live timeline zip is checked for structure only, not that MV Studio made its "
-                        "values.", lang))
-    elif check is None:
+    if check is None:
         job.log(i18n.tr("The pack's timeline values are checked for structure only: install the asset editing "
                         "tools (modtools) to check that MV Studio made them.", lang))
     job.progress(0, 1)
