@@ -95,6 +95,21 @@ var tables = map[string]map[string]string{
 		"Event Scheduler":                 "이벤트 예약",
 		"Maintenance Mode (for updating)": "점검 모드 (업데이트용)",
 
+		// -- user manager (user_manager.go) ------------------------------
+		"User Manager": "유저 관리",
+		"Delete an account completely, including its login. A full copy of the user database is saved first; put that file back as userdata.db to undo.": "계정을 로그인 정보까지 완전히 삭제합니다. 삭제 전에 유저 DB 전체를 복사해 두며, 되돌리려면 그 파일을 userdata.db로 되돌려 놓으면 됩니다.",
+		"Delete an account only while that player is not playing.":                                                                                       "해당 플레이어가 게임을 하고 있지 않을 때만 삭제하세요.",
+		"No accounts.": "계정이 없습니다.",
+		"User ID":      "유저 ID",
+		"Name":         "이름",
+		"Last login":   "마지막 접속",
+		"Delete":       "삭제",
+		"Delete account %d (%s) and its login? This cannot be undone in the game.": "계정 %d (%s)와 로그인 정보를 삭제할까요? 게임 안에서는 되돌릴 수 없습니다.",
+		"Choose an account to delete.":                                             "삭제할 계정을 고르세요.",
+		"That account no longer exists.":                                           "그 계정은 이미 없습니다.",
+		"The account was not deleted: ":                                            "계정을 삭제하지 못했습니다: ",
+		"Deleted. Backup: ":                                                        "삭제했습니다. 백업: ",
+
 		// -- config editor (config_editor.go) ---------------------------
 		"Update server runtime config.": "서버 런타임 설정을 변경합니다.",
 		"Note that some configurations will be applied right away, some will requires restarting the server.": "일부 설정은 즉시 적용되며, 일부는 서버를 다시 시작해야 적용됩니다.",
@@ -143,6 +158,21 @@ var tables = map[string]map[string]string{
 		"Event Selector":                  "イベント選択",
 		"Event Scheduler":                 "イベント予約",
 		"Maintenance Mode (for updating)": "メンテナンスモード（更新用）",
+
+		// -- user manager (user_manager.go) ------------------------------
+		"User Manager": "ユーザー管理",
+		"Delete an account completely, including its login. A full copy of the user database is saved first; put that file back as userdata.db to undo.": "ログイン情報を含めてアカウントを完全に削除します。削除前にユーザーデータベース全体をコピーします。元に戻すにはそのファイルを userdata.db として戻してください。",
+		"Delete an account only while that player is not playing.":                                                                                       "そのプレイヤーがプレイしていないときだけ削除してください。",
+		"No accounts.": "アカウントがありません。",
+		"User ID":      "ユーザーID",
+		"Name":         "名前",
+		"Last login":   "最終ログイン",
+		"Delete":       "削除",
+		"Delete account %d (%s) and its login? This cannot be undone in the game.": "アカウント %d（%s）とログイン情報を削除しますか？ゲーム内では元に戻せません。",
+		"Choose an account to delete.":                                             "削除するアカウントを選んでください。",
+		"That account no longer exists.":                                           "そのアカウントはもうありません。",
+		"The account was not deleted: ":                                            "アカウントを削除できませんでした: ",
+		"Deleted. Backup: ":                                                        "削除しました。バックアップ: ",
 
 		// -- config editor ----------------------------------------------
 		"Update server runtime config.": "サーバーのランタイム設定を変更します。",

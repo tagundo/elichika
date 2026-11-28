@@ -104,7 +104,7 @@ staged_drivers = ['viewer_physics_solver_node.js', 'viewer_physics_timing_node.j
     'viewer_game_physics_job_collision_test.js', 'viewer_game_physics_native_test.js',
     'viewer_game_physics_initialization_test.js', 'viewer_game_physics_adapter_test.js',
     'viewer_game_physics_motion_metadata_test.js',
-    'viewer_mesh_connected_zoom_test.js', 'viewer_gaze_test.js', 'viewer_motion_audio_transport_test.js',
+    'viewer_mesh_connected_zoom_test.js', 'viewer_mesh_same_position_test.js', 'viewer_gaze_test.js', 'viewer_motion_audio_transport_test.js',
     'viewer_transplant_bone_selection_test.js', 'viewer_thumbnail_saved_settings_test.js',
     'viewer_motion_performance_test.js', 'viewer_native_pcm_test.js', 'viewer_native_pcm_controller_test.js',
     'texture_paint_engine_test.js', 'texture_paint_layers_test.js', 'texture_uv_selection_test.js', 'viewer_near_clip_test.js']
@@ -342,10 +342,10 @@ class PackagedTexturePaintTests(unittest.TestCase):
         script, actual, output = self.run_driver('texture_paint_layers_test.js')
         probe = json.loads(output)
         self.assertEqual(probe['status'], 'PASS')
-        self.assertEqual(probe['cases'], 18)
-        self.assertEqual(len(probe['names']), 18)
-        self.assertEqual(len(set(probe['names'])), 18)
-        texture_paint_node_probes['layers'] = dict(status='PASS', cases=18, names=probe['names'],
+        self.assertEqual(probe['cases'], 22)
+        self.assertEqual(len(probe['names']), 22)
+        self.assertEqual(len(set(probe['names'])), 22)
+        texture_paint_node_probes['layers'] = dict(status='PASS', cases=22, names=probe['names'],
             driver_sha256=hashlib.sha256(script.read_bytes()).hexdigest(),
             engine_source_sha256=hashlib.sha256(actual.read_bytes()).hexdigest())
 

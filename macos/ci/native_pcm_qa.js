@@ -382,8 +382,12 @@
       await wait('engine-real-PCM-decoded-HQ4', function () { var s = ModelViewer.getState(), a = ViewerMotionAudio.getState(); return s.quality.enabled && s.quality.actualSamples === 4 && a.tracks.length === 1 && a.tracks[0].readyState >= 2; }, 60000);
       await Promise.all(hashJobs); window.fetch = oldFetch;
       var loaded = ModelViewer.getState(), audio = ViewerMotionAudio.getState(), track = audio.tracks[0];
-      assert(equal(loaded.stats, { meshes: 8, vertices: 11410, triangles: 14169, materials: 2, textures: 39 }) ||
-        loaded.stats.meshes === 8 && loaded.stats.vertices === 11410 && loaded.stats.triangles === 14169 && loaded.stats.materials === 2 && loaded.stats.textures === 39, 'The official Eli workload keeps every original mesh, vertex, triangle, material and texture');
+      // 41 textures: the four Texture2D the two member materials sample with
+      // their complete authored mip chains (head 11, head rim 8, body 11, body
+      // rim 9) plus both 256x256 one-mip slices of the head's own cheek_array
+      // Texture2DArray (exact copies; MemberCheekMixer picks the slice at run time).
+      assert(equal(loaded.stats, { meshes: 8, vertices: 11410, triangles: 14169, materials: 2, textures: 41 }) ||
+        loaded.stats.meshes === 8 && loaded.stats.vertices === 11410 && loaded.stats.triangles === 14169 && loaded.stats.materials === 2 && loaded.stats.textures === 41, 'The official Eli workload keeps every original mesh, vertex, triangle, material and texture');
       assert(loaded.rig.selectedClip === clip && loaded.rig.duration > 103 && loaded.rig.duration < 104 && loaded.autoFace && loaded.faces && ['added', 'already_present'].indexOf(loaded.faces.status) >= 0, 'Use the exact full CHASE timeline and automatic original face');
       assert(track.cue === 'music_2008' && track.backend === 'web-audio-pcm' && track.player && !track.player.fallbackReason && track.duration > 103 && track.duration < 104 && track.player.bufferChannels === 2 && track.player.decodedBytes > 0 && track.player.decodedBytes <= 64 * 1024 * 1024, 'One original music cue uses the bounded actual PCM backend');
       assert(loaded.rig.physics.mode === 'game' && loaded.rig.physics.frameRate === 0 && loaded.rig.physics.swingBone && loaded.rig.physics.swingCollider && loaded.rig.physics.nativeAvailable, 'The original default game physics and both switches stay enabled');

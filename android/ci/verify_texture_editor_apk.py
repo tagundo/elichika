@@ -48,7 +48,7 @@ MODTOOLS_ROOT_MODULES = (
     "graft_uv_reuse", "graft_uv_upscale", "transplant_bundle_io")
 MODULES = (
     "webtools/server", "webtools/i18n", "webtools/core/viewer_texture_tools",
-    "mv_studio_live", "mv_studio_native_assets", "webtools/core/mv_studio",
+    "mv_studio_live", "mv_studio_manage", "mv_studio_native_assets", "webtools/core/mv_studio",
     "webtools/core/mv_studio_game", "webtools/core/mv_studio_timeline", "webtools/core/mv_studio_quality",
     "webtools/core/mv_studio_props", "webtools/core/mv_studio_split",
     "webtools/core/mv_studio_stage_materials", "webtools/core/mv_studio_stage_coloring",

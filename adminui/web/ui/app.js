@@ -721,8 +721,10 @@ function streamJob(jobId, context) {
     else if (msg.type === "progress") setProgress(msg.done, msg.total);
     else if (msg.type === "done") {
       if (msg.summary) appendLog("\n" + msg.summary);
-      finishConsole(msg.status, context, { removalReview, removalComplete });
+      const consent = consentRequest(msg, context);
+      finishConsole(msg.status, context, { removalReview, removalComplete, consent });
       es.close(); state.es = null; state.jobId = null; setRunning(false);
+      if (consent) askJobConsent(consent, context);
       if (isRemovalTool(context.toolId) &&
           state.formGeneration === context.generation &&
           state.currentTool && state.currentTool.id === context.toolId &&
@@ -737,6 +739,72 @@ function streamJob(jobId, context) {
     }
   };
   es.onerror = () => {};
+}
+
+function consentPack(consent) {
+  // The sha256 of the file a question is about (consent.pack), sent back as consent_pack: the server
+  // takes the consent only for that same file.
+  return typeof consent.pack === "string" && /^[0-9a-f]{64}$/.test(consent.pack) ? consent.pack : undefined;
+}
+
+function consentRequest(msg, context) {
+  // A job that stopped before doing anything because it needs the user's explicit choice
+  // (adminui.jobs: done.consent, e.g. an MV timeline pack whose values could not be checked).
+  // Asked once: a run that already carried the consent for the same file is not asked again.
+  const consent = msg && msg.status === "error" ? msg.consent : null;
+  if (!consent || typeof consent !== "object" || typeof consent.param !== "string" ||
+      !/^[a-z_]{1,64}$/.test(consent.param) ||
+      (context.params[consent.param] === true && context.params.consent_pack === consentPack(consent))) return null;
+  return consent;
+}
+
+async function askJobConsent(consent, context) {
+  const accepted = await confirmJobConsent(consent);
+  const tool = state.currentTool;
+  // Run again only for the same, unchanged form: the consent covers what was asked about.
+  const asked = Object.assign({}, context.params);
+  delete asked[consent.param];
+  delete asked.consent_pack;
+  if (!accepted || state.running || !tool || tool.id !== context.toolId ||
+      state.formGeneration !== context.generation ||
+      JSON.stringify(collectParams()) !== JSON.stringify(asked)) {
+    if (!state.running && tool && tool.id === context.toolId) finishConsole("cancelled", context);
+    return;
+  }
+  const pack = consentPack(consent);
+  runTool(Object.assign({ [consent.param]: true }, pack ? { consent_pack: pack } : {}));
+}
+
+function confirmJobConsent(consent) {
+  // The same explicit, cancellable modal as the built-in costume removal (no native confirm panels).
+  return new Promise((resolve) => {
+    const dialog = el("dialog", { class: "original-confirm job-consent", "aria-labelledby": "job-consent-title" });
+    if (typeof dialog.showModal !== "function") { resolve(false); return; }
+    const previousFocus = document.activeElement;
+    let finished = false;
+    const finish = (accepted) => {
+      if (finished) return;
+      finished = true;
+      if (dialog.open) dialog.close();
+      dialog.remove();
+      if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+      resolve(accepted);
+    };
+    const text = (value) => (typeof value === "string" ? value : "");
+    dialog.appendChild(el("h3", { id: "job-consent-title", text: text(consent.title) }));
+    dialog.appendChild(el("p", { text: text(consent.message) }));
+    const items = el("ul");
+    for (const item of Array.isArray(consent.items) ? consent.items : []) items.appendChild(el("li", { text: text(item) }));
+    if (items.childNodes.length) dialog.appendChild(items);
+    const cancel = el("button", { type: "button", autofocus: "", text: T("Cancel"), onclick: () => finish(false) });
+    const accept = el("button", { type: "button", class: "job-consent-accept", text: text(consent.accept),
+      onclick: () => finish(true) });
+    dialog.appendChild(el("div", { class: "original-confirm-actions" }, [cancel, accept]));
+    dialog.addEventListener("cancel", (event) => { event.preventDefault(); finish(false); });
+    dialog.addEventListener("close", () => finish(false));
+    document.body.appendChild(dialog);
+    try { dialog.showModal(); cancel.focus(); } catch { finish(false); }
+  });
 }
 
 function confirmOriginalRemoval(plan) {
@@ -905,7 +973,8 @@ function finishConsole(status, context = null, outcome = {}) {
   // The final summary is enqueued by streamJob immediately before this call.
   // It must be available for reading/copying before a terminal state is shown.
   flushPendingLogs();
-  let source = status === "done" ? "done ✓" : status === "cancelled" ? "cancelled" : "error ✗";
+  let source = status === "done" ? "done ✓" : status === "cancelled" ? "cancelled"
+    : outcome.consent ? "Not installed — waiting for your choice" : "error ✗";
   if (context && isRemovalTool(context.toolId)) {
     if (context.params.action === "preview") {
       source = status === "done"

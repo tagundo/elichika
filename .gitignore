@@ -44,3 +44,6 @@ __pycache__/
 
 # Per-install encryption key for explicitly managed client login passwords.
 /.local-webui-credentials.key
+
+# SIFAS client build pins and profiles (sifas-client/) are tracked.
+!/sifas-client/**/*.json

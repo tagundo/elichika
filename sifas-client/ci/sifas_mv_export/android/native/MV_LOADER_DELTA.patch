@@ -1,0 +1,20 @@
+--- frozen-b25/libfovmod_material.c
++++ MV-copy/libfovmod_material.c
+@@ -31,6 +31,7 @@
+ 
+ /* New data-only material binder. Existing FOV Config remains exactly32B. */
+ extern int mi_android_runtime_try_bind_loaded(void);
++extern int amv_game_try_bind_loaded(void);
+ static int material_bind_result;
+ static const char *material_bind_status(void) {
+     switch (material_bind_result) {
+@@ -86,6 +87,9 @@
+     /* apply_locked is reached from the existing settings/loader waiter.
+      * This call only binds addresses/RW data; it never invokes Unity here. */
+     int material_result = mi_android_runtime_try_bind_loaded();
++    /* Data-only MV sidecar publication. All Unity calls remain deferred to
++     * the exact original Unity-thread callbacks in the MV adapter. */
++    (void)amv_game_try_bind_loaded();
+     if (material_result != material_bind_result) {
+         material_bind_result = material_result;
+         __android_log_print(material_result < 0 ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,

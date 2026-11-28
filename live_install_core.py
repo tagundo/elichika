@@ -1315,7 +1315,7 @@ def ensure_live_mv(cur: sqlite3.Cursor, live_id: int, asset_3d_id: Optional[int]
 # legacy timeline vars + new dance-live vars we understand
 _PACK_SCALARS = (
     "live_timeline_file", "live_timeline_num", "timeline",
-    "live_stage_master_id", "stage_effect_asset_path",
+    "live_stage_master_id", "stage_effect_asset_path", "live_prop_skeleton_asset_path",
     "quality_setitng_set_id", "shader_variant_asset_path",
     "target_live_id", "donor_3d_asset_id", "install_mode",
 )

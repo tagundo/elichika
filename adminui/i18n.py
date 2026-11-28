@@ -514,3 +514,203 @@ _ADDON_FILE_STRINGS = {
 for _source, _values in _ADDON_FILE_STRINGS.items():
     for _lang, _text in zip(("ko", "ja"), _values):
         _TABLES[_lang][_source] = _text
+
+# MV timeline pack ("MV 타임라인 팩") install and restore (adminui.tools.mv_timeline, mv_timeline_pack,
+# mv_studio_stock refusals the jobs translate).
+_MV_TIMELINE_PACK_STRINGS = {
+    "Install MV timeline pack (.sifasmv)": ["MV 타임라인 팩 설치 (.sifasmv)", "MVタイムラインパックのインストール (.sifasmv)"],
+    "Install an MV timeline pack from MV Studio (or an old live camera timeline zip) into a 3D MV slot, per region and platform, with a backup. It can be undone with Restore MV timeline. Drop the file into sukusta/mvtimeline.": [
+        "MV Studio에서 만든 MV 타임라인 팩(또는 예전 라이브 카메라 타임라인 zip)을 3D MV 슬롯에 지역·플랫폼별로 설치합니다. 설치 전에 백업하며, ‘MV 타임라인 복원’으로 되돌릴 수 있습니다. 파일은 sukusta/mvtimeline에 넣으세요.",
+        "MV Studioで作成したMVタイムラインパック（または旧ライブカメラタイムラインzip）を3D MVスロットに地域・プラットフォームごとにインストールします。事前にバックアップし、「MVタイムラインの復元」で元に戻せます。ファイルはsukusta/mvtimelineに入れてください。"],
+    "Target 3D MV slot": ["설치할 3D MV 슬롯", "インストール先の3D MVスロット"],
+    "The pack's own target comes first; the pack's details are shown with it.": [
+        "팩에 지정된 대상이 맨 위에 있으며, 팩 정보가 함께 표시됩니다.", "パックで指定された対象が先頭に表示され、パックの情報も一緒に表示されます。"],
+    "Other target 3D asset ID (optional)": ["다른 대상 3D 에셋 ID (선택)", "別の対象3DアセットID（任意）"],
+    "Any 3D MV of the region, e.g. 1012001. Overrides the slot above.": [
+        "해당 지역의 아무 3D MV나 지정할 수 있습니다(예: 1012001). 위의 슬롯 대신 사용됩니다.",
+        "その地域の任意の3D MVを指定できます（例：1012001）。上のスロットより優先されます。"],
+    "Region": ["지역", "地域"],
+    "GL and JP": ["GL과 JP", "GLとJP"],
+    "Change the stage too (recommended)": ["무대도 함께 바꾸기 (권장)", "ステージも一緒に変更（推奨）"],
+    "Puts the pack's stage, stage effect, props, quality and shader into the slot with the timeline. Off: the slot keeps its own stage, and the timeline's stage-bound tracks (stage effects, stage lights) may address objects that stage does not have.": [
+        "팩의 무대·무대 효과·소품·품질·셰이더를 타임라인과 함께 슬롯에 넣습니다. 끄면 슬롯의 원래 무대를 유지하며, 타임라인의 무대 연동 트랙(무대 효과, 무대 조명)이 그 무대에 없는 오브젝트를 가리킬 수 있습니다.",
+        "パックのステージ・ステージエフェクト・小道具・品質・シェーダーをタイムラインと一緒にスロットに入れます。オフの場合はスロットの元のステージを保ち、タイムラインのステージ連動トラック（ステージエフェクト、ステージ照明）がそのステージにないオブジェクトを指すことがあります。"],
+    "Convert a missing platform's timeline": ["없는 플랫폼의 타임라인 변환", "ないプラットフォームのタイムラインを変換"],
+    "Uses MV timeline platform conversion from the asset editing tools for a platform the pack has no timeline for. Off, or without those tools: that platform plays the source MV's original timeline.": [
+        "팩에 타임라인이 없는 플랫폼은 에셋 편집툴의 ‘MV 타임라인 플랫폼 변환’으로 만듭니다. 끄거나 해당 도구가 없으면 그 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
+        "パックにタイムラインがないプラットフォームは、アセット編集ツールの「MVタイムラインのプラットフォーム変換」で作成します。オフの場合やツールがない場合、そのプラットフォームは元MVの元のタイムラインを再生します。"],
+    "Restore MV timeline": ["MV 타임라인 복원", "MVタイムラインの復元"],
+    "Put back the original timeline and stage of a 3D MV that MV Studio's \"apply to game\" or an MV timeline pack replaced. A backup is taken first.": [
+        "MV Studio의 ‘게임에 적용’이나 MV 타임라인 팩으로 바뀐 3D MV의 원래 타임라인과 무대를 되돌립니다. 먼저 백업합니다.",
+        "MV Studioの「ゲームに適用」やMVタイムラインパックで置き換えた3D MVの元のタイムラインとステージを戻します。先にバックアップします。"],
+    "Replaced MV timeline": ["바뀐 MV 타임라인", "置き換えたMVタイムライン"],
+    "Legacy live timeline zip": ["예전 라이브 타임라인 zip", "旧ライブタイムラインzip"],
+    "source": ["원본", "元"],
+    "stage": ["무대", "ステージ"],
+    "yes": ["예", "あり"],
+    "no": ["아니요", "なし"],
+    "Pack target": ["팩 대상", "パックの対象"],
+    "Source slot": ["원본 슬롯", "元のスロット"],
+    "MV": ["MV", "MV"],
+    "3D lives": ["3D 라이브", "3Dライブ"],
+    "stage changed": ["무대 변경됨", "ステージ変更あり"],
+    "lives": ["라이브", "ライブ"],
+    "custom": ["변경됨", "変更あり"],
+    "stock": ["원래", "オリジナル"],
+    "The MV timeline platform conversion (asset editing tools) is not installed: the missing platform plays the source MV's original.": [
+        "MV 타임라인 플랫폼 변환(에셋 편집툴)이 설치되어 있지 않습니다. 없는 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
+        "MVタイムラインのプラットフォーム変換（アセット編集ツール）がインストールされていません。ないプラットフォームは元MVの元のタイムラインを再生します。"],
+    "Stage-bound tracks in this timeline: ": ["이 타임라인의 무대 연동 트랙: ", "このタイムラインのステージ連動トラック："],
+    "MV timeline pack installed — restart the server to apply.": [
+        "MV 타임라인 팩을 설치했습니다 — 적용하려면 서버를 다시 시작하세요.", "MVタイムラインパックをインストールしました — 反映するにはサーバーを再起動してください。"],
+    "Choose an installed MV timeline to restore.": ["복원할 MV 타임라인을 선택하세요.", "復元するMVタイムラインを選択してください。"],
+    "This MV already plays its original timeline.": ["이 MV는 이미 원래 타임라인을 재생합니다.", "このMVはすでに元のタイムラインを再生しています。"],
+    "The original MV timeline and stage are back — restart the server to apply.": [
+        "원래 MV 타임라인과 무대로 되돌렸습니다 — 적용하려면 서버를 다시 시작하세요.", "元のMVタイムラインとステージに戻しました — 反映するにはサーバーを再起動してください。"],
+    "Select a file first (drop it into Download/sukusta/mvtimeline or …/addons).": [
+        "먼저 파일을 선택하세요 (Download/sukusta/mvtimeline 또는 …/addons에 넣으세요).", "先にファイルを選択してください（Download/sukusta/mvtimeline または …/addons に入れてください）。"],
+    "Choose GL, JP or both.": ["GL, JP 또는 둘 다를 선택하세요.", "GL、JP、または両方を選択してください。"],
+    "Choose the 3D MV slot to install into.": ["설치할 3D MV 슬롯을 선택하세요.", "インストール先の3D MVスロットを選択してください。"],
+    "This platform has no timeline in the pack and plays the source MV's original timeline.": [
+        "팩에 이 플랫폼의 타임라인이 없어 원본 MV의 원래 타임라인을 재생합니다.", "パックにこのプラットフォームのタイムラインがないため、元MVの元のタイムラインを再生します。"],
+    "The stage is not applied. The timeline's stage-bound tracks (stage effects, stage lights) address objects of the source MV's stage, which this slot's stage may not have: they may not play or may show errors.": [
+        "무대를 바꾸지 않았습니다. 타임라인의 무대 연동 트랙(무대 효과, 무대 조명)은 원본 MV 무대의 오브젝트를 가리키므로, 이 슬롯의 무대에 그 오브젝트가 없으면 재생되지 않거나 오류가 날 수 있습니다.",
+        "ステージは変更していません。タイムラインのステージ連動トラック（ステージエフェクト、ステージ照明）は元MVのステージのオブジェクトを指すため、このスロットのステージにそのオブジェクトがないと再生されなかったりエラーになったりすることがあります。"],
+    "Other MV slots or 3D rhythm-game lives use this 3D MV too; they change with it.": [
+        "다른 MV 슬롯이나 3D 리듬게임 라이브도 이 3D MV를 사용하므로 함께 바뀝니다.", "他のMVスロットや3Dリズムゲームのライブもこの3D MVを使うため、一緒に変わります。"],
+    # refusals of mv_timeline_pack and mv_studio_stock
+    "The file is not a valid MV timeline pack.": ["올바른 MV 타임라인 팩이 아닙니다.", "正しいMVタイムラインパックではありません。"],
+    "The MV timeline pack is too large or has too many files.": ["MV 타임라인 팩이 너무 크거나 파일이 너무 많습니다.", "MVタイムラインパックが大きすぎるか、ファイルが多すぎます。"],
+    "The MV timeline pack contains a file name it may not use.": ["MV 타임라인 팩에 사용할 수 없는 파일 이름이 있습니다.", "MVタイムラインパックに使用できないファイル名があります。"],
+    "A timeline in the MV timeline pack is damaged or is not a UnityFS bundle.": ["MV 타임라인 팩의 타임라인이 손상되었거나 UnityFS 번들이 아닙니다.", "MVタイムラインパックのタイムラインが破損しているか、UnityFSバンドルではありません。"],
+    "The MV timeline pack has no timeline.": ["MV 타임라인 팩에 타임라인이 없습니다.", "MVタイムラインパックにタイムラインがありません。"],
+    "This MV timeline pack needs a newer Elichika.": ["이 MV 타임라인 팩을 설치하려면 더 새로운 Elichika가 필요합니다.", "このMVタイムラインパックにはより新しいElichikaが必要です。"],
+    "The live timeline zip has no readable livetimeline.txt or timeline file.": ["라이브 타임라인 zip에 읽을 수 있는 livetimeline.txt나 타임라인 파일이 없습니다.", "ライブタイムラインzipに読み取れるlivetimeline.txtまたはタイムラインファイルがありません。"],
+    "The pack's source MV is not in this region's game data.": ["팩의 원본 MV가 이 지역의 게임 데이터에 없습니다.", "パックの元MVがこの地域のゲームデータにありません。"],
+    "Choose the 3D MV of this region that the timeline was made from.": ["이 타임라인을 만든 이 지역의 3D MV를 선택하세요.", "このタイムラインの作成元となったこの地域の3D MVを選択してください。"],
+    "The timeline's source MV belongs to an MV-only song. Choose a stock game MV.": ["타임라인의 원본 MV가 MV 전용 곡에 속해 있습니다. 게임 기본 MV를 선택하세요.", "タイムラインの元MVはMV専用曲のものです。ゲーム標準のMVを選択してください。"],
+    "The MV's source changes, so every platform needs its timeline again (or none, to play the source's original).": ["MV의 원본이 바뀌므로 모든 플랫폼의 타임라인을 다시 지정해야 합니다(원본의 원래 타임라인을 재생하려면 지정하지 않음).", "MVの元が変わるため、すべてのプラットフォームのタイムラインを指定し直す必要があります（元の元タイムラインを再生する場合は指定しない）。"],
+    "Choose the stage explicitly: a stage id, a stage effect and a quality set, with an optional prop skeleton and shader variant.": ["무대를 명확히 지정하세요: 무대 ID, 무대 효과, 품질 세트(소품 스켈레톤과 셰이더 변형은 선택).", "ステージを明示的に指定してください：ステージID、ステージエフェクト、品質セット（小道具スケルトンとシェーダーバリアントは任意）。"],
+    "The chosen stage, stage effect, prop skeleton or shader variant is not in this region's game catalogs.": ["선택한 무대, 무대 효과, 소품 스켈레톤 또는 셰이더 변형이 이 지역의 게임 카탈로그에 없습니다.", "選択したステージ、ステージエフェクト、小道具スケルトン、またはシェーダーバリアントがこの地域のゲームカタログにありません。"],
+    "The game's timeline changed after the check. Check it again, then apply.": ["확인 후 게임의 타임라인이 바뀌었습니다. 다시 확인한 뒤 적용하세요.", "確認後にゲームのタイムラインが変わりました。もう一度確認してから適用してください。"],
+    "The selected MV has no 3D timeline in this region.": ["선택한 MV는 이 지역에 3D 타임라인이 없습니다.", "選択したMVはこの地域に3Dタイムラインがありません。"],
+    "The native timeline and its dependencies must match the selected stage template.": ["타임라인과 그 의존성이 원본 MV와 맞지 않습니다. 이 팩은 원본 MV의 타임라인으로 만든 것이 아닙니다.", "タイムラインとその依存関係が元MVと一致しません。このパックは元MVのタイムラインから作成されたものではありません。"],
+    "The timeline must use the native format of its selected platform.": ["타임라인이 해당 플랫폼의 형식이 아닙니다.", "タイムラインがそのプラットフォームの形式ではありません。"],
+    "Install the base MV's original timeline for this platform locally, or allow the download, to verify the edit.": ["편집을 확인하려면 이 플랫폼의 원본 MV 타임라인이 로컬에 있어야 합니다. 게임에서 해당 MV를 한 번 받아 두세요.", "編集を確認するには、このプラットフォームの元MVタイムラインがローカルに必要です。ゲームでそのMVを一度ダウンロードしてください。"],
+}
+for _source, _values in _MV_TIMELINE_PACK_STRINGS.items():
+    for _lang, _text in zip(("ko", "ja"), _values):
+        _TABLES[_lang][_source] = _text
+
+# Every other refusal the MV timeline tools can show (mv_studio_stock, mv_studio_native_assets and
+# mv_studio_manage store messages, and modtools' MV timeline platform conversion, whose ko/ja match
+# modtools' own), so a job never falls back to English.
+_MV_TIMELINE_REFUSAL_STRINGS = {
+    "The asset editing tools (modtools) are not installed: a source MV original that is not on this server cannot be downloaded.": [
+        "에셋 편집툴(modtools)이 설치되어 있지 않아, 이 서버에 없는 원본 MV의 원래 타임라인은 내려받을 수 없습니다.",
+        "アセット編集ツール（modtools）がインストールされていないため、このサーバーにない元MVの元のタイムラインはダウンロードできません。"],
+    "The source MV's original timeline is not on this server. Install the asset editing tools (modtools) so Elichika can download it, then install again.": [
+        "원본 MV의 원래 타임라인이 이 서버에 없습니다. Elichika가 내려받을 수 있도록 에셋 편집툴(modtools)을 설치한 뒤 다시 설치하세요.",
+        "元MVの元のタイムラインがこのサーバーにありません。Elichikaがダウンロードできるようアセット編集ツール（modtools）をインストールしてから、もう一度インストールしてください。"],
+    "The source MV's original timeline could not be downloaded. Check the connection, then install again.": [
+        "원본 MV의 원래 타임라인을 내려받지 못했습니다. 연결을 확인한 뒤 다시 설치하세요.",
+        "元MVの元のタイムラインをダウンロードできませんでした。接続を確認してから、もう一度インストールしてください。"],
+    "Choose a 3D MV of this region.": ["이 지역의 3D MV를 고르세요.", "この地域の3D MVを選んでください。"],
+    "This MV belongs to an MV-only song. Update the song instead.": [
+        "이 MV는 MV 전용 곡의 것입니다. 곡을 업데이트하세요.", "このMVはMV専用曲のものです。曲を更新してください。"],
+    "Fingerprints must be short text values for android or ios.": [
+        "지문 값은 android 또는 ios용 짧은 문자열이어야 합니다.", "フィンガープリントはandroidかios用の短い文字列にしてください。"],
+    "Provide each native timeline as an unpacked UnityFS bundle.": [
+        "게임용 타임라인은 압축을 푼 UnityFS 번들로 넣어 주세요.", "ゲーム用タイムラインは展開済みのUnityFSバンドルで指定してください。"],
+    "The native timeline exceeds the supported file size.": [
+        "게임용 타임라인이 지원하는 파일 크기를 넘습니다.", "ゲーム用タイムラインが対応するファイルサイズを超えています。"],
+    "The selected Unity file has no unique native timeline container.": [
+        "선택한 Unity 파일에 게임용 타임라인 컨테이너가 하나만 있지 않습니다.", "選んだUnityファイルにゲーム用タイムラインのコンテナーが1つだけではありません。"],
+    "The selected Unity timeline container is empty.": [
+        "선택한 Unity 타임라인 컨테이너가 비어 있습니다.", "選んだUnityタイムラインのコンテナーが空です。"],
+    "The timeline changes a serialized game type used by the stage.": [
+        "타임라인이 무대가 쓰는 게임 데이터 형식을 바꿉니다.", "タイムラインがステージで使うゲームのデータ形式を変えています。"],
+    "The timeline changes native container, script or resource data.": [
+        "타임라인이 게임 컨테이너, 스크립트 또는 리소스 데이터를 바꿉니다.", "タイムラインがゲームのコンテナー・スクリプト・リソースのデータを変えています。"],
+    "The timeline introduces a reference outside the selected stage template.": [
+        "타임라인이 원본 MV 밖을 참조합니다.", "タイムラインが元MVの外を参照しています。"],
+    "The native Unity timeline could not be read against the selected stage template.": [
+        "게임용 Unity 타임라인을 원본 MV와 비교해 읽지 못했습니다.", "ゲーム用Unityタイムラインを、元MVと照らし合わせて読み込めませんでした。"],
+    "A game catalog is missing the base MV's native timeline pack.": [
+        "게임 목록에 원본 MV의 타임라인 팩이 없습니다.", "ゲームの一覧に元MVのタイムラインパックがありません。"],
+    "A game catalog is missing the base MV's native timeline.": [
+        "게임 목록에 원본 MV의 타임라인이 없습니다.", "ゲームの一覧に元MVのタイムラインがありません。"],
+    "The supplied original timeline does not match the base MV's catalogued size.": [
+        "받은 원래 타임라인이 게임 목록에 적힌 원본 MV의 크기와 다릅니다.", "取得した元のタイムラインが、ゲームの一覧にある元MVのサイズと一致しません。"],
+    "Provide a native timeline for Android, iOS or both.": [
+        "Android, iOS 또는 둘 다의 게임용 타임라인을 넣어 주세요.", "Android、iOS、または両方のゲーム用タイムラインを指定してください。"],
+    "Provide the original timelines per platform.": [
+        "원래 타임라인을 플랫폼별로 넣어 주세요.", "元のタイムラインをプラットフォームごとに指定してください。"],
+    "A game catalog is missing a complete package of the base MV.": [
+        "게임 목록에 원본 MV의 패키지가 온전히 있지 않습니다.", "ゲームの一覧に元MVのパッケージがそろっていません。"],
+    "A game catalog is missing its main package.": ["게임 목록에 main 패키지가 없습니다.", "ゲームの一覧にmainパッケージがありません。"],
+    "The region's game databases are incomplete.": [
+        "이 지역의 게임 데이터베이스가 완전하지 않습니다.", "この地域のゲームデータベースがそろっていません。"],
+    "Close the database editor so MV Studio can update all catalogs in one transaction.": [
+        "모든 게임 목록을 한 번에 고칠 수 있도록 데이터베이스 편집기를 닫으세요.", "すべてのゲームの一覧を一度に更新できるよう、データベースエディターを閉じてください。"],
+    "Select the GL or JP catalog.": ["GL 또는 JP 목록을 고르세요.", "GLまたはJPの一覧を選んでください。"],
+    "The installed game database layout does not support this MV.": [
+        "설치된 게임 데이터베이스 구조가 이 MV를 지원하지 않습니다.", "インストール済みのゲームデータベースの構造がこのMVに対応していません。"],
+    "Choose add-on filenames from the installer list, without filesystem paths.": [
+        "설치 목록에서 파일을 고르세요(경로 없이 파일 이름만).", "インストール一覧からファイルを選んでください（パスなしのファイル名のみ）。"],
+    # modtools' MV timeline platform conversion (a missing platform converted during the install)
+    "Choose Android or iOS.": ["Android 또는 iOS를 선택하세요.", "AndroidかiOSを選んでください。"],
+    "Enter the 3D asset ID of the MV this timeline belongs to.": [
+        "이 타임라인이 속한 MV의 3D 에셋 ID를 입력하세요.", "このタイムラインのMVの3DアセットIDを入力してください。"],
+    "The timeline is already for the output platform.": ["이미 변환할 플랫폼용 타임라인입니다.", "すでに変換先のプラットフォーム用のタイムラインです。"],
+    "The timeline is not for the chosen source platform.": [
+        "선택한 원래 플랫폼용 타임라인이 아닙니다.", "選んだ変換元のプラットフォーム用のタイムラインではありません。"],
+    "This file is not a native live timeline.": ["이 파일은 게임의 라이브 타임라인이 아닙니다.", "このファイルはゲームのライブタイムラインではありません。"],
+    "This 3D MV is not in the game catalog of this region.": [
+        "이 3D MV는 이 지역의 게임 카탈로그에 없습니다.", "この3D MVはこの地域のゲームカタログにありません。"],
+    "The game catalog has no original timeline of this 3D MV for the output platform.": [
+        "게임 카탈로그에 이 3D MV의 변환할 플랫폼용 원본 타임라인이 없습니다.", "ゲームカタログにこの3D MVの変換先プラットフォーム用の元のタイムラインがありません。"],
+    "The original timeline of this 3D MV for the output platform is not available locally. Allow the download.": [
+        "이 3D MV의 변환할 플랫폼용 원본 타임라인이 로컬에 없습니다. 다운로드를 허용하세요.",
+        "この3D MVの変換先プラットフォーム用の元のタイムラインがローカルにありません。ダウンロードを許可してください。"],
+    "The timeline does not belong to this 3D MV:": ["이 3D MV의 타임라인이 아닙니다:", "この3D MVのタイムラインではありません："],
+    "The converted timeline would differ from the source, so nothing was converted:": [
+        "변환 결과가 원래 타임라인과 달라지므로 변환하지 않았습니다:", "変換結果が元のタイムラインと異なるため、変換しませんでした："],
+    "The timeline holds data this server's MV Studio tools do not write: the pack was made by a newer MV Studio or changed elsewhere. Updating Elichika and its asset editing tools (modtools) lets this server check it.": [
+        "타임라인에 이 서버의 MV Studio 도구가 쓰지 않는 데이터가 있습니다. 더 새로운 MV Studio로 만들었거나 다른 곳에서 바뀐 팩입니다. Elichika와 에셋 편집툴(modtools)을 업데이트하면 이 서버에서 확인할 수 있습니다.",
+        "タイムラインに、このサーバーのMV Studioツールが書き込まないデータがあります。より新しいMV Studioで作られたか、ほかの場所で変更されたパックです。Elichikaとアセット編集ツール（modtools）を更新すると、このサーバーで確認できます。"],
+    "The pack was made by a newer MV Studio: its timeline holds data this server's MV Studio tools do not write. Updating Elichika and its asset editing tools (modtools) lets this server check it.": [
+        "더 새로운 MV Studio로 만든 팩입니다. 타임라인에 이 서버의 MV Studio 도구가 쓰지 않는 데이터가 있습니다. Elichika와 에셋 편집툴(modtools)을 업데이트하면 이 서버에서 확인할 수 있습니다.",
+        "より新しいMV Studioで作られたパックです。タイムラインに、このサーバーのMV Studioツールが書き込まないデータがあります。Elichikaとアセット編集ツール（modtools）を更新すると、このサーバーで確認できます。"],
+    "The timeline's values could not be checked: the check ran out of time or memory, or the original timeline was not available.": [
+        "타임라인 값을 확인하지 못했습니다. 확인 시간이나 메모리가 부족했거나 원래 타임라인을 쓸 수 없었습니다.",
+        "タイムラインの値を確認できませんでした。確認の時間かメモリが足りなかったか、元のタイムラインを使えませんでした。"],
+    # the install's question when the values could not be checked (mv_timeline_pack, adminui panel)
+    "Nothing was installed yet: this server could not check the pack's timeline values. Choose Install anyway to install it as it is, or Cancel.": [
+        "아직 아무것도 설치하지 않았습니다. 이 서버에서 팩의 타임라인 값을 확인하지 못했습니다. 그대로 설치하려면 ‘그래도 설치’를, 그만두려면 ‘취소’를 고르세요.",
+        "まだ何もインストールしていません。このサーバーではパックのタイムラインの値を確認できませんでした。そのままインストールするには「それでもインストール」を、やめるには「キャンセル」を選んでください。"],
+    "The pack's timeline values could not be checked.": [
+        "팩의 타임라인 값을 확인하지 못했습니다.", "パックのタイムラインの値を確認できませんでした。"],
+    "Installed without checking the timeline values (you chose Install anyway).": [
+        "타임라인 값을 확인하지 않고 설치했습니다(‘그래도 설치’를 골랐습니다).",
+        "タイムラインの値を確認せずにインストールしました（「それでもインストール」を選びました）。"],
+    "Install without checking the timeline values?": [
+        "타임라인 값을 확인하지 않고 설치할까요?", "タイムラインの値を確認せずにインストールしますか？"],
+    "Install anyway (values not checked)": ["그래도 설치(값 확인 안 함)", "それでもインストール（値は未確認）"],
+    "Not installed — waiting for your choice": ["설치하지 않음 — 선택을 기다리는 중", "未インストール — 選択待ち"],
+    "The pack's timeline values are checked for structure only: install the asset editing tools (modtools) to check that MV Studio made them.": [
+        "팩 타임라인의 값은 구조만 확인합니다. MV Studio가 만든 값인지 확인하려면 에셋 편집툴(modtools)을 설치하세요.",
+        "パックのタイムラインの値は構造だけを確認します。MV Studioが作った値か確認するには、アセット編集ツール（modtools）をインストールしてください。"],
+    # a missing platform the conversion cannot make: asked about like an unchecked timeline
+    "Not converted: the pack's timeline holds data this server's MV Studio tools cannot convert, possibly from a newer MV Studio. With Install anyway this platform plays the source MV's original timeline, as with \"Convert a missing platform's timeline\" turned off.": [
+        "변환하지 않았습니다. 팩의 타임라인에 이 서버의 MV Studio 도구가 변환할 수 없는 데이터가 있습니다. 더 새로운 MV Studio로 만든 팩일 수 있습니다. ‘그래도 설치’를 고르면 ‘없는 플랫폼의 타임라인 변환’을 끈 것처럼 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
+        "変換していません。パックのタイムラインに、このサーバーのMV Studioツールが変換できないデータがあります。より新しいMV Studioで作られたパックかもしれません。「それでもインストール」を選ぶと、「ないプラットフォームのタイムラインを変換」をオフにしたときと同じく、このプラットフォームは元MVの元のタイムラインを再生します。"],
+    "Not converted (you chose Install anyway): this platform plays the source MV's original timeline.": [
+        "변환하지 않았습니다(‘그래도 설치’를 골랐습니다). 이 플랫폼은 원본 MV의 원래 타임라인을 재생합니다.",
+        "変換していません（「それでもインストール」を選びました）。このプラットフォームは元MVの元のタイムラインを再生します。"],
+    "The pack file changed after you were asked, so it is asked about again.": [
+        "질문한 뒤에 팩 파일이 바뀌어서 다시 묻습니다.", "確認した後でパックのファイルが変わったため、もう一度確認します。"],
+}
+for _source, _values in _MV_TIMELINE_REFUSAL_STRINGS.items():
+    for _lang, _text in zip(("ko", "ja"), _values):
+        _TABLES[_lang][_source] = _text

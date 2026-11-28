@@ -1,0 +1,591 @@
+"""Convert a disposable fixed app with real pinned PlayCover code and test imports.
+
+This is a macOS diagnostic, not a game install or a device/Simulator validation.
+The input tree is copied first; the iOS staging app remains unchanged.
+"""
+from __future__ import annotations
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import plistlib
+import shutil
+import stat
+import struct
+import subprocess
+import sys
+import time
+import urllib.request
+
+OWN=Path(__file__).resolve().parent
+SOURCE='a103786e03b7f6257b6b489dfc49ca6712423a2e'
+PINS={
+    'PlayCover/Utils/Macho.swift':'7a1f716b2d80e7341782637cb879a53f2f6edfb93c0761e04154b63c5785fb9a',
+    'PlayCover/Utils/Extensions/DataExtensions.swift':'025ce2140d916fe5c8e142bf64b09e3ee4568e1ae3de67afab423671c663ec70',
+}
+NIGHTLY1633_SOURCE='a7b1693d4fa4310367990cd35d4ebafb20e5c965'
+NIGHTLY1633_PINS={
+    'PlayCover/Utils/Macho.swift':'7a1f716b2d80e7341782637cb879a53f2f6edfb93c0761e04154b63c5785fb9a',
+    'PlayCover/Utils/Extensions/DataExtensions.swift':'099f657497c07efad693e4525b7b113bfba437d31ea2a442b485a71551ecc5b7',
+    'PlayCover/AppInstaller/Installer.swift':'588e772d45531550f59451c3c4d52aa2d4e31e68ffebea33e0ad72cfff0d7009',
+    'PlayCover/Utils/Extensions/URLExtensions.swift':'eef84014d5915d2517c6de22e39ead8aa600286b0986e6f73366981de0bdedea',
+    'PlayCover/Utils/Extensions/PlayAppExtensions.swift':'38757ad16f425a6c7e57de955d5bf0e8def345854f9b9b160acfa35f919483c2',
+}
+MIME_HELPER_SHA256='05ac5c019c675de3467233153def4208f4753c9503373538807e15ad03db7a7c'
+MIME_TYPES={
+    '.js':'application/javascript','.mjs':'application/javascript','.html':'text/html',
+    '.css':'text/css','.json':'application/json','.png':'image/png','.svg':'image/svg+xml',
+    '.webp':'image/webp','.glb':'model/gltf-binary','.gltf':'model/gltf+json',
+    '.unity':'application/octet-stream','.unity3d':'application/octet-stream',
+    '.bundle':'application/octet-stream','.assetbundle':'application/octet-stream',
+    '.db':'application/octet-stream','.bin':'application/octet-stream','.wasm':'application/wasm',
+    '.woff':'font/woff','.woff2':'font/woff2',
+}
+MAGIC=(b'\xcf\xfa\xed\xfe',b'\xca\xfe\xba\xbe',b'\xca\xfe\xba\xbf')
+CHUNK=1024*1024
+DEADLINE=None
+DEBUG_RESOURCE={
+    'path':'Frameworks/ElichikaHost.framework/ElichikaHost.dSYM/Contents/Resources/DWARF/ElichikaHost',
+    'bytes':33221258,
+    'sha256':'7d7967a663af2fc96d1f2811c8537a22b67308789886c92ce932b7f69256957b',
+}
+
+def need(value,why):
+    if not value: raise ValueError(why)
+
+def bounded_timeout(requested):
+    if DEADLINE is None:return requested
+    remaining=DEADLINE-time.monotonic()
+    need(remaining>=1,'Consumer cooperative wall-clock budget exhausted')
+    return min(requested,remaining)
+
+def write(path,value):
+    raw=(json.dumps(value,indent=2,ensure_ascii=False)+'\n').encode()
+    need(len(raw)<=CHUNK,'Small evidence capacity exceeded')
+    with Path(path).open('xb') as stream: stream.write(raw)
+
+def digest(path):
+    h=hashlib.sha256()
+    with Path(path).open('rb') as f:
+        for chunk in iter(lambda:f.read(CHUNK),b''):h.update(chunk)
+    return h.hexdigest()
+
+def run(argv,evidence,name,timeout=60,env=None):
+    t=time.monotonic()
+    try:
+        p=subprocess.run(list(map(str,argv)),capture_output=True,timeout=bounded_timeout(timeout),env=env)
+        row={'argv':list(map(str,argv)),'returncode':p.returncode,
+            'stdout':p.stdout[:65536].decode(errors='replace'),'stderr':p.stderr[:65536].decode(errors='replace'),
+            'truncated':len(p.stdout)>65536 or len(p.stderr)>65536}
+    except subprocess.TimeoutExpired:
+        row={'argv':list(map(str,argv)),'returncode':None,'timeout_seconds':timeout}
+    row['elapsed_seconds']=time.monotonic()-t
+    write(evidence/name,row)
+    need(row['returncode']==0,'Bounded diagnostic failed: '+name)
+    return row
+
+def headers(path):
+    with Path(path).open('rb') as f:
+        first=f.read(8);need(len(first)==8,'Truncated Mach-O')
+        if first[:4]==MAGIC[0]:offset=0
+        else:
+            magic,count=struct.unpack('>II',first)
+            need(magic in (0xcafebabe,0xcafebabf) and count<=32,'Unsupported FAT input')
+            width=20 if magic==0xcafebabe else 32;offset=None
+            for _ in range(count):
+                raw=f.read(width);need(len(raw)==width,'Truncated FAT record')
+                values=struct.unpack('>5I' if width==20 else '>IIQQII',raw)
+                if values[0]==0x100000c and values[1]&0xffffff==0:offset=values[2]
+            need(offset is not None,'Missing arm64 slice')
+        f.seek(offset);raw=f.read(32);need(len(raw)==32,'Truncated thin header')
+        magic,cpu,subtype,kind,count,size,flags,reserved=struct.unpack('<8I',raw)
+        need(magic==0xfeedfacf and cpu==0x100000c and count<=4096 and size<=CHUNK,'Unexpected Mach-O header')
+        data=f.read(size);need(len(data)==size,'Truncated load commands')
+    at=0;platforms=[];loads=[];legacy=[]
+    for _ in range(count):
+        need(at+8<=size,'Truncated command')
+        cmd,length=struct.unpack_from('<II',data,at)
+        need(length>=8 and at+length<=size,'Invalid command extent')
+        raw=data[at:at+length]
+        if cmd==0x32:
+            need(length>=24,'Short platform command');platforms.append(struct.unpack_from('<I',raw,8)[0])
+        elif cmd in (0x24,0x25,0x2f):legacy.append(cmd)
+        elif cmd in (0xc,0x80000018,0x8000001f,0x80000023):
+            need(length>=24,'Short dylib command');off=struct.unpack_from('<I',raw,8)[0]
+            need(24<=off<length,'Invalid dylib name');loads.append(raw[off:].split(b'\0')[0].decode())
+        at+=length
+    need(at==size,'Command count differs')
+    return {'platforms':platforms,'legacy':legacy,'loads':loads,'kind':kind,'cpu':cpu}
+
+def native_files(app):
+    rows=[];count=0
+    for root,dirs,files in os.walk(app,followlinks=False):
+        dirs[:]=[n for n in dirs if not (Path(root)/n).is_symlink()]
+        for name in files:
+            p=Path(root)/name;count+=1;need(count<=20000,'Native scan capacity exceeded')
+            if p.is_symlink() or not p.is_file():continue
+            with p.open('rb') as f:magic=f.read(4)
+            if magic in MAGIC:rows.append(p)
+    need(0<len(rows)<=256,'Unexpected native closure size')
+    return sorted(rows)
+
+def split_code_and_debug(app,natives,before,debug_resource=None):
+    """Only the exact source-bound host MH_DSYM is not runnable code."""
+    pin=DEBUG_RESOURCE if debug_resource is None else debug_resource
+    debug=[];code=[]
+    for path in natives:
+        relative=path.relative_to(app).as_posix()
+        if before[relative]['kind']==10:
+            need(relative==pin['path'] and path.stat().st_size==pin['bytes']
+                 and digest(path)==pin['sha256'],'Unknown or changed nonruntime MH_DSYM resource')
+            debug.append(path)
+        else:code.append(path)
+    need(len(debug)==1,'Exact source-bound debug resource missing')
+    return code,debug
+
+
+def fresh_debug_resource(app,report_path,repo):
+    """A fresh build may replace ONLY the old, exact host debug-resource pin."""
+    sys.path.insert(0,str(Path(repo)/'ios/build'))
+    from common import source_identity, sha256
+    report_path=Path(report_path)
+    need(report_path.is_file() and not report_path.is_symlink() and report_path.stat().st_size<=4*CHUNK,
+         'Bounded fresh native build report required')
+    report=json.loads(report_path.read_text());current=source_identity(repo)
+    need(current['source_sha']==os.environ.get('GITHUB_SHA'),'Fresh native report checkout/workflow differs')
+    need(report['schema']==1 and report['source']==current and report['sdk']=='iphoneos'
+         and report['target']=='arm64-apple-ios13.0' and report['simulator_probe_only'] is False
+         and report['actual_Apple_SDK_compile'] is True and report['device_IPA_contains_probe'] is False
+         and report['physical_device_execution'] is False
+         and report['MachO']['filetype']==6 and report['MachO']['version']['platform']==2
+         and report['MachO']['install_name']=='@rpath/ElichikaHost.framework/ElichikaHost',
+         'Fresh native build identity/platform/scope differs')
+    native_root=Path(repo)/'ios/native'
+    expected_sources={str(p.relative_to(repo)) for p in
+        [*(native_root/name for name in ('ElichikaHost.mm','ElichikaPythonRuntime.mm','ElichikaNativeBridges.mm')),
+         *native_root.glob('*.h'),*native_root.glob('*.hpp')]}
+    need(set(report['source_sha256'])==expected_sources,'Fresh native compiler source closure is incomplete')
+    for name,expected in report['source_sha256'].items():
+        path=Path(repo)/name
+        need(name.startswith('ios/native/') and path.is_file() and not path.is_symlink()
+             and sha256(path)==expected,'Fresh native compiler source differs')
+    provenance=json.loads((app/'ElichikaResources/bundle-provenance.json').read_text())
+    need(provenance['source']==current and provenance['native_framework_sha256']==report['binary_sha256']
+         and provenance['fresh_simulator_execution_claimed'] is True,
+         'Staged app does not identify this fresh native build and Simulator execution')
+    rows=report['nonruntime_debug_resources']
+    need(len(rows)==1,'One exact fresh host debug resource required')
+    pin=rows[0]
+    need(pin['path']==DEBUG_RESOURCE['path'] and pin['MachO_kind']==10
+         and isinstance(pin['bytes'],int) and 0<pin['bytes']<=128*CHUNK
+         and isinstance(pin['sha256'],str) and len(pin['sha256'])==64
+         and all(c in '0123456789abcdef' for c in pin['sha256']),
+         'Fresh debug-resource path/kind/pin differs')
+    return {key:pin[key] for key in ('path','bytes','sha256')},report
+
+def framework_rows(app):
+    rows=[]
+    for fw in sorted((app/'Frameworks').glob('*.framework')):
+        raw=(fw/'Info.plist').read_bytes();need(len(raw)<=65536,'Oversized framework metadata')
+        info=plistlib.loads(raw);exe=info['CFBundleExecutable']
+        need(isinstance(exe,str) and '/' not in exe and '\\' not in exe and exe not in ('','.','..'),'Unsafe executable metadata')
+        binary=fw/exe;need(binary.is_file() and not binary.is_symlink(),'Missing declared framework binary')
+        is_extension=fw.name.startswith('py.')
+        kind='python_extension' if is_extension else 'codec' if fw.name in ('ElichikaHCA.framework','ElichikaTexture65.framework') else 'core'
+        need(not is_extension or '.' not in exe,'Dot-named native extension still rejected by PlayCover')
+        row={'framework':fw.name,'binary':binary.relative_to(app).as_posix(),'kind':kind,'executable':exe}
+        if is_extension:
+            origin=binary.with_name(binary.name+'.origin')
+            need(origin.is_file() and not origin.is_symlink() and origin.stat().st_size<=1024,'Missing renamed origin record')
+            stub=app/origin.read_text().strip()
+            need(stub.resolve().is_relative_to(app.resolve()) and stub.suffix=='.fwork' and stub.is_file(),'Invalid origin target')
+            need(stub.stat().st_size<=1024 and stub.read_text().strip()==row['binary'],'fwork and origin mapping disagree')
+            row['fwork']=stub.relative_to(app).as_posix()
+        rows.append(row)
+    need(len(rows)<=128,'Unexpected framework count')
+    return rows
+
+def converter(work,evidence,variant='stable'):
+    source,pins=(SOURCE,PINS) if variant=='stable' else (NIGHTLY1633_SOURCE,NIGHTLY1633_PINS)
+    need(variant in ('stable','nightly-1633'),'Unknown converter variant')
+    for relative,expected in pins.items():
+        need(expected is not None,'Source pins were not frozen')
+        url='https://raw.githubusercontent.com/PlayCover/PlayCover/'+source+'/'+relative
+        with urllib.request.urlopen(url,timeout=bounded_timeout(30)) as r:raw=r.read(65537)
+        need(len(raw)<=65536 and hashlib.sha256(raw).hexdigest()==expected,'Pinned converter source differs')
+        (work/Path(relative).name).write_bytes(raw)
+    header=work/'MachOHeaders.h'
+    header.write_text('#include <mach-o/loader.h>\n#include <mach-o/fat.h>\n#include <mach-o/arch.h>\n#include <mach-o/swap.h>\n')
+    main=work/'main.swift'
+    main.write_text('''import Foundation
+enum PlayCoverError: Error { case appCorrupted, failedToStripBinary }
+guard CommandLine.arguments.count == 2 else { exit(2) }
+let paths = try JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))) as! [String]
+for path in paths { try Macho.convertMacho(URL(fileURLWithPath:path)) }
+''')
+    exe=work/'playcover-convert'
+    run(['/usr/bin/xcrun','swiftc','-import-objc-header',header,work/'Macho.swift',work/'DataExtensions.swift',main,'-o',exe],evidence,'converter-compile.json',90)
+    return exe
+
+def pinned_method(work,filename,start,end):
+    'Slice an unmodified declaration from an already SHA-pinned source file.'
+    text=(work/filename).read_text()
+    need(text.count(start)==1 and text.count(end)==1,'Pinned method boundary differs')
+    _before,tail=text.split(start,1)
+    need(end in tail,'Pinned method order differs')
+    method=start+tail.split(end,1)[0]
+    need(method.rstrip().endswith('}'),'Pinned method is incomplete')
+    return method
+
+
+def nightly_resolver_sources(work):
+    for relative,expected in NIGHTLY1633_PINS.items():
+        path=work/Path(relative).name
+        need(path.is_file() and not path.is_symlink() and digest(path)==expected,
+             'Nightly source changed before exact method extraction')
+    enumeration=pinned_method(work,'URLExtensions.swift','    func enumerateContents(',
+        '    func appendingEscapedPathComponent(')
+    resolver=pinned_method(work,'Installer.swift','    static func resolveValidMachOs(',
+        '    /// Wrapper for codesign,')
+    alias=pinned_method(work,'PlayAppExtensions.swift','    func createAlias()',
+        '    func removeAlias()')
+    return enumeration,resolver,alias
+
+
+def resolver_closure(app,reply,code,debug_resource):
+    paths=reply.get('paths')
+    need(reply.get('schema')==1 and reply.get('actual_Foundation_enumeration') is True
+         and reply.get('actual_Installer_resolveValidMachOs') is True
+         and isinstance(paths,list) and 0<len(paths)<=128,'Actual resolver receipt is invalid')
+    need(all(isinstance(v,str) and v and not v.startswith('/') and '\\' not in v
+             and all(p not in ('','.','..') for p in v.split('/')) for v in paths),
+         'Actual resolver returned an unsafe path')
+    need(len(paths)==len(set(paths)),'Actual resolver returned duplicate paths')
+    expected={p.relative_to(app).as_posix() for p in code}
+    return {'actual_Foundation_enumeration':True,'actual_Installer_resolveValidMachOs':True,
+        'source_sha':NIGHTLY1633_SOURCE,'code_closure_matches':set(paths)==expected,
+        'selected_code_count':len(set(paths)&expected),'nonruntime_debug_selected':debug_resource['path'] in paths,
+        'selected_paths':sorted(paths),'nonruntime_debug_pin':debug_resource,
+        'source_pins':NIGHTLY1633_PINS}
+
+
+def actual_nightly_resolver(app,work,evidence,code,debug_resource):
+    enumeration,resolver,_alias=nightly_resolver_sources(work)
+    directory=work/'actual-resolver';directory.mkdir()
+    swift=directory/'main.swift'
+    swift.write_text('import Foundation\n'+
+        'final class BaseApp { let url:URL; var validMachOs:[URL]?; init(_ url:URL){self.url=url} }\n'+
+        'extension URL {\n'+enumeration+'\n}\nclass Installer {\n'+resolver+'\n}\n'+
+        '''guard CommandLine.arguments.count==3 else {exit(2)}
+let app=URL(fileURLWithPath:CommandLine.arguments[1],isDirectory:true).standardizedFileURL
+let output=URL(fileURLWithPath:CommandLine.arguments[2])
+guard !FileManager.default.fileExists(atPath:output.path) else {exit(2)}
+let prefix=app.path+"/"
+let selected=Installer.resolveValidMachOs(BaseApp(app))
+var paths:[String]=[]
+for url in selected {
+    let path=url.standardizedFileURL.path
+    guard path.hasPrefix(prefix) else {exit(3)}
+    paths.append(String(path.dropFirst(prefix.count)))
+}
+let reply:[String:Any]=["schema":1,"paths":paths.sorted(),"actual_Foundation_enumeration":true,"actual_Installer_resolveValidMachOs":true]
+let data=try JSONSerialization.data(withJSONObject:reply,options:[.sortedKeys])
+guard data.count<=65536 else {exit(4)}
+try data.write(to:output,options:.withoutOverwriting)
+''')
+    executable=directory/'resolver';output=evidence/'actual-resolver-selection.json'
+    run(['/usr/bin/xcrun','swiftc',swift,'-o',executable],evidence,'actual-resolver-compile.json',60)
+    run([executable,app,output],evidence,'actual-resolver-run.json',30)
+    need(output.stat().st_size<=65536,'Actual resolver output is oversized')
+    proof=resolver_closure(app,json.loads(output.read_text()),code,debug_resource)
+    write(evidence/'actual-resolver.json',proof)
+    # Never silently drop an MH_DSYM selected by the real installer. The exact
+    # resource was identified separately, and the actual traversal must exclude
+    # it while selecting every runtime image before conversion can be a PASS.
+    need(proof['nonruntime_debug_selected'] is False,'Actual nightly resolver selected the nonruntime MH_DSYM resource')
+    need(proof['code_closure_matches'] is True and proof['selected_code_count']==99,
+         'Actual nightly resolver does not select the complete 99-code-image closure')
+    return proof
+
+
+def actual_nightly_alias(app,alias,work,evidence):
+    enumeration,_resolver,method=nightly_resolver_sources(work)
+    directory=work/'actual-alias';directory.mkdir()
+    swift=directory/'main.swift'
+    swift.write_text('import Foundation\n'+
+        'final class Log { static let shared=Log();func log(_ text:String){print(text)} }\n'+
+        'extension URL {\n'+enumeration+'\n}\nclass PlayApp {let url:URL;let aliasURL:URL;'+
+        'init(_ url:URL,_ aliasURL:URL){self.url=url;self.aliasURL=aliasURL}\n'+method+'\n}\n'+
+        '''guard CommandLine.arguments.count==3 else {exit(2)}
+let app=URL(fileURLWithPath:CommandLine.arguments[1],isDirectory:true)
+let alias=URL(fileURLWithPath:CommandLine.arguments[2],isDirectory:true)
+guard !FileManager.default.fileExists(atPath:alias.path) else {exit(3)}
+PlayApp(app,alias).createAlias()
+''')
+    executable=directory/'alias-builder'
+    run(['/usr/bin/xcrun','swiftc',swift,'-o',executable],evidence,'actual-alias-compile.json',60)
+    run([executable,app,alias],evidence,'actual-alias-create.json',30)
+
+
+def verify_alias_contents(app,alias):
+    need(alias.is_dir() and not alias.is_symlink(),'Alias is not an ordinary directory')
+    expected={p.name:p for p in app.iterdir()}
+    actual={p.name:p for p in alias.iterdir()}
+    need(set(actual)==set(expected),'Alias top-level entries differ')
+    for name,entry in expected.items():
+        path=actual[name]
+        if name=='Info.plist':
+            need(path.is_file() and not path.is_symlink() and digest(path)==digest(entry),
+                 'Alias Info.plist is not a current ordinary copy')
+        else:
+            need(path.is_symlink() and path.readlink()==entry,'Alias symlink target differs')
+    return {'directory':(alias.stat().st_dev,alias.stat().st_ino),
+        'entries':{name:(path.lstat().st_dev,path.lstat().st_ino,stat.S_IFMT(path.lstat().st_mode))
+                   for name,path in actual.items()}}
+
+
+def remove_owned_alias(app,alias,identity):
+    need(identity is not None and not alias.is_symlink() and alias.is_dir()
+         and (alias.stat().st_dev,alias.stat().st_ino)==identity['directory'],'Owned alias identity changed')
+    need(verify_alias_contents(app,alias)==identity,'Owned alias entry identity changed')
+    # Unlink only the exact entries created above, never a link's destination.
+    for entry in alias.iterdir():entry.unlink()
+    alias.rmdir()
+
+
+def require_mime_bootstrap(reply):
+    mime=reply.get('mime_bootstrap',{})
+    need(mime.get('ready') is True and mime.get('host_files_used') is False
+         and type(mime.get('host_file_attempts')) is int and mime['host_file_attempts']==0
+         and mime.get('mode')=='packaged-helper-blocked-host-mime'
+         and mime.get('reinitialized') is True and mime.get('cold_start') is True
+         and mime.get('helper_sha256')==MIME_HELPER_SHA256 and mime.get('types')==MIME_TYPES,
+         'Actual packaged MIME bootstrap proof is incomplete or used host MIME files')
+
+
+def require_nightly_consumer(result):
+    proof=result.get('actual_resolver',{});alias=result.get('optional_alias_launch',{})
+    need(result.get('converter_variant')=='nightly-1633' and result.get('PlayCover_converter_source')==NIGHTLY1633_SOURCE,
+         'Nightly consumer identity differs')
+    need(proof.get('source_sha')==NIGHTLY1633_SOURCE and proof.get('source_pins')==NIGHTLY1633_PINS
+         and proof.get('actual_Foundation_enumeration') is True and proof.get('actual_Installer_resolveValidMachOs') is True
+         and proof.get('code_closure_matches') is True and proof.get('selected_code_count')==99
+         and proof.get('nonruntime_debug_selected') is False
+         and isinstance(proof.get('selected_paths'),list) and len(proof['selected_paths'])==99
+         and len(set(proof['selected_paths']))==99,'Nightly actual resolver proof is incomplete')
+    need(alias.get('status')=='PUBLIC_LAUNCH_COMPLETION' and alias.get('terminatedAtCompletion') is False
+         and alias.get('terminatedAfterThreeSeconds') is False and alias.get('executableMatches') is True
+         and alias.get('actual_source_alias_creation') is True and alias.get('alias_source')==NIGHTLY1633_SOURCE
+         and alias.get('alias_content_identity_verified') is True and alias.get('owned_alias_removed') is True
+         and alias.get('launchedProcessTerminated') is True,
+         'Nightly exact alias launch or executable identity proof is incomplete')
+
+
+def optional_alias_probe(app,work,evidence,variant='stable'):
+    """Observe OS launch separately; any error remains auxiliary evidence."""
+    outcome={'actual_GUI_install':False,'gameplay_pass_claimed':False}
+    alias=None;identity=None
+    try:
+        info=plistlib.loads((app/'Info.plist').read_bytes())
+        name=info.get('CFBundleDisplayName') or info['CFBundleName']
+        need(isinstance(name,str) and '/' not in name and '\\' not in name,'Unsafe alias display name')
+        alias=Path.home()/'Applications/PlayCover'/(name+'.app')
+        need(not alias.exists() and not alias.is_symlink(),'A preexisting user alias prevents optional probe')
+        if variant=='nightly-1633':
+            actual_nightly_alias(app,alias,work,evidence)
+            outcome.update(actual_source_alias_creation=True,alias_source=NIGHTLY1633_SOURCE)
+        else:
+            alias.mkdir(parents=True,exist_ok=False)
+            for entry in app.iterdir():
+                target=alias/entry.name
+                if entry.name=='Info.plist':shutil.copy2(entry,target)
+                else:target.symlink_to(entry,target_is_directory=entry.is_dir())
+        identity=verify_alias_contents(app,alias);outcome['alias_content_identity_verified']=True
+        exe=work/'alias-launch-probe'
+        run(['/usr/bin/xcrun','swiftc',OWN/'PlayCoverAliasLaunchProbe.swift','-o',exe],evidence,'optional-alias-compile.json',60)
+        run([exe,alias,info['CFBundleIdentifier'],evidence/'optional-alias-nserror.json'],evidence,'optional-alias-launch.json',40)
+        outcome.update(json.loads((evidence/'optional-alias-nserror.json').read_text()))
+    except Exception as e:
+        outcome.update(status='OPTIONAL_ALIAS_DIAGNOSTIC_INCOMPLETE',error_class=type(e).__name__,public_error=str(e)[:512])
+    finally:
+        if identity is not None:
+            try:
+                remove_owned_alias(app,alias,identity);outcome['owned_alias_removed']=True
+            except Exception as error:
+                outcome.update(owned_alias_removed=False,alias_cleanup_error=str(error)[:512])
+    write(evidence/'optional-alias-outcome.json',outcome)
+    return outcome
+
+def main():
+    global DEADLINE
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--app',type=Path,required=True);p.add_argument('--work',type=Path,required=True);p.add_argument('--evidence',type=Path,required=True)
+    p.add_argument('--native-build-report',type=Path)
+    p.add_argument('--converter-variant',choices=('stable','nightly-1633'),default='stable')
+    p.add_argument('--repo',type=Path,default=OWN.parents[1])
+    args=p.parse_args();need(sys.platform=='darwin' and os.environ.get('GITHUB_ACTIONS')=='true','Disposable Mac Actions runner required')
+    root=Path(os.environ['RUNNER_TEMP']).resolve()
+    need(args.work.resolve().is_relative_to(root) and args.evidence.resolve().is_relative_to(root),'Fresh output must remain within RUNNER_TEMP')
+    args.work.mkdir(parents=True,exist_ok=False);args.evidence.mkdir(parents=True,exist_ok=False)
+    DEADLINE=time.monotonic()+420
+    work,evidence=args.work,args.evidence
+    source=SOURCE if args.converter_variant=='stable' else NIGHTLY1633_SOURCE
+    result={'schema':1,'status':'RUNNING','converter_variant':args.converter_variant,
+        'PlayCover_converter_source':source,'actual_gameplay':False,'actual_iPhone_iPad_execution':False,'actual_GUI_install':False}
+    try:
+        original=args.app.resolve();need(original.is_dir() and original.suffix=='.app','Fixed staged app required')
+        app=work/'converted.app';shutil.copytree(original,app,symlinks=True)
+        debug_resource=DEBUG_RESOURCE
+        if args.native_build_report is not None:
+            debug_resource,fresh_report=fresh_debug_resource(app,args.native_build_report,args.repo)
+            write(evidence/'fresh-native-build-report.json',fresh_report)
+            result['fresh_native_build_source']=fresh_report['source']
+            result['fresh_native_build_report_sha256']=digest(args.native_build_report)
+        info=plistlib.loads((app/'Info.plist').read_bytes());need(info['CFBundleExecutable']=='global','Unexpected main executable')
+        # The normal PlayCover assert(minimumVersion:11) metadata step, on the
+        # disposable copy only. Raw fixed iOS output remains unchanged.
+        if float(info.get('MinimumOSVersion','0'))>11:
+            info['MinimumOSVersion']='11';(app/'Info.plist').write_bytes(plistlib.dumps(info))
+        frameworks=framework_rows(app)
+        need(len(frameworks)==92 and sum(r['kind']=='python_extension' for r in frameworks)==87,'Exact fixed native framework closure differs')
+        stubs={p.relative_to(app).as_posix() for p in (app/'ElichikaResources/python/lib/python3.13').rglob('*.fwork')}
+        need(stubs=={r['fwork'] for r in frameworks if r['kind']=='python_extension'},'A packaged fwork stub is missing or unmapped')
+        write(evidence/'framework-mappings.json',frameworks)
+        natives=native_files(app)
+        need(len(natives)==100,'Exact 100-image native closure differs')
+        before={f.relative_to(app).as_posix():headers(f) for f in natives};write(evidence/'platforms-before.json',before)
+        code,debug=split_code_and_debug(app,natives,before,debug_resource)
+        need(len(code)==99,'Exact 99-code-image closure differs')
+        accepted=[f for f in code if f.suffix in ('','.dylib')]
+        need(len(accepted)==99,'A code image remains excluded by the real filename filter')
+        runtime={app/r['binary'] for r in frameworks if r['framework']!='CydiaSubstrate.framework'}
+        need(runtime.issubset(set(accepted)),'A native runtime binary is still excluded by the real filename filter')
+        write(evidence/'filter-acceptance.json',{'filter':'regular file, suffix empty or dylib, FAT/arm64 magic','traversal':'explicit recursive native closure; GUI traversal not claimed',
+            'accepted':[f.relative_to(app).as_posix() for f in accepted],'excluded_code':[f.relative_to(app).as_posix() for f in code if f not in accepted],
+            'preserved_nonruntime_MH_DSYM':debug_resource})
+        exe=converter(work,evidence,args.converter_variant)
+        if args.converter_variant=='nightly-1633':
+            result['actual_resolver']=actual_nightly_resolver(app,work,evidence,code,debug_resource)
+        paths=work/'convert-paths.json';paths.write_text(json.dumps([str(f) for f in accepted]))
+        run([exe,paths],evidence,'actual-playcover-convert.json',120)
+        (app/'global').chmod(0o755)
+        after={f.relative_to(app).as_posix():headers(f) for f in natives};write(evidence/'platforms-after.json',after)
+        for path in code:
+            key=path.relative_to(app).as_posix()
+            need(after[key]['platforms']==[6] and not after[key]['legacy'],'Code image platform conversion differs: '+key)
+        need(digest(debug[0])==debug_resource['sha256'],'Nonruntime debug bytes changed during conversion')
+        for row in frameworks:
+            key=row['binary'];need(after[key]['platforms']==[6] and not after[key]['legacy'],'Framework platform conversion closure differs: '+key)
+        for i,f in enumerate(accepted):run(['/usr/bin/codesign','--force','--sign','-',f],evidence,'sign-'+str(i)+'.json',15)
+        for i,fw in enumerate(sorted((app/'Frameworks').glob('*.framework'))):
+            run(['/usr/bin/codesign','--force','--sign','-',fw],evidence,'sign-framework-'+str(i)+'.json',15)
+        run(['/usr/bin/codesign','--force','--sign','-',app],evidence,'sign-app.json',30)
+        run(['/usr/bin/codesign','--verify','--deep','--strict',app],evidence,'signature-closure.json',30)
+        need(digest(debug[0])==debug_resource['sha256'],'Nonruntime debug bytes changed during signing')
+        sdk=run(['/usr/bin/xcrun','--sdk','macosx','--show-sdk-path'],evidence,'mac-sdk.json')['stdout'].strip()
+        helper=work/'python-native-probe'
+        run(['/usr/bin/xcrun','clang','-x','objective-c','-target','arm64-apple-ios13.1-macabi','-isysroot',sdk,
+            '-I'+str(app/'Frameworks/Python.framework/Headers'),'-F'+str(app/'Frameworks'),
+            '-F'+str(Path(sdk)/'System/iOSSupport/System/Library/Frameworks'),
+            '-framework','Python','-framework','Foundation','-framework','UIKit',
+            '-Wl,-rpath,'+str(app/'Frameworks'),OWN/'PlayCoverPythonImportProbe.c','-o',helper],evidence,'embedding-compile.json',90)
+        run(['/usr/bin/codesign','--force','--sign','-',helper],evidence,'sign-embedding.json',15)
+        env=os.environ.copy();env.update(OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='1')
+        run([helper,app,OWN/'playcover_python_imports.py',evidence/'framework-mappings.json',evidence/'actual-native-imports.json'],evidence,'actual-embedded-imports.json',120,env)
+        reply=json.loads((evidence/'actual-native-imports.json').read_text())
+        need(reply['status']=='ACTUAL_CONVERTED_NATIVE_IMPORTS_PASS' and reply['codec_count']==8,'Native import proof did not pass')
+        require_mime_bootstrap(reply)
+        result.update(status='ACTUAL_PLAYCOVER_CONVERSION_AND_NATIVE_IMPORTS_PASS',native_headers=len(natives),code_images=len(code),preserved_debug_resources=[debug_resource],frameworks=len(frameworks),mapped_extensions=reply['native_leaf_count'],codec_count=8,
+                      qualification='Real converted packaged CPython/math/SSL/ctypes/NumPy/eight texture codecs and all mapped AOT dyld loads. No game/MV, GUI install or physical iOS execution.')
+        result['optional_alias_launch']=optional_alias_probe(app,work,evidence,args.converter_variant)
+        need(result['optional_alias_launch'].get('launchedProcessTerminated') is not False,
+             'The exact launched consumer process did not terminate within its bounded cleanup')
+        if args.converter_variant=='nightly-1633':require_nightly_consumer(result)
+    except Exception as e:
+        result.update(status='FAILED',error_class=type(e).__name__,public_error=str(e)[:512]);raise
+    finally:write(evidence/'result.json',result)
+
+def self_test():
+    import tempfile
+    import unittest
+    class Contracts(unittest.TestCase):
+        def debug_fixture(self,root):
+            path=root/DEBUG_RESOURCE['path'];path.parent.mkdir(parents=True)
+            raw=struct.pack('<8I',0xfeedfacf,0x100000c,0,10,1,24,0,0)+struct.pack('<6I',0x32,24,2,0xd0000,0x120500,0)
+            path.write_bytes(raw)
+            return path,{'path':DEBUG_RESOURCE['path'],'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
+        def test_only_exact_pinned_debug_resource_is_not_code(self):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);debug,pin=self.debug_fixture(root);old=globals()['DEBUG_RESOURCE'];globals()['DEBUG_RESOURCE']=pin
+                try:
+                    code,resources=split_code_and_debug(root,[debug],{pin['path']:headers(debug)})
+                    self.assertEqual(code,[]);self.assertEqual(resources,[debug])
+                finally:globals()['DEBUG_RESOURCE']=old
+        def test_unknown_debug_resource_fails_closed(self):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);debug,pin=self.debug_fixture(root);other=root/'unknown.dSYM';other.write_bytes(debug.read_bytes())
+                old=globals()['DEBUG_RESOURCE'];globals()['DEBUG_RESOURCE']=pin
+                try:
+                    with self.assertRaises(ValueError):split_code_and_debug(root,[other],{'unknown.dSYM':headers(other)})
+                finally:globals()['DEBUG_RESOURCE']=old
+        def test_known_debug_resource_changed_bytes_rejected(self):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);debug,pin=self.debug_fixture(root);old=globals()['DEBUG_RESOURCE'];globals()['DEBUG_RESOURCE']=pin
+                try:
+                    raw=bytearray(debug.read_bytes());raw[-1]^=1;debug.write_bytes(raw)
+                    with self.assertRaises(ValueError):split_code_and_debug(root,[debug],{pin['path']:headers(debug)})
+                finally:globals()['DEBUG_RESOURCE']=old
+        def test_expired_global_budget_rejects_another_command(self):
+            old=globals()['DEADLINE'];globals()['DEADLINE']=time.monotonic()-1
+            try:
+                with self.assertRaises(ValueError):bounded_timeout(60)
+            finally:globals()['DEADLINE']=old
+        def test_global_budget_caps_requested_subprocess_timeout(self):
+            old=globals()['DEADLINE'];globals()['DEADLINE']=time.monotonic()+3
+            try:self.assertTrue(0<bounded_timeout(90)<=3)
+            finally:globals()['DEADLINE']=old
+        def test_platform_is_read_from_actual_load_commands(self):
+            with tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'native'
+                for platform_id in (2,6):
+                    path.write_bytes(struct.pack('<8I',0xfeedfacf,0x100000c,0,6,1,24,0,0)+struct.pack('<6I',0x32,24,platform_id,0xb0000,0xe0000,0))
+                    self.assertEqual(headers(path)['platforms'],[platform_id])
+        def test_oversized_commands_fail_before_body_read(self):
+            with tempfile.TemporaryDirectory() as directory:
+                path=Path(directory)/'native';path.write_bytes(struct.pack('<8I',0xfeedfacf,0x100000c,0,6,1,CHUNK+1,0,0))
+                with self.assertRaises(ValueError):headers(path)
+        def fixture(self,root,exe='py_lib-dynload_math'):
+            fw=root/'Frameworks/py.lib-dynload.math.framework';fw.mkdir(parents=True)
+            (fw/'Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable':exe}))
+            (fw/exe).write_bytes(b'12345678')
+            stub=root/'ElichikaResources/python/lib/python3.13/lib-dynload/math.cpython-313-ios.fwork';stub.parent.mkdir(parents=True)
+            stub.write_text('Frameworks/'+fw.name+'/'+exe+'\n')
+            (fw/(exe+'.origin')).write_text(stub.relative_to(root).as_posix()+'\n')
+            return fw,stub
+        def test_same_directory_renamed_mapping_round_trip(self):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);self.fixture(root)
+                row=framework_rows(root)[0]
+                self.assertEqual(row['executable'],'py_lib-dynload_math')
+                self.assertTrue(row['fwork'].endswith('.fwork'))
+        def test_old_dotted_executable_rejected(self):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);self.fixture(root,'py.lib-dynload.math')
+                with self.assertRaises(ValueError):framework_rows(root)
+        def test_missing_renamed_origin_rejected(self):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);fw,stub=self.fixture(root)
+                (fw/'py_lib-dynload_math.origin').unlink()
+                with self.assertRaises(ValueError):framework_rows(root)
+        def test_wrong_fwork_native_target_rejected(self):
+            with tempfile.TemporaryDirectory() as directory:
+                root=Path(directory);fw,stub=self.fixture(root)
+                stub.write_text('Frameworks/elsewhere/bad\n')
+                with self.assertRaises(ValueError):framework_rows(root)
+    result=unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(Contracts))
+    return 0 if result.wasSuccessful() else 1
+
+if __name__=='__main__':
+    if sys.argv[1:]==['--self-test']:raise SystemExit(self_test())
+    main()

@@ -108,7 +108,7 @@ assert brotli.decompress(brotli.compress(b'elichika-private-runtime')) == b'elic
 from webtools.core.tkstub import ensure_tk_stub
 ensure_tk_stub()
 modules=['sukusta_paths','adminui.server','webtools.server','webtools.tools.registry',
-         'mv_studio_live','mv_studio_native_assets','webtools.core.mv_studio',
+         'mv_studio_live','mv_studio_manage','mv_studio_native_assets','webtools.core.mv_studio',
          'webtools.core.mv_studio_game','webtools.core.mv_studio_timeline','webtools.core.mv_studio_quality',
          'webtools.core.mv_studio_props','webtools.core.mv_studio_split',
          'webtools.core.mv_studio_stage_materials','webtools.core.mv_studio_stage_coloring',

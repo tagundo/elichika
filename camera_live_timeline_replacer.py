@@ -18,6 +18,13 @@ import shutil
 import hashlib
 import zlib
 from datetime import datetime
+from live_install_core import parse_modinstall_txt
+
+# The livetimeline.txt variables this tool reads. The txt is parsed for literal assignments only
+# (parse_modinstall_txt); nothing in it is executed. Any other line is ignored.
+TXT_VARIABLES = ("live_timeline_file", "live_timeline_num", "timeline", "live_stage_master_id",
+                 "stage_effect_asset_path", "live_prop_skeleton_asset_path", "quality_setitng_set_id",
+                 "shader_variant_asset_path")
 
 
 def backup_operate(filelist):
@@ -304,9 +311,10 @@ for mass_addon in batch_proccess_list:
                         # Read and process each line in the extracted file
                     try:
                         file_content = txt_file.read()
-                        exec(file_content)
+                        values = parse_modinstall_txt(file_content)
+                        globals().update({name: values[name] for name in TXT_VARIABLES if name in values})
                     except Exception as e:
-                        print(f"Error executing file: {file_info.filename}\nError: {e}")
+                        print(f"Error reading file: {file_info.filename}\nError: {e}")
 
     start_encrypt1 = temp_directory + live_timeline_file
 

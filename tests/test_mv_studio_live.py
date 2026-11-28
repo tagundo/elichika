@@ -1,225 +1,221 @@
-from pathlib import Path
+"""Compatibility wrapper, chart templates and chart attachment (replacing the placeholder type 30 in place)."""
+
+from contextlib import closing
 import json
 import sqlite3
-import sys
-import tempfile
 import unittest
 from unittest.mock import patch
 
 import mv_studio_live as studio
-import mv_studio_native_assets as native
+import mv_studio_manage as manage
+from test_mv_studio_manage import StudioCase, dump, query, region_paths, restore, timeline, write_legacy_song
 
 
-_MASTER = """
-CREATE TABLE m_live (live_id INTEGER PRIMARY KEY, is_2d_live INTEGER, bgm_path TEXT, music_id INTEGER,
- chorus_bgm_path TEXT, live_member_mapping_id INTEGER, name TEXT, pronunciation TEXT,
- member_group INTEGER, display_order INTEGER, jacket_asset_path TEXT);
-INSERT INTO m_live VALUES (21,0,'music21',3001,'chorus21',11,'k.source','k.pronunciation',2,7,'jk1');
-CREATE TABLE m_live_mv (live_id INTEGER, live_stage_master_id INTEGER, position INTEGER,
- live_3d_asset_master_id INTEGER, PRIMARY KEY(live_id,position));
-INSERT INTO m_live_mv VALUES (21,101,1,501),(21,102,2,501);
-CREATE TABLE m_live_3d_asset (id INTEGER PRIMARY KEY, timeline TEXT, live_stage_master_id INTEGER,
- stage_effect_asset_path TEXT, live_prop_skeleton_asset_path TEXT);
-INSERT INTO m_live_3d_asset VALUES (501,'A01',102,'E01','P01'),(502,'A02',102,'E02','P02'),(999,'ERR',102,'E99','P99');
-CREATE TABLE m_live_stage (id INTEGER PRIMARY KEY);
-INSERT INTO m_live_stage VALUES (101),(102);
-CREATE TABLE m_live_visible_definition (live_m_id INTEGER PRIMARY KEY, safe_swing_bone INTEGER);
-INSERT INTO m_live_visible_definition VALUES (21,1);
-CREATE TABLE m_live_difficulty (live_difficulty_id INTEGER PRIMARY KEY, live_id INTEGER,
- live_difficulty_type INTEGER, live_3d_asset_master_id INTEGER, unlock_pattern INTEGER,
- difficulty_const_master_id INTEGER, consumed_lp INTEGER, target_voltage INTEGER);
-INSERT INTO m_live_difficulty VALUES (2201,21,10,501,1,7,10,1000),(2203,21,30,502,1,8,15,5000);
-CREATE TABLE m_live_difficulty_const (id INTEGER PRIMARY KEY, sp_gauge_length INTEGER);
-INSERT INTO m_live_difficulty_const VALUES (7,4000),(8,6000);
-"""
-
-_ASSETS = """
-CREATE TABLE m_asset_package (package_key TEXT PRIMARY KEY, version TEXT, pack_num INTEGER);
-INSERT INTO m_asset_package VALUES ('music:21','music-version',1),('live:501','live-version',1),('live:502','alt-version',1);
-CREATE TABLE m_asset_package_mapping (package_key TEXT, pack_name TEXT, file_size INTEGER,
- metapack_name TEXT, metapack_offset INTEGER, category INTEGER, PRIMARY KEY(package_key,pack_name));
-INSERT INTO m_asset_package_mapping VALUES ('music:21','song01',12345,NULL,0,0),
- ('live:501','mvt001',1024,'meta01',171,1),('live:502','mvt002',2048,'meta01',2000,1);
-CREATE TABLE m_asset_pack (pack_name TEXT PRIMARY KEY, auto_delete INTEGER);
-INSERT INTO m_asset_pack VALUES ('song01',0),('mvt001',0),('mvt002',0);
-CREATE TABLE live_timeline (asset_path TEXT PRIMARY KEY, pack_name TEXT, head INTEGER,
- size INTEGER, key1 INTEGER, key2 INTEGER);
-INSERT INTO live_timeline VALUES ('A01','mvt001',8,512,4,7),('A02','mvt002',12,1024,5,6);
-CREATE TABLE live_timeline_dependency (asset_path TEXT, dependency TEXT, PRIMARY KEY(asset_path,dependency));
-INSERT INTO live_timeline_dependency VALUES ('A01','dance01'),('A01','stage01'),('A02','dance02');
-CREATE TABLE m_asset_sound (sheet_name TEXT PRIMARY KEY, acb_pack_name TEXT, awb_pack_name TEXT);
-INSERT INTO m_asset_sound VALUES ('music21','song01',NULL);
-"""
-
-
-def _query(path, query, values=()):
-    with sqlite3.connect(path) as database:
-        return database.execute(query, values).fetchall()
-
-
-class MVStudioLiveTests(unittest.TestCase):
+class MVStudioLiveTests(StudioCase):
     def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
-        self.region = self.root / "assets/db/gl"
-        self.region.mkdir(parents=True)
-        self.master = self.region / "masterdata.db"
-        with sqlite3.connect(self.master) as database:
-            database.executescript(_MASTER)
-        for language in ("en", "ko", "zh"):
-            with sqlite3.connect(self.region / f"dictionary_{language}_k.db") as database:
-                database.execute("CREATE TABLE m_dictionary (id TEXT PRIMARY KEY, message TEXT)")
-            for platform in ("a", "i"):
-                with sqlite3.connect(self.region / f"asset_{platform}_{language}.db") as database:
-                    database.executescript(_ASSETS)
+        super().setUp()
         self.chart = self.root / "chart.json"
-        self.chart.write_text(json.dumps({"live_difficulty_id": 2203, "live_notes": [{
-            "id": 1, "call_time": 500, "note_type": 1, "note_position": 2,
-            "gimmick_id": 0, "note_action": 1, "wave_id": 0, "note_random_drop_color": 99,
-            "auto_judge_type": 20,
-        }]}))
+        self.chart.write_text(json.dumps({"live_difficulty_id": 1, "live_notes": [{
+            "id": 1, "call_time": 900, "note_type": 1, "note_position": 1, "gimmick_id": 0, "note_action": 1,
+            "wave_id": 0, "note_random_drop_color": 99, "auto_judge_type": 20}]}))
 
     def register(self, **kwargs):
-        return studio.register_mv_only(self.root, region="gl", source_live_id=21, title="새 MV", **kwargs)
+        with self.guard():
+            return studio.register_mv_only(self.root, region="gl", source_live_id=21, title="새 MV", **kwargs)
 
-    def attach(self, live_id, **kwargs):
-        return studio.attach_live_charts(self.root, region="gl", live_id=live_id,
-                                         charts={30: {"path": self.chart, "template_difficulty_id": 2203}}, **kwargs)
+    def attach(self, live_id, charts=None, **kwargs):
+        with self.guard():
+            return studio.attach_live_charts(self.root, region="gl", live_id=live_id,
+                                             charts=charts or {30: {"path": self.chart, "template_difficulty_id": 25301}},
+                                             **kwargs)
 
-    def test_native_mv_registration_adds_no_rhythm_data_and_backs_up_all_changed_catalogs(self):
+    def test_wrapper_registers_a_visible_song_with_a_placeholder_and_no_backup(self):
         self.assertEqual(studio.list_mv_studio_songs(self.root, region="gl"), [])
         song = self.register()
-        new_live_id = song["live_id"]
-        new_asset_id = song["asset_3d_id"]
+        self.assertEqual((song["live_id"], song["asset_3d_id"], song["source_live_id"], song["title"]),
+                         (93000, 9300001, 21, "새 MV"))
         self.assertTrue(song["mv_only"])
-        self.assertEqual(song["difficulties"], [])
-        self.assertEqual(song["source_live_id"], 21)
-        self.assertEqual([stage["position"] for stage in song["stages"]], [1, 2])
-        self.assertEqual({stage["live_3d_asset_master_id"] for stage in song["stages"]}, {new_asset_id})
-        self.assertEqual(_query(self.master, "SELECT bgm_path, music_id, live_member_mapping_id FROM m_live WHERE live_id=?", (new_live_id,)),
-                         [("music21", 3001, 11)])
-        self.assertEqual(_query(self.master, "SELECT timeline,stage_effect_asset_path FROM m_live_3d_asset WHERE id=?", (new_asset_id,)),
-                         [("A01", "E01")])
-        self.assertEqual(_query(self.master, "SELECT COUNT(*) FROM m_live_difficulty"), [(2,)])
-        for language in ("en", "ko", "zh"):
-            self.assertEqual(_query(self.region / f"dictionary_{language}_k.db", "SELECT * FROM m_dictionary"),
-                             [(f"elichika_mv_studio_{new_live_id}", "새 MV")])
-            for platform in ("a", "i"):
-                catalog = self.region / f"asset_{platform}_{language}.db"
-                self.assertEqual(_query(catalog, "SELECT pack_name, metapack_name, metapack_offset FROM m_asset_package_mapping WHERE package_key=?",
-                                        (f"live:{new_asset_id}",)), [("mvt001", "meta01", 171)])
-                self.assertEqual(_query(catalog, "SELECT pack_name FROM m_asset_package_mapping WHERE package_key=?", (f"music:{new_live_id}",)), [("song01",)])
-        saved = next((self.root / "backup_db").iterdir())
-        self.assertEqual(len(list(saved.glob("*.db"))), 10)
-        self.assertEqual(_query(saved / "masterdata.db", "SELECT live_id FROM m_live"), [(21,)])
+        self.assertEqual(song["difficulties"], [{"live_difficulty_id": 93000301, "live_difficulty_type": 30,
+                                                 "placeholder": True}])
+        # Without an explicit stage the first picker position is the base.
+        self.assertEqual(song["stages"], [{"live_stage_master_id": 101, "position": 1, "live_3d_asset_master_id": 9300001}])
+        self.assertEqual(self.backups(), [])
         self.assertEqual(studio.list_mv_studio_songs(self.root, region="gl"), [song])
+        self.assertEqual(studio.MESSAGES, tuple(dict.fromkeys(studio.MESSAGES)))
+        self.assertIs(studio.KEEP, manage.KEEP)
 
-    def test_add_chart_keeps_song_mv_and_native_note_data(self):
-        original = self.register(asset_3d_id=502, backup=False)
-        current = self.attach(original["live_id"], backup=False)
-        self.assertEqual(current["live_id"], original["live_id"])
-        self.assertEqual(current["stages"], original["stages"])
-        self.assertEqual(current["asset_3d_id"], original["asset_3d_id"])
+    def test_wrapper_reads_timeline_files_and_needs_an_exact_stage(self):
+        source = self.root / "edited.unity"
+        source.write_bytes(timeline("android"))
+        with self.assertRaisesRegex(ValueError, "exact source stage"):
+            self.register(timeline_paths={"android": source})
+        song = self.register(asset_3d_id=2102, timeline_paths={"android": source})
+        self.assertEqual(self.validated, [(timeline("android"), b"UnityFS\0stock:tl2102", 13)])
+        described = manage.describe_mv_song(self.root, region="gl", live_id=song["live_id"])
+        self.assertEqual(described["platforms"], {"android": "custom", "ios": "stock"})
+        self.assertEqual(song["stages"][0]["live_stage_master_id"], 102)
+
+    def test_wrapper_prepared_audio_keeps_its_cue_identity(self):
+        prepared = ("music_7789", 7789, b"ACB:music_7789", b"AFS2 bank")
+        with patch.object(studio, "prepare_audio", return_value=prepared):
+            song = self.register(audio_acb=self.root / "unused.acb")
+            with self.assertRaisesRegex(ValueError, "already belongs"):
+                self.register(audio_acb=self.root / "unused.acb")
+        self.assertEqual(query(self.gl / "masterdata.db", "SELECT music_id,bgm_path,chorus_bgm_path FROM m_live WHERE "
+                                                         "live_id=?", (song["live_id"],)),
+                         [(7789, "music_7789", "music_7789")])
+        self.attach(song["live_id"], backup=False)
+        for catalog in self.catalogs():
+            acb, awb = query(catalog, "SELECT acb_pack_name,awb_pack_name FROM m_asset_sound WHERE sheet_name=?",
+                             ("music_7789",))[0]
+            self.assertEqual((self.root / "static" / acb).read_bytes(), prepared[2])
+            self.assertEqual((self.root / "static" / awb).read_bytes(), prepared[3])
+            self.assertEqual(sorted(query(catalog, "SELECT pack_name FROM m_asset_package_mapping WHERE package_key=?",
+                                          (f"music:{song['live_id']}",))), sorted([(acb,), (awb,)]))
+            self.assertEqual(query(catalog, "SELECT pack_name FROM m_asset_package_mapping WHERE package_key='music:21' "
+                                            "ORDER BY pack_name"), [("m21acb",), ("m21awb",)])
+
+    def test_type_30_chart_replaces_the_placeholder_in_place(self):
+        song = self.register()
+        master = self.gl / "masterdata.db"
+        self.assertEqual(query(master, "SELECT COUNT(*) FROM m_live_difficulty_mission WHERE live_difficulty_master_id="
+                                       "93000301"), [(3,)])
+        current = self.attach(song["live_id"])
         self.assertFalse(current["mv_only"])
-        diff_id = current["difficulties"][0]["live_difficulty_id"]
-        template = _query(self.master, "SELECT live_id, live_3d_asset_master_id, consumed_lp, target_voltage FROM m_live_difficulty WHERE live_difficulty_id=?", (diff_id,))
-        self.assertEqual(template, [(original["live_id"], original["asset_3d_id"], 15, 5000)])
-        saved = json.loads((self.root / "assets/stages" / f"{diff_id}.json").read_text())
-        self.assertEqual(saved["live_difficulty_id"], diff_id)
+        self.assertEqual(current["warnings"], [])
+        self.assertEqual(current["difficulties"], [{"live_difficulty_id": 93000301, "live_difficulty_type": 30,
+                                                    "placeholder": False}])
+        self.assertEqual((current["stages"], current["asset_3d_id"]), (song["stages"], song["asset_3d_id"]))
+        self.assertEqual(query(master, "SELECT live_id,live_3d_asset_master_id,unlock_pattern,target_voltage,"
+                                       "difficulty_const_master_id FROM m_live_difficulty WHERE live_difficulty_id=93000301"),
+                         [(93000, 9300001, 1, 9000, 93000301)])
+        self.assertEqual(query(master, "SELECT * FROM m_live_difficulty_const WHERE id=93000301"), [(93000301, 6400, 24)])
+        for table, column in manage.DIFFICULTY_TABLES:
+            self.assertEqual(query(master, f"SELECT COUNT(*) FROM {table} WHERE {column}=93000301"), [(0,)], table)
+        saved = json.loads((self.stages / "93000301.json").read_text())
+        self.assertEqual(saved["live_difficulty_id"], 93000301)
         self.assertEqual(saved["live_notes"], json.loads(self.chart.read_text())["live_notes"])
+        described = manage.describe_mv_song(self.root, region="gl", live_id=93000)
+        self.assertEqual((described["difficulties"], described["revision"]),
+                         ([{"id": 93000301, "type": 30, "placeholder": False}], 2))
+        # The backup holds the region's whole MV Studio state, the placeholder chart it replaced included.
+        folder = self.root / "backup_db" / self.backups()[0]
+        self.assertRegex(folder.name, r"_mv-studio-charts-93000$")
+        self.assertEqual(sorted(str(path.relative_to(folder)) for path in folder.rglob("*") if path.is_file()),
+                         sorted([".mv-studio-backup.json", "assets/stages/93000301.json.lz4"]
+                                + [f"assets/db/gl/{path.name}.lz4" for path in region_paths(self.root, "gl")]))
         with self.assertRaisesRegex(ValueError, "already installed"):
-            self.attach(original["live_id"], backup=False)
+            self.attach(song["live_id"], backup=False)
+        self.assertEqual(studio.chart_templates(self.root, region="gl", live_id=93000),
+                         [{"live_difficulty_id": 21101, "live_difficulty_type": 10}])
 
-    def test_rejects_orphan_choices_and_rolls_back_all_catalogs(self):
-        with self.assertRaisesRegex(ValueError, "does not belong"):
-            self.register(asset_3d_id=999, backup=False)
-        bad = self.region / "asset_i_zh.db"
-        _query(bad, "DELETE FROM m_asset_package_mapping WHERE package_key='live:501'")
-        with self.assertRaisesRegex(ValueError, "missing the complete native package"):
-            self.register(backup=False)
-        self.assertEqual(_query(self.master, "SELECT live_id FROM m_live"), [(21,)])
-        self.assertEqual(_query(self.region / "dictionary_en_k.db", "SELECT * FROM m_dictionary"), [])
-        self.assertEqual(_query(self.region / "asset_a_en.db", "SELECT COUNT(*) FROM m_asset_package"), [(3,)])
+    def test_chart_backup_restores_its_own_moment_alone_after_a_removal(self):
+        song = self.register()
+        placeholder = (self.stages / "93000301.json").read_bytes()
+        before_attach = {path.name: dump(path) for path in region_paths(self.root, "gl")}
+        self.attach(song["live_id"])
+        charts, = self.backups()
+        attached = (self.stages / "93000301.json").read_bytes()
+        before_remove = {path.name: dump(path) for path in region_paths(self.root, "gl")}
+        removal = self.remove(song["live_id"])
+        self.assertFalse((self.stages / "93000301.json").exists())
+        # The older chart backup alone brings back the placeholder chart with the databases of its moment.
+        self.assertEqual(restore(self.root, self.root / "backup_db" / charts)["failed"], [])
+        self.assertEqual({path.name: dump(path) for path in region_paths(self.root, "gl")}, before_attach)
+        self.assertEqual((self.stages / "93000301.json").read_bytes(), placeholder)
+        self.assertEqual(manage.describe_mv_song(self.root, region="gl", live_id=93000)["difficulties"],
+                         [{"id": 93000301, "type": 30, "placeholder": True}])
+        self.assertEqual(restore(self.root, removal["backup"])["failed"], [])
+        self.assertEqual({path.name: dump(path) for path in region_paths(self.root, "gl")}, before_remove)
+        self.assertEqual((self.stages / "93000301.json").read_bytes(), attached)
 
-    def test_failed_chart_publication_leaves_it_mv_only_and_upgradable(self):
-        song = self.register(backup=False)
-        with patch.object(studio.os, "fsync", side_effect=OSError("fixture storage failure")):
+    def test_new_difficulty_types_get_deterministic_ids(self):
+        song = self.register()
+        templates = studio.chart_templates(self.root, region="gl", live_id=song["live_id"])
+        # The placeholder counts as replaceable; other songs' placeholders are never offered.
+        self.assertEqual(templates, [{"live_difficulty_id": 21301, "live_difficulty_type": 30},
+                                     {"live_difficulty_id": 21101, "live_difficulty_type": 10},
+                                     {"live_difficulty_id": 24301, "live_difficulty_type": 30},
+                                     {"live_difficulty_id": 25301, "live_difficulty_type": 30}])
+        current = self.attach(song["live_id"], {10: {"path": self.chart, "template_difficulty_id": 21101}}, backup=False)
+        self.assertEqual([(row["live_difficulty_id"], row["placeholder"]) for row in current["difficulties"]],
+                         [(93000101, False), (93000301, True)])
+        self.assertTrue(current["mv_only"] is False)
+        self.assertEqual(query(self.gl / "masterdata.db", "SELECT difficulty_const_master_id,live_3d_asset_master_id FROM "
+                                                         "m_live_difficulty WHERE live_difficulty_id=93000101"),
+                         [(93000101, 9300001)])
+        self.assertTrue((self.stages / "93000101.json").is_file())
+        with self.assertRaisesRegex(ValueError, "already installed"):
+            self.attach(song["live_id"], {10: {"path": self.chart, "template_difficulty_id": 21101}}, backup=False)
+        with self.assertRaisesRegex(ValueError, "game difficulty type"):
+            self.attach(song["live_id"], {100: {"path": self.chart, "template_difficulty_id": 21101}}, backup=False)
+        token = manage.plan_remove_mv_song(self.root, region="gl", live_id=93000)
+        self.assertEqual(token["summary"]["stageFiles"], ["93000101.json", "93000301.json"])
+
+    def test_failed_retention_after_attach_is_a_warning(self):
+        song = self.register()
+        with patch.object(manage, "prune_mv_studio_backups", side_effect=OSError("busy")):
+            current = self.attach(song["live_id"])
+        self.assertEqual(current["warnings"], [manage.BACKUPS_NOT_PRUNED])
+        self.assertEqual(current["difficulties"], [{"live_difficulty_id": 93000301, "live_difficulty_type": 30,
+                                                    "placeholder": False}])
+        self.assertEqual(len(self.backups()), 1)
+
+    def test_failed_attach_restores_the_placeholder(self):
+        song = self.register()
+        before = {path.name: dump(path) for path in region_paths(self.root, "gl")}
+        placeholder = (self.stages / "93000301.json").read_bytes()
+        with patch.object(manage, "_write_bookkeeping", side_effect=OSError("fixture storage failure")):
             with self.assertRaisesRegex(OSError, "storage failure"):
-                self.attach(song["live_id"], backup=False)
-        self.assertEqual(studio.list_mv_studio_songs(self.root, region="gl"), [song])
-        self.assertEqual(list((self.root / "assets/stages").glob("*.json")), [])
-        self.assertFalse(self.attach(song["live_id"], backup=False)["mv_only"])
+                self.attach(song["live_id"], {30: {"path": self.chart, "template_difficulty_id": 25301},
+                                              10: {"path": self.chart, "template_difficulty_id": 21101}})
+        self.assertEqual({path.name: dump(path) for path in region_paths(self.root, "gl")}, before)
+        self.assertEqual((self.stages / "93000301.json").read_bytes(), placeholder)
+        self.assertFalse((self.stages / "93000101.json").exists())
+        self.assertEqual(self.backups(), [])
+        self.assertEqual([path.name for path in self.stages.iterdir() if path.name.startswith(".")], [])
 
     def test_refuses_empty_charts_and_unrelated_live(self):
-        song = self.register(backup=False)
+        song = self.register()
         with self.assertRaisesRegex(ValueError, "registered by MV Studio"):
             self.attach(21, backup=False)
         self.chart.write_text('{"live_notes":[]}')
         with self.assertRaisesRegex(ValueError, "must contain complete notes"):
             self.attach(song["live_id"], backup=False)
+        self.chart.write_text('not json')
+        with self.assertRaisesRegex(ValueError, "complete native stage chart"):
+            self.attach(song["live_id"], backup=False)
         self.assertEqual(studio.list_mv_studio_songs(self.root, region="gl"), [song])
+        with self.assertRaisesRegex(RuntimeError, "database_maintenance.guard"):
+            studio.attach_live_charts(self.root, region="gl", live_id=93000, charts={})
 
-    def test_native_timeline_keeps_other_platform_and_exact_source_dependencies(self):
-        source = self.root / "edited.unity"
-        source.write_bytes(b"fixture timeline")
-        mods = Path(__file__).resolve().parents[1] / "modtools"
-        with patch.object(sys, "path", [str(mods), *sys.path]):
-            from webtools.core import mv_studio_game as game
-            with patch.object(game, "load_asset", return_value=b"stock Android") as load, \
-                    patch.object(native, "_validate_timeline") as validate:
-                song = self.register(asset_3d_id=501, timeline_paths={"android": source}, backup=False)
-        validate.assert_called_once()
-        self.assertEqual(validate.call_args.args[:3], (b"fixture timeline", b"stock Android", 13))
-        self.assertEqual(load.call_args.args[1]["metapack"], {"name": "meta01", "offset": 171, "size": 1024})
-        key, = _query(self.master, "SELECT timeline FROM m_live_3d_asset WHERE id=?", (song["asset_3d_id"],))[0]
-        self.assertNotEqual(key, "A01")
-        self.assertTrue(song["mv_only"])
-        pack_files = list((self.root / "static").iterdir())
-        self.assertEqual(len(pack_files), 1)
-        pack = pack_files[0]
-        self.assertEqual(native.encrypt_bytes(pack.read_bytes()), source.read_bytes())
-        for language in ("en", "ko", "zh"):
-            for platform in ("a", "i"):
-                catalog = self.region / f"asset_{platform}_{language}.db"
-                expected = (pack.name, 0, len(source.read_bytes()), 0, 0) if platform == "a" else ("mvt001", 8, 512, 4, 7)
-                self.assertEqual(_query(catalog, "SELECT pack_name,head,size,key1,key2 FROM live_timeline WHERE asset_path=?", (key,)), [expected])
-                self.assertEqual(_query(catalog, "SELECT dependency FROM live_timeline_dependency WHERE asset_path=? ORDER BY dependency", (key,)),
-                                 [("dance01",), ("stage01",)])
-                self.assertEqual(_query(catalog, "SELECT pack_num FROM m_asset_package WHERE package_key=?", (f"live:{song['asset_3d_id']}",)),
-                                 [(2 if platform == "a" else 1,)])
+    def test_legacy_song_still_needs_a_type_30_chart_first(self):
+        write_legacy_song(self.root)
+        with self.assertRaisesRegex(ValueError, "requires a type-30 chart"):
+            self.attach(93000, {10: {"path": self.chart, "template_difficulty_id": 21101}}, backup=False)
+        current = self.attach(93000, backup=False)
+        self.assertEqual(current["difficulties"], [{"live_difficulty_id": 93000301, "live_difficulty_type": 30,
+                                                    "placeholder": False}])
+        self.assertEqual(query(self.gl / "masterdata.db", "SELECT live_3d_asset_master_id FROM m_live_difficulty WHERE "
+                                                         "live_difficulty_id=93000301"), [(2502,)])
+        # The attach persisted the adoption (as an update does): v2 bookkeeping with the found base asset.
+        described = manage.describe_mv_song(self.root, region="gl", live_id=93000)
+        self.assertEqual((described["legacy"], described["revision"], described["templateAssetId"], described["actions"]),
+                         (False, 1, 2102, ["open", "remove"]))
+        self.assertEqual(described["difficulties"], [{"id": 93000301, "type": 30, "placeholder": False}])
+        self.assertEqual(query(self.gl / "masterdata.db", "SELECT schema_version,template_asset_id FROM "
+                                                         "_elichika_mv_studio_song WHERE live_id=93000"), [(2, 2102)])
 
-    def test_new_audio_mappings_roll_back_with_pack_publication(self):
-        broken = self.region / "asset_i_zh.db"
-        _query(broken, "DELETE FROM m_asset_package_mapping WHERE package_key='live:501'")
-        prepared = ("music_7789", 7789, b"fixture ACB", b"fixture AWB")
-        with patch.object(studio, "prepare_audio", return_value=prepared):
-            with self.assertRaisesRegex(ValueError, "missing the complete native package"):
-                self.register(asset_3d_id=501, audio_acb=self.root / "unused.acb", backup=False)
-        self.assertEqual(list((self.root / "static").iterdir()), [])
-        self.assertEqual(_query(self.master, "SELECT live_id,music_id,bgm_path FROM m_live"), [(21, 3001, "music21")])
-        catalog = self.region / "asset_a_en.db"
-        self.assertEqual(_query(catalog, "SELECT * FROM m_asset_sound"), [("music21", "song01", None)])
-
-    def test_new_audio_keeps_same_cue_identity_through_chart_attachment(self):
-        prepared = ("music_7789", 7789, b"fixture ACB", b"fixture AWB")
-        with patch.object(studio, "prepare_audio", return_value=prepared):
-            song = self.register(asset_3d_id=501, audio_acb=self.root / "unused.acb", backup=False)
-            with self.assertRaisesRegex(ValueError, "already belongs"):
-                self.register(asset_3d_id=501, audio_acb=self.root / "unused.acb", backup=False)
-        self.assertEqual(len(list((self.root / "static").iterdir())), 2)
-        self.attach(song["live_id"], backup=False)
-        self.assertEqual(_query(self.master, "SELECT music_id,bgm_path,chorus_bgm_path FROM m_live WHERE live_id=?", (song["live_id"],)),
-                         [(7789, "music_7789", "music_7789")])
-        for language in ("en", "ko", "zh"):
-            for platform in ("a", "i"):
-                catalog = self.region / f"asset_{platform}_{language}.db"
-                acb, awb = _query(catalog, "SELECT acb_pack_name,awb_pack_name FROM m_asset_sound WHERE sheet_name=?", (prepared[0],))[0]
-                self.assertEqual((self.root / "static" / acb).read_bytes(), prepared[2])
-                self.assertEqual((self.root / "static" / awb).read_bytes(), prepared[3])
-                new_key = f"music:{song['live_id']}"
-                self.assertCountEqual(_query(catalog, "SELECT pack_name FROM m_asset_package_mapping WHERE package_key=?", (new_key,)), [(acb,), (awb,)])
-                self.assertEqual(_query(catalog, "SELECT pack_name FROM m_asset_package_mapping WHERE package_key='music:21'"), [("song01",)])
+    def test_legacy_song_with_an_unknown_base_stays_v1_after_attach(self):
+        write_legacy_song(self.root, custom_timeline=False)
+        _ = query(self.gl / "masterdata.db", "UPDATE m_live_3d_asset SET quality_setitng_set_id=9 WHERE id=2502")
+        self.attach(93000, backup=False)
+        described = manage.describe_mv_song(self.root, region="gl", live_id=93000)
+        self.assertEqual((described["legacy"], described["templateAssetId"], described["actions"]),
+                         (True, None, ["remove"]))
+        with closing(sqlite3.connect(self.gl / "masterdata.db")) as database:
+            self.assertEqual(manage._columns(database, "main", "_elichika_mv_studio_song"),
+                             ["live_id", "source_live_id", "asset_3d_id", "title"])
 
 
 if __name__ == "__main__":

@@ -22,6 +22,8 @@ func Index(ctx *gin.Context) {
 			` + i18n.T(lang, "Event Selector") + `</button></div>
 	<div><button onclick="location.href='event_scheduler' + window.location.search" type="button">
 			` + i18n.T(lang, "Event Scheduler") + `</button></div>
+	<div><button onclick="location.href='user_manager' + window.location.search" type="button">
+			` + i18n.T(lang, "User Manager") + `</button></div>
 	`
 	if enabled, _ := ctx.Get("management_mode"); enabled != true {
 		starts += `<div><button onclick="location.href='maintenance_mode' + window.location.search" type="button">` + i18n.T(lang, "Maintenance Mode (for updating)") + `</button></div>`

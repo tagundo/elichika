@@ -1,0 +1,125 @@
+name: Redroid encoder probe (MV export codecs)
+
+# Run 10 reached the FOVMOD exporter, which then failed on Redroid: gralloc could not allocate
+# 1280x720 YCbCr_420_888 (format 35) input blocks for c2.android.avc.encoder (NO_MEMORY while
+# STARTING), and the client reported "AAC encoder rejected PCM". This probe starts the same
+# encoders the same way (flexible-YUV input images, 16-bit PCM) inside an ordinary app on several
+# Redroid images and boot options, without the game, to find a configuration that can export.
+on:
+  push:
+    branches: [ccr-110b9f74-r8cj0y]
+    paths: [.github/workflows/redroid-encoder-probe.yml, qa-mvprobe/**]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redroid-encoder-probe
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    if: github.repository == 'tagundo/elichika'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: pinned-guest-memfd
+            image: redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+            args: androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest
+          - label: pinned-guest-no-memfd
+            image: redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+            args: androidboot.redroid_gpu_mode=guest
+          - label: pinned-guest-memfd-vgem
+            image: redroid/redroid@sha256:0a611199ba2e0b5d60af39b3327a517f6407231f4352114ed3bd3cbfe2be69aa
+            args: androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest
+            vgem: "1"
+          - label: redroid-15-guest
+            image: redroid/redroid:15.0.0_64only-latest
+            args: androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest
+          - label: redroid-14-guest
+            image: redroid/redroid:14.0.0_64only-latest
+            args: androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest
+          - label: redroid-13-guest
+            image: redroid/redroid:13.0.0_64only-latest
+            args: androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest
+          - label: redroid-12-guest
+            image: redroid/redroid:12.0.0_64only-latest
+            args: androidboot.use_memfd=true androidboot.redroid_gpu_mode=guest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch Frida server
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/frida/frida/releases/assets/224038968 -H 'Accept: application/octet-stream' > "$RUNNER_TEMP/frida-server.xz"
+          echo "65770e25c81e5a2d83d6d11f6529701ebe22dce73d3e38d515881f036b77f7d9  $RUNNER_TEMP/frida-server.xz" | sha256sum -c -
+          xz -d "$RUNNER_TEMP/frida-server.xz"
+
+      - name: Boot Redroid (${{ matrix.label }})
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update -qq
+          sudo apt-get install -y adb python3-venv
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check 'frida==16.6.6'
+          if ! sudo modprobe binder_linux devices=binder,hwbinder,vndbinder; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe binder_linux devices=binder,hwbinder,vndbinder
+          fi
+          extra=()
+          if [ "${{ matrix.vgem }}" = 1 ]; then
+            sudo modprobe vgem || { sudo apt-get install -y "linux-modules-extra-$(uname -r)"; sudo modprobe vgem; }
+            ls -la /dev/dri
+            extra+=(--device /dev/dri)
+          fi
+          echo "host: $(uname -r)"; ls -la /dev/dma_heap 2>&1 | head; ls -la /dev/dri 2>&1 | head
+          docker pull --platform linux/arm64 "${{ matrix.image }}"
+          docker inspect --format '{{index .RepoDigests 0}}' "${{ matrix.image }}" || true
+          docker run --detach --privileged --name probe "${extra[@]}" --publish 127.0.0.1:5555:5555 \
+            "${{ matrix.image }}" ${{ matrix.args }} \
+            androidboot.redroid_width=1280 androidboot.redroid_height=720 androidboot.redroid_fps=15 ro.secure=0
+          ready=0
+          for attempt in $(seq 1 120); do
+            adb connect 127.0.0.1:5555 >/dev/null || true
+            if [ "$(adb -s 127.0.0.1:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then ready=1; break; fi
+            sleep 2
+          done
+          test "$ready" = 1
+          sleep 10
+          adb -s 127.0.0.1:5555 shell getprop | grep -iE "version.release|version.sdk|gralloc|hardware|gpu|egl|redroid|memfd" || true
+          adb -s 127.0.0.1:5555 shell 'ls -la /dev/dma_heap /dev/dri /dev/ion 2>&1; ls /vendor/lib64/hw 2>/dev/null | grep -iE "gralloc|mapper|allocator"; ls /vendor/bin/hw 2>/dev/null | grep -iE "allocator|gralloc"' || true
+          adb -s 127.0.0.1:5555 push "$RUNNER_TEMP/frida-server" /data/local/tmp/frida-server
+          adb -s 127.0.0.1:5555 shell chmod 755 /data/local/tmp/frida-server
+          adb -s 127.0.0.1:5555 shell 'nohup /data/local/tmp/frida-server -l 127.0.0.1:27042 >/data/local/tmp/frida-server.log 2>&1 </dev/null &'
+          sleep 3
+
+      - name: Probe the exporter's encoders
+        run: |
+          set -uo pipefail
+          mkdir -p evidence
+          adb -s 127.0.0.1:5555 logcat -c || true
+          timeout 600 "$RUNNER_TEMP/venv/bin/python" -u qa-mvprobe/encoder_probe.py --out "evidence/probe-${{ matrix.label }}.json" \
+            --label "${{ matrix.label }}" || echo "probe exit $?"
+          adb -s 127.0.0.1:5555 logcat -d 2>/dev/null | grep -E "GraphicBufferAllocator|C2Allocator|CCodec |CCodecBufferChannel|MediaCodec: Codec reported|gralloc|minigbm|mapper|allocator" | head -80 || true
+
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: encoder-probe-${{ matrix.label }}
+          path: evidence/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Stop Redroid
+        if: always()
+        run: docker rm -f probe || true

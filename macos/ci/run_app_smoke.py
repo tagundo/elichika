@@ -1256,8 +1256,10 @@ def check_native_pcm_game_report(app, output, report, required):
             and all(sources[name] == sha256(resources / "python-app/webtools/web/static" / name) for name in sources),
             "Official workload must exercise the exact packaged module/controller bytes")
     loaded = observed.get("loaded", {})
+    # 41 textures = the head/body colour and rim Texture2D with every authored
+    # mip (11 + 8 + 11 + 9) plus both one-mip slices of the head's cheek_array.
     require(loaded.get("clip") == "game-timeline:mv:mv:12008:1200801:1" and 103 < loaded.get("duration", 0) < 104
-            and loaded.get("stats") == {"meshes": 8, "vertices": 11410, "triangles": 14169, "materials": 2, "textures": 39}
+            and loaded.get("stats") == {"meshes": 8, "vertices": 11410, "triangles": 14169, "materials": 2, "textures": 41}
             and loaded.get("quality", {}).get("enabled") is True and loaded["quality"].get("actualSamples") == 4,
             "The official Eli/CHASE workload must retain the original full mesh/texture load and HQ AA4")
     physics = loaded.get("physics", {})

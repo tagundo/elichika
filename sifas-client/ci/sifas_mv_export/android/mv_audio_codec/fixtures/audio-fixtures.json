@@ -1,0 +1,12 @@
+{
+  "license": "CC0-1.0, mechanically authored sine tones, no game inputs",
+  "author": "int(12000*sin(i*2*pi*440/44100)), 320 frames per channel, int16le",
+  "encoder": "ffmpeg adpcm_adx",
+  "reference_decoder": "ffmpeg adpcm_adx to s16le PCM; direct iOS decoder matched byte-for-byte",
+  "files": {
+    "tone-stereo.pcm": "0e56cc9435e366340e7832d83078f9be75828cfbb5029080f749e462b4f2afe6",
+    "tone-mono.pcm": "3f5221155cb73197a68ddd42ea4d86a01eea2aed3b5ae7f1df97a8db7242c930",
+    "tone-stereo.adx": "6fbf523bd738cb72a96274ddc55f69da75db3fcbfa13a95d012d56c40de206af",
+    "tone-mono.adx": "8c40df9fdef503e2da7570d58631c26d14139c082819cd3a56be6975ee9eebbf"
+  }
+}

@@ -1,0 +1,99 @@
+[
+  {
+    "source": "/tmp/android-material-hooks-source-20261115/libfovmod_material.c",
+    "copied": "libfovmod_material.c",
+    "sha256": "d7a51e736e00ff3be9ed09624dbf38caa8414cee66fe47a28aab1bdc5931612a",
+    "bytes": 6842,
+    "current_sha256": "3628a2f97bac054da67696c87a61ec494e5b57a7948958933a1d8fd4d616aa75",
+    "copy_changed": true,
+    "intended_change": "Call the data-only MV sidecar binder beside the original material binder; preserve existing FOV configuration ABI and behavior."
+  },
+  {
+    "source": "/tmp/android-material-hooks-source-20261115/material_android_binding.cc",
+    "copied": "material_android_binding.cc",
+    "sha256": "eb18005f6786d14614585716d8b0c59f66b07bc39b9ac736e14574951830e404",
+    "bytes": 7343,
+    "current_sha256": "eb18005f6786d14614585716d8b0c59f66b07bc39b9ac736e14574951830e404",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/android-material-hooks-source-20261115/material_android_binding.h",
+    "copied": "material_android_binding.h",
+    "sha256": "2a8b36eb5b75173c851c9a6d4e437b9ca447cc5cc0b2721d5ca33c6824ed5b55",
+    "bytes": 3583,
+    "current_sha256": "2a8b36eb5b75173c851c9a6d4e437b9ca447cc5cc0b2721d5ca33c6824ed5b55",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/android-material-hooks-source-20261115/material_android_layouts.generated.inc",
+    "copied": "material_android_layouts.generated.inc",
+    "sha256": "9c10299c1c0dbd89e5ee46d08ac7802db7b157b4ad50c3061adaad000a711c89",
+    "bytes": 1921,
+    "current_sha256": "9c10299c1c0dbd89e5ee46d08ac7802db7b157b4ad50c3061adaad000a711c89",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/android-material-hooks-source-20261115/material_android_runtime.cc",
+    "copied": "material_android_runtime.cc",
+    "sha256": "31b055649235b1cdfcaecf1d9b2effb9aa4d69de1522ed102a066f166c5442ec",
+    "bytes": 12796,
+    "current_sha256": "31b055649235b1cdfcaecf1d9b2effb9aa4d69de1522ed102a066f166c5442ec",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/android-material-invoke-source-20261115/android_material_invoke.cpp",
+    "copied": "android_material_invoke.cpp",
+    "sha256": "ed2b050686e67ec1cc8641822fe9e13a35ff0e6187e7abd876444a8723975e57",
+    "bytes": 11729,
+    "current_sha256": "ed2b050686e67ec1cc8641822fe9e13a35ff0e6187e7abd876444a8723975e57",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/android-material-invoke-source-20261115/android_material_invoke.h",
+    "copied": "android_material_invoke.h",
+    "sha256": "33e1ffbcdb55c4eed1f52e53e9bbd7e298c92ab49d453760ce078794b6241d3e",
+    "bytes": 3862,
+    "current_sha256": "33e1ffbcdb55c4eed1f52e53e9bbd7e298c92ab49d453760ce078794b6241d3e",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/android-material-invoke-source-20261115/android_invoke_pins.inc",
+    "copied": "android_invoke_pins.inc",
+    "sha256": "72cfab716ba92e06f019e28215e158e2b1d99bc6492c12fa345eb2be8e9e4343",
+    "bytes": 5012,
+    "current_sha256": "72cfab716ba92e06f019e28215e158e2b1d99bc6492c12fa345eb2be8e9e4343",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/material-isolation-core-20261115/material_isolation.c",
+    "copied": "material_isolation.c",
+    "sha256": "3c9bee9c2c9daa6810d0eab600d4936432ecc572181a49b02cf465c75d74489e",
+    "bytes": 23822,
+    "current_sha256": "3c9bee9c2c9daa6810d0eab600d4936432ecc572181a49b02cf465c75d74489e",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/material-isolation-core-20261115/material_isolation.h",
+    "copied": "material_isolation.h",
+    "sha256": "b97f609039e757b8e77ec9b97ffe2b19b23814b69523d318baaec692b91fd490",
+    "bytes": 6001,
+    "current_sha256": "b97f609039e757b8e77ec9b97ffe2b19b23814b69523d318baaec692b91fd490",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/unity-material-backend-20261115/unity_material_backend.cpp",
+    "copied": "unity_material_backend.cpp",
+    "sha256": "50ecdc8db5e8b28cae9fb1a88670a83d63fcfe1b59beb95bbfce8848f5b631d6",
+    "bytes": 30797,
+    "current_sha256": "50ecdc8db5e8b28cae9fb1a88670a83d63fcfe1b59beb95bbfce8848f5b631d6",
+    "copy_changed": false
+  },
+  {
+    "source": "/tmp/unity-material-backend-20261115/unity_material_backend.h",
+    "copied": "unity_material_backend.h",
+    "sha256": "019bd83e99f481e2e81f960b93ffb62215e2f874a75347d292b5946fade19fdc",
+    "bytes": 5976,
+    "current_sha256": "019bd83e99f481e2e81f960b93ffb62215e2f874a75347d292b5946fade19fdc",
+    "copy_changed": false
+  }
+]

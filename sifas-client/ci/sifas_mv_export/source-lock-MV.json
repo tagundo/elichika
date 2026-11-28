@@ -1,0 +1,318 @@
+{
+  "files": {
+    "ANDROID_ENCODER_VERIFICATION.json": {
+      "bytes": 1852,
+      "sha256": "d05eff854143b80b33b3930972affb766e3c3b7f81d9f5315de01191f7b8d7b1"
+    },
+    "ANDROID_MV_CLOSURE.json": {
+      "bytes": 3245,
+      "sha256": "a62cf9e3af86ea421d9102a48dfdfe862ca427eabf21d24b78c182363b7ddedb"
+    },
+    "ANDROID_MV_ENCODER.md": {
+      "bytes": 7849,
+      "sha256": "b8d53fb6aa73cfb2cfd8b408705f2503b3f387464bca5a8f56e5897b330797df"
+    },
+    "android/ActivityResultAudit.java": {
+      "bytes": 3355,
+      "sha256": "eac1be47151d68f1b30dde0746a1795b0223ca28503fbc47e1d721713dea37b3"
+    },
+    "android/AndroidMVEncoder.java": {
+      "bytes": 43655,
+      "sha256": "a67295b6565f2b17699634bfbdddebc6939caa238d431cd4de03e33c2783937e"
+    },
+    "android/AndroidMVEncoderDeviceTest.java": {
+      "bytes": 18220,
+      "sha256": "4c041624dd49d6a86b431340975e56805137e89bdb1b28a7d1fd82ac93e9ba7d"
+    },
+    "android/AndroidMVExport.java": {
+      "bytes": 126658,
+      "sha256": "4c34761e287766b325230f3759fbf5f9a639e92e7da8bf36b593723c8a9502d7"
+    },
+    "android/FovMod.java": {
+      "bytes": 53489,
+      "sha256": "a646f7b4f4fe9bed8e40e4fe2bd1798fb64885db65fc859c2841276eedcbed12"
+    },
+    "android/GestureStateTest.java": {
+      "bytes": 12371,
+      "sha256": "4809a603dd9c2d2ec8c3e07c08ce1294946fb214d1431686672e20bcffdb2c9e"
+    },
+    "android/GroupPlanTest.java": {
+      "bytes": 5260,
+      "sha256": "f7d7748012e8d83800c8c9773ad098754e385398b4f3ec0198fbbfa79506926c"
+    },
+    "android/MP4Gapless.java": {
+      "bytes": 15304,
+      "sha256": "a8b60766452f6c52428ac152e065ec5de651ae61899196bbc5861822c6524ae2"
+    },
+    "android/MP4GaplessTest.java": {
+      "bytes": 9386,
+      "sha256": "d6a798dfd3bda2574f701a537e72c8a3634dd2991c8d91805aefcd3146acd17d"
+    },
+    "android/MVExportContract.java": {
+      "bytes": 2086,
+      "sha256": "3a7c6d97c7191fc45b34e8f6c53ff4139c2b6d8e5960a5ceb61e3c33967f8171"
+    },
+    "android/MVExportContractTest.java": {
+      "bytes": 3020,
+      "sha256": "9a74bc28f1f3fb896cdf30346cdbb1f65215e10b5b095f814cbbf8d2d871c8ec"
+    },
+    "android/MVExportService.java": {
+      "bytes": 8297,
+      "sha256": "7c882b09936793012fac4f0624270924590190dd6d0623e32ff98f220dc943cd"
+    },
+    "android/UpdateFovDex.java": {
+      "bytes": 33084,
+      "sha256": "50cbb43b26ba8e001f7598c40e9ae29c419ea302172d8b0aa155b40b94cbd368"
+    },
+    "android/UpdateFovDexTest.java": {
+      "bytes": 17141,
+      "sha256": "4a4d1d47eff3622552124d61d0ee5c3fc0531a4ee7497e54d070262bafe7a755"
+    },
+    "android/android_mv_audio_provider.cpp": {
+      "bytes": 22722,
+      "sha256": "d7740bb87199e22e951b5ad1b69abce27717952c2d8411f929ab1b6d9f958a41"
+    },
+    "android/android_mv_audio_provider.h": {
+      "bytes": 2414,
+      "sha256": "1841b7939f6848b9e14d30dc70666a271ba1d54e14f42004fa85df3f3b6ebe3a"
+    },
+    "android/android_mv_encoder_bridge.c": {
+      "bytes": 5181,
+      "sha256": "d3bb729d66ab34ca1c9f56c89627a1a8e8d355525eda21fd7e1cbc3f4af015cc"
+    },
+    "android/android_mv_encoder_bridge.h": {
+      "bytes": 2419,
+      "sha256": "4cf4fbdfd9ee4a329acad30726c076caa4164b95d41c0713847900dce2d8cc09"
+    },
+    "android/android_mv_export_jni.cpp": {
+      "bytes": 20364,
+      "sha256": "7be8ea2b3dc418f4b5be44a55226d1dd95b48b8c0939fb9d35c8b86ab6bd4c0f"
+    },
+    "android/android_mv_game_bindings.cpp": {
+      "bytes": 163973,
+      "sha256": "81a30c385e02a8ad5e5d18778894e9401d5dc2ae771a49582d33eb5f3072862a"
+    },
+    "android/android_mv_game_bindings.h": {
+      "bytes": 5112,
+      "sha256": "5d1490005f501d2f23507d48283220ac042e4ca473d6158b94198ed16caed719"
+    },
+    "android/android_mv_patch_plan.json": {
+      "bytes": 78646,
+      "sha256": "ca77808298ee9407bc18dfc308e5a01a8e39f8b1a02b3afa07833d3d6b5658ff"
+    },
+    "android/android_mv_patch_profiles.h": {
+      "bytes": 7873,
+      "sha256": "543afb27dc743c10cbff1963f6c54ab33fcf0014428744d330e8484cf3cf726c"
+    },
+    "android/android_mv_patch_validation.json": {
+      "bytes": 2964,
+      "sha256": "40c0a2657e4a4b28e9ed65a2449f236f430042d7181b8b80a9c4b52e42c2c7e4"
+    },
+    "android/android_mv_profile_GL.json": {
+      "bytes": 687801,
+      "sha256": "572ca40d381813eae50b6a432a4cdf37529ac8b01f3f5e02b2b77c1ad1bc66d2"
+    },
+    "android/android_mv_profile_JP.json": {
+      "bytes": 685628,
+      "sha256": "ca2247b72dcaff77db89eb32341389161103344c4ab78b14f8ffe2604ee40d0a"
+    },
+    "android/android_mv_render_report.h": {
+      "bytes": 11925,
+      "sha256": "546b70e48581613d084e9f918967a13ecdbb2865046b01b441bce0da752a8a11"
+    },
+    "android/audit_mv_game_bindings.py": {
+      "bytes": 6180,
+      "sha256": "a3639f53e8f0323ac29835f5c0c73312d413d3f4ff5715f45edd25240988eacd"
+    },
+    "android/build_menu_dex.py": {
+      "bytes": 7625,
+      "sha256": "4aace2c02b01ef41fde67cb5d3f660d7d932b4bf52bbf71998ac320caf0dc4e3"
+    },
+    "android/java-dependencies.json": {
+      "bytes": 561,
+      "sha256": "5d86105397dc6887fd40d692744755469e331aba029e4d2c860376af66b605d2"
+    },
+    "android/mv_audio_codec/LICENSE": {
+      "bytes": 1314,
+      "sha256": "fcc26d35c4c4365e31f21734f846e4ee362ff0b57ba696085605a7b4768d8763"
+    },
+    "android/mv_audio_codec/README.md": {
+      "bytes": 812,
+      "sha256": "75267d8b91d9ebc21dde4b910fb291523909a4244022aed7b9b04f8684bc3f6a"
+    },
+    "android/mv_audio_codec/clhca.c": {
+      "bytes": 66445,
+      "sha256": "4ef480d075acd8da35271aba34a048fc7012fa7a0ca1f014a025080be70043f1"
+    },
+    "android/mv_audio_codec/clhca.h": {
+      "bytes": 3647,
+      "sha256": "083ee638ed41ecb295423cede35c24a2de3659c35b6f6ea5554d7c2ab96af359"
+    },
+    "android/mv_audio_codec/clhca_data.h": {
+      "bytes": 24975,
+      "sha256": "bad3edd920331b506e2d141e115c3638d3ab118b4af1752fcec96e9bd64d542c"
+    },
+    "android/mv_audio_codec/fixtures/audio-fixtures.json": {
+      "bytes": 666,
+      "sha256": "3c4c5c789086127093d5689e0b407f65bd869da4819cb052abd7168173fe70a6"
+    },
+    "android/mv_audio_codec/fixtures/tone-mono.adx": {
+      "bytes": 234,
+      "sha256": "8c40df9fdef503e2da7570d58631c26d14139c082819cd3a56be6975ee9eebbf"
+    },
+    "android/mv_audio_codec/fixtures/tone-mono.pcm": {
+      "bytes": 640,
+      "sha256": "3f5221155cb73197a68ddd42ea4d86a01eea2aed3b5ae7f1df97a8db7242c930"
+    },
+    "android/mv_audio_codec/fixtures/tone-stereo.adx": {
+      "bytes": 414,
+      "sha256": "6fbf523bd738cb72a96274ddc55f69da75db3fcbfa13a95d012d56c40de206af"
+    },
+    "android/mv_audio_codec/fixtures/tone-stereo.pcm": {
+      "bytes": 1280,
+      "sha256": "0e56cc9435e366340e7832d83078f9be75828cfbb5029080f749e462b4f2afe6"
+    },
+    "android/mv_capture_camera.h": {
+      "bytes": 2882,
+      "sha256": "5b408f57622e859687933202136df321455eaec58536c1cad9d1fad54b5246be"
+    },
+    "android/mv_export_elf_patch.py": {
+      "bytes": 21656,
+      "sha256": "4eb27a16871e65504eb2fa02d6c8be937da141a7e9585259c3668f8abb8558c4"
+    },
+    "android/mv_particle_culling.h": {
+      "bytes": 2455,
+      "sha256": "dcfb30c28459efad0635067109ca3cd84d03e11d8b7d47627019fa1a1f349155"
+    },
+    "android/mv_pixel_convert.c": {
+      "bytes": 1286,
+      "sha256": "abf02175e6613b6e9695449711ea7d1bbdc9e8ccbe194848ab897e1601de49c1"
+    },
+    "android/mv_pixel_convert.h": {
+      "bytes": 504,
+      "sha256": "53c6f2e4a98edbd110691293411e4f1ad52f07b023df6f9bb0c5635e4c63ad56"
+    },
+    "android/native/COPY_PROVENANCE.json": {
+      "bytes": 4415,
+      "sha256": "340cdee57848b01610667756d918bc321288b3bf290eab6f6f401ddfc6149d88"
+    },
+    "android/native/MV_LOADER_DELTA.patch": {
+      "bytes": 1000,
+      "sha256": "d9cddf1d726d1fe577daf7f1f49c514512bd8c991d0c8fe29634c83ce1bc6ec7"
+    },
+    "android/native/android_invoke_pins.inc": {
+      "bytes": 5012,
+      "sha256": "72cfab716ba92e06f019e28215e158e2b1d99bc6492c12fa345eb2be8e9e4343"
+    },
+    "android/native/android_material_invoke.cpp": {
+      "bytes": 11729,
+      "sha256": "ed2b050686e67ec1cc8641822fe9e13a35ff0e6187e7abd876444a8723975e57"
+    },
+    "android/native/android_material_invoke.h": {
+      "bytes": 3862,
+      "sha256": "33e1ffbcdb55c4eed1f52e53e9bbd7e298c92ab49d453760ce078794b6241d3e"
+    },
+    "android/native/libfovmod_material.c": {
+      "bytes": 9187,
+      "sha256": "f0e3bd4785f12137f703c703a350f6850a5221f9ed375f6b02567fc2cad47c60"
+    },
+    "android/native/material_android_binding.cc": {
+      "bytes": 7685,
+      "sha256": "5518d96ff76021deb0e2004cfc09fe33e13c497b398a3c1aea3b3e35baef8565"
+    },
+    "android/native/material_android_binding.h": {
+      "bytes": 3583,
+      "sha256": "2a8b36eb5b75173c851c9a6d4e437b9ca447cc5cc0b2721d5ca33c6824ed5b55"
+    },
+    "android/native/material_android_layouts.generated.inc": {
+      "bytes": 1921,
+      "sha256": "9c10299c1c0dbd89e5ee46d08ac7802db7b157b4ad50c3061adaad000a711c89"
+    },
+    "android/native/material_android_runtime.cc": {
+      "bytes": 12796,
+      "sha256": "31b055649235b1cdfcaecf1d9b2effb9aa4d69de1522ed102a066f166c5442ec"
+    },
+    "android/native/material_isolation.c": {
+      "bytes": 23822,
+      "sha256": "3c9bee9c2c9daa6810d0eab600d4936432ecc572181a49b02cf465c75d74489e"
+    },
+    "android/native/material_isolation.h": {
+      "bytes": 6001,
+      "sha256": "b97f609039e757b8e77ec9b97ffe2b19b23814b69523d318baaec692b91fd490"
+    },
+    "android/native/unity_material_backend.cpp": {
+      "bytes": 30797,
+      "sha256": "50ecdc8db5e8b28cae9fb1a88670a83d63fcfe1b59beb95bbfce8848f5b631d6"
+    },
+    "android/native/unity_material_backend.h": {
+      "bytes": 5976,
+      "sha256": "019bd83e99f481e2e81f960b93ffb62215e2f874a75347d292b5946fade19fdc"
+    },
+    "android/test_android_mv_audio_provider.py": {
+      "bytes": 10784,
+      "sha256": "06d5c49c2b0be7afda22de9411f1f6764510f38298a4f93f4cf10d2cf7da3e23"
+    },
+    "android/test_android_mv_yuv_layout.py": {
+      "bytes": 10749,
+      "sha256": "3d897a6589742a6c6a53a8418b5db73e24680c02d890ddf4fe328a76f2ad7f7e"
+    },
+    "android/test_clock_restore.cpp": {
+      "bytes": 2024,
+      "sha256": "0bb6dcaeae807b0c0c78e5af0fcb70902f8f107f0e0e697cbc71b2f8f9632c82"
+    },
+    "android/test_material_android_binding.cpp": {
+      "bytes": 6926,
+      "sha256": "792c4f7331a19d5c012e8db0888a308dc06f48a490dbe22e45a61c98352c3bdf"
+    },
+    "android/test_mv_bridge_allowlist.py": {
+      "bytes": 1648,
+      "sha256": "0804829dbfae12d0521f00b199b0993a10006aecec56c27668573ce9ae93f433"
+    },
+    "android/test_mv_capture_camera.cpp": {
+      "bytes": 5727,
+      "sha256": "889b0a5c80b3bc76061bccd769f1aee93b99050a4dcf9751eafb1e6ecf7795f7"
+    },
+    "android/test_mv_export_elf_patch.py": {
+      "bytes": 14708,
+      "sha256": "a47c80e2d7c4458c56071f138ed7cfe3730ea89d46b81cc2321e38e9924c3b74"
+    },
+    "android/test_mv_particle_culling.cpp": {
+      "bytes": 1932,
+      "sha256": "cf065a62d97eb1d75f234409623cb299d23a7a66caee491a0c910407c495072c"
+    },
+    "android/test_mv_particle_owner_lifecycle.py": {
+      "bytes": 5327,
+      "sha256": "1da52fe31bcc7c6a5b1bd73a8dac2e914ad0966d0cc40962d6bb080cd2f51f61"
+    },
+    "android/test_mv_pixel_convert.c": {
+      "bytes": 1366,
+      "sha256": "e8ba5a5fb2f17c6685104a1a63e7f385d6b21d2ff77ccf38176e95871d961d33"
+    },
+    "build_android_mv.py": {
+      "bytes": 21996,
+      "sha256": "e504bbf2e8a4ce5b5d0a37e09eed94e23dc1ef8248de01f6b0e678417ba9540c"
+    },
+    "metadata/client_build_version.py": {
+      "bytes": 4300,
+      "sha256": "a8b49b9a2b9900385fe0086271cd148d6dee513dd3298f7e6f550f6dddba49ac"
+    },
+    "metadata/client_metadata.py": {
+      "bytes": 22431,
+      "sha256": "5164200e40cb4bf6fbdc1bf7e72577931cef79d1fc6d17d6632b07842a41fdd5"
+    },
+    "metadata/date_build_metadata.py": {
+      "bytes": 2108,
+      "sha256": "bb802e27e8b1e06d56c0d6430d34b668d259f7441e6e6cefff7d758c29f2fd48"
+    },
+    "metadata/tests/test_date_metadata.py": {
+      "bytes": 21273,
+      "sha256": "730c7a974c898f78c56702ba421dd110ed9441e3038cb94bf0aa38d047833050"
+    },
+    "test_build_android_mv.py": {
+      "bytes": 5634,
+      "sha256": "7b961f9c5f4a72546b3f4099ce9697df4ce72315c08896bdf3943949c90b166e"
+    }
+  },
+  "kind": "FROZEN_FULL_ANDROID_MV_BUILD_AND_TEST_INPUTS",
+  "schema": 1
+}

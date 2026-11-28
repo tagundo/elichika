@@ -1,0 +1,9 @@
+{
+  "android": {
+    "build": true,
+    "version": "2026.11.27.1",
+    "sign": true,
+    "signing_cert_sha256": "fed020601692d2e759286831ad229f0c8e4562a8e90f9067d7472fa5fc99f930"
+  },
+  "playcover": {"build": true, "version": "2026.11.27.1"}
+}

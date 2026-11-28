@@ -1,0 +1,80 @@
+{
+  "sourceCommit": "78ec138962a9265e6a68c311ce069654313935f1",
+  "delivery": {
+    "repository": "tagundo/SIFAS-Client",
+    "branch": "codex/playcover-mv-combine-download-20261121-2",
+    "commit": "212a027c9f29efea3ff4fbb4a2e83bb2a2fa1adc",
+    "archiveName": "SIFAS_GL_Local_3.12.0_PlayCover_2026.11.21.2-test.ipa",
+    "archiveSha256": "d01c43a2e56d3ffb5f6d9a95b6c87dc60bbbbdc8bb36a9add64b2bd006d1327a",
+    "memberSha256": {
+      "Payload/global.app/global": "a835e8237187375415b745e36f28bf3aded6576f149057c6e11616690f794d96",
+      "Payload/global.app/Frameworks/SIFASMVExport.dylib": "727be49d92ca6978e73e6cb94c43ecbb0eb8587429848198781a65285cf60995"
+    }
+  },
+  "base": {
+    "repository": "tagundo/elichika",
+    "exportRunId": 43689208250,
+    "artifactId": 14150829830,
+    "artifactSha256": "8157e023a3a8d53b351dd28a3c935546a4a4e0bcd7be2086300d7065d99a26cb",
+    "artifactExpiresAt": "2026-11-29T07:16:44Z",
+    "archiveName": "SIFAS_GL_Local_3.12.0_PlayCover_2026.11.15.1_candidate.ipa",
+    "archiveSha256": "830cfccc9e5397b2c69536ff3bf6d9e1626ff5ec7c8e587b0e89d4bdb135f53e"
+  },
+  "toolchain": {
+    "ndk": "28.2.13676358",
+    "clang": "19.0.1",
+    "lld": "19.0.1",
+    "target": "arm64-apple-ios13.0",
+    "sdk": "iPhoneOS16.5.sdk",
+    "sdkCommit": "0222fd5413cf4b9af096f37b4621afa2688572f7",
+    "sdkTree": "81466d46b666daa04ae3d2b0b9d5324f0f621359",
+    "signer": {
+      "name": "rcodesign",
+      "version": "0.29.0",
+      "releaseAssetId": 209933462,
+      "style": "ad-hoc",
+      "archiveSha256": "dbe85cedd8ee4217b64e9a0e4c2aef92ab8bcaaa41f20bde99781ff02e600002",
+      "executableSha256": "dab9a7465f96aba3c81e793775510f745b91a46b6418e89f7317b5d8fc7bcea2"
+    }
+  },
+  "rebuilds": [
+    {
+      "mode": "originalLinuxScripts",
+      "archiveSha256": "3167847ea35bb13450fcde826182c181bc8f765e2fb538f60f1a935ddbe16e14",
+      "unsignedDylibSha256": "df400dd09a7844ce172d676980021f966aea332fef8cb87f672393cf44ae1ab5",
+      "matchedMemberSha256": {
+        "Payload/global.app/global": "a835e8237187375415b745e36f28bf3aded6576f149057c6e11616690f794d96",
+        "Payload/global.app/Frameworks/SIFASMVExport.dylib": "727be49d92ca6978e73e6cb94c43ecbb0eb8587429848198781a65285cf60995"
+      },
+      "allUncompressedMemberDigestsMatch": true,
+      "membersVerified": 1355,
+      "differentZipTimestamps": [
+        "Payload/global.app/Frameworks/CydiaSubstrate.framework/_CodeSignature/CodeResources",
+        "Payload/global.app/Frameworks/SIFASMVExport.dylib",
+        "Payload/global.app/_CodeSignature/CodeResources"
+      ],
+      "machOPathsWithVerifiedSignedPages": 9,
+      "resourceEnvelopesVerified": 2
+    },
+    {
+      "mode": "parameterizedLinuxScripts",
+      "archiveSha256": "e1f60f4dfa76de4c605374bfc0e03e24a133da93a51991ff5f93a1fae314a43a",
+      "unsignedDylibSha256": "df400dd09a7844ce172d676980021f966aea332fef8cb87f672393cf44ae1ab5",
+      "matchedMemberSha256": {
+        "Payload/global.app/global": "a835e8237187375415b745e36f28bf3aded6576f149057c6e11616690f794d96",
+        "Payload/global.app/Frameworks/SIFASMVExport.dylib": "727be49d92ca6978e73e6cb94c43ecbb0eb8587429848198781a65285cf60995"
+      },
+      "allUncompressedMemberDigestsMatch": true,
+      "membersVerified": 1355,
+      "differentZipTimestamps": [
+        "Payload/global.app/Frameworks/CydiaSubstrate.framework/_CodeSignature/CodeResources",
+        "Payload/global.app/Frameworks/SIFASMVExport.dylib",
+        "Payload/global.app/_CodeSignature/CodeResources"
+      ],
+      "machOPathsWithVerifiedSignedPages": 9,
+      "resourceEnvelopesVerified": 2
+    }
+  ],
+  "portableTestsPassed": 24,
+  "playCoverGameplayTested": false
+}
